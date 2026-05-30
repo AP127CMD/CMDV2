@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AP127 · Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/common.css">
+<style>
+  .jump{cursor:pointer}
+  .stu-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--bd2);}
+  .stu-row:last-child{border-bottom:none;}
+  .stu-nick{font-family:'JetBrains Mono',monospace;font-size:11px;width:62px;flex-shrink:0;color:var(--c127);}
+  .stu-name{font-size:11px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .stu-pct{font-family:'Rajdhani',sans-serif;font-size:15px;font-weight:700;width:46px;text-align:right;}
+  .stu-bar{width:84px;flex-shrink:0;}
+  .fl-row{display:grid;grid-template-columns:54px 1fr 70px 64px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd2);font-size:11px;}
+  .fl-row:last-child{border-bottom:none;}
+  .fl-t{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx2);}
+  .alert{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border-radius:8px;background:var(--s2);border:1px solid var(--bd);border-left-width:3px;font-size:12px;}
+  .alert.bad{border-left-color:var(--bad);}.alert.rev{border-left-color:var(--warn);}.alert.info{border-left-color:var(--info);}.alert.ok{border-left-color:var(--done);}
+  .alert .ai{font-size:15px;line-height:1.2;flex-shrink:0;}
+  .alert b{color:var(--tx);}
+</style>
+</head>
+<body>
+<div class="pgnav">
+  <span class="ttl">AP127 OVERVIEW</span>
+  <span class="sub" id="focus-sub">—</span>
+  <div class="right"><div class="sdot" id="sdot"></div><span class="stxt" id="stxt">Loading…</span></div>
+</div>
+
+<div class="wrap">
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid3">
+    <!-- Today on the line -->
+    <div class="panel" style="grid-column:span 2">
+      <div class="ph"><span class="pt">On The Line</span><span class="ps jump link" onclick="go('operations')" id="line-meta">view operations →</span></div>
+      <div class="pb" id="line-body"><div class="empty">…</div></div>
+    </div>
+    <!-- Alerts -->
+    <div class="panel">
+      <div class="ph"><span class="pt">Alerts</span><span class="ps">needs attention</span></div>
+      <div class="pb" id="alerts" style="display:grid;gap:8px"><div class="empty">…</div></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <!-- Leaders -->
+    <div class="panel">
+      <div class="ph"><span class="pt">Pace Leaders</span><span class="ps jump link" onclick="go('progress')">progress →</span></div>
+      <div class="pb" id="leaders"></div>
+    </div>
+    <!-- Laggers -->
+    <div class="panel">
+      <div class="ph"><span class="pt">Behind Schedule</span><span class="ps">most behind curriculum plan</span></div>
+      <div class="pb" id="laggers"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../flight-data.js"></script>
+<script src="../progress-data.js"></script>
+<script src="../assets/reconcile.js"></script>
+<script>
+const WORKER_URL='https://ap127-data-api.anusorn-tanmetha.workers.dev';
+const NICKS=["A-VIT","A-SORN","A-RUT","B-SET","J-YU","K-PONG","K-YA","K-KORN","K-SEE","KRIT","M-PHAN","N-PON","N-KALP","N-PHAT","P-THAN","P-KORN","P-KUL","P-DET","S-SIT","S-KORN","S-WITCH","S-WAN","T-KORN","T-WAJ","V-PHON","W-PHOL","W-POL","W-PONG"];
+let PROG=window.PROGRESS_DATA||{};
+
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function go(tab){try{window.parent.postMessage({type:'ap127-go',tab},'*');}catch(e){}}
+function bkkToday(){const n=new Date();const b=new Date(n.getTime()+(n.getTimezoneOffset()+420)*60000);return b.toISOString().slice(0,10);}
+function dDiff(a,b){if(!a||!b)return null;return Math.round((new Date(a+'T00:00:00')-new Date(b+'T00:00:00'))/86400000);}
+function setSS(cls,txt){document.getElementById('sdot').className='sdot '+cls;document.getElementById('stxt').textContent=txt;}
+
+function isAP127(b){return window.AP127Reconcile.isAP127(b);}
+const SC={Completed:'var(--done)',Pending:'var(--acc)',Canceled:'var(--bad)'};
+
+function render(){
+  const F=window.FLIGHT_DATA.flights;
+  const today=bkkToday();
+  const ap=F.filter(f=>isAP127(f.batch)&&f.student&&f.student!=='All Students');
+
+  // focus date: today if AP127 activity, else latest AP127 date on/before today, else latest overall
+  const datesWithAct=[...new Set(ap.map(f=>f.date))].sort();
+  let focus=datesWithAct.includes(today)?today:(datesWithAct.filter(d=>d<=today).at(-1)||datesWithAct.at(-1));
+  const dayFlights=ap.filter(f=>f.date===focus).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+  const done=dayFlights.filter(f=>f.status==='Completed').length;
+  const pend=dayFlights.filter(f=>f.status==='Pending').length;
+  const canc=dayFlights.filter(f=>f.status==='Canceled').length;
+  document.getElementById('focus-sub').textContent='Focus day '+new Date(focus+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'})+(focus===today?' · today':'');
+
+  // progress metrics
+  const studs=(PROG.ap127||[]).map((s,i)=>{
+    s.nick=s.nick||NICKS[i]||'';
+    const lastFlown=(s.flown||[]).map(f=>f.date).filter(Boolean).sort().at(-1)||'';
+    const idle=lastFlown?Math.max(0,dDiff(today,lastFlown)||0):9999;
+    const plannedDue=(PROG.cur127||[]).filter(c=>c.planned_date&&c.planned_date<=today).length;
+    const behind=plannedDue-(s.done||0);
+    return {...s, lastFlown, idle, behind, plannedDue};
+  });
+  const cohortPct=studs.length?Math.round(studs.reduce((a,s)=>a+(s.pct||0),0)/studs.length*10)/10:0;
+  const behindCount=studs.filter(s=>s.behind>0).length;
+  const doneVals=studs.map(s=>s.done||0).sort((a,b)=>a-b);
+  const leadDone=doneVals.at(-1)||0, lagDone=doneVals[0]||0;
+  const spread=leadDone-lagDone;
+
+  // cross-check
+  const R=window.AP127Reconcile.reconcile(window.FLIGHT_DATA,PROG);
+
+  // KPIs
+  document.getElementById('kpis').innerHTML=[
+    {c:'acc',l:'On The Line',v:dayFlights.length,s:done+' done · '+pend+' pending · '+canc+' cxl'},
+    {c:'',   l:'Cohort Progress',v:cohortPct+'%',s:studs.length+' students avg'},
+    {c:'rev',l:'Pace Spread',v:spread,s:'lessons · leader '+leadDone+' · lagger '+lagDone},
+    {c:R.totals.conflict?'bad':'ok',l:'Data Conflicts',v:R.totals.conflict,s:R.totals.review+' to review · '+R.totals.consistency+'% match'},
+  ].map(k=>`<div class="kpi ${k.c} jump" onclick="${k.l==='Data Conflicts'?"go('crosscheck')":k.l==='On The Line'?"go('operations')":"go('progress')"}"><div class="kl">${k.l}</div><div class="kv">${k.v}</div><div class="ks">${k.s}</div></div>`).join('');
+
+  // on the line
+  document.getElementById('line-meta').textContent=focus+(focus===today?' (today)':'')+' · '+dayFlights.length+' flights →';
+  document.getElementById('line-body').innerHTML = dayFlights.length? dayFlights.slice(0,14).map(f=>`
+    <div class="fl-row">
+      <span class="fl-t">${esc(f.start||'--:--')}</span>
+      <span><b style="color:var(--c127)">${esc(f.lesson||'—')}</b> <span class="muted">${esc(f.student||'')}</span></span>
+      <span class="muted mono" style="font-size:10px">${esc(f.instructor||'')}</span>
+      <span class="pill" style="background:color-mix(in oklch,${SC[f.status]||'var(--tx3)'} 16%,transparent);color:${SC[f.status]||'var(--tx3)'}">${esc((f.status||'').slice(0,4))}</span>
+    </div>`).join('')+(dayFlights.length>14?`<div class="muted mono" style="font-size:10px;padding-top:6px">+${dayFlights.length-14} more — open Operations</div>`:'') : `<div class="empty">No AP127 flights on this day</div>`;
+
+  // leaders (top by pct)
+  const leaders=studs.slice().sort((a,b)=>(b.pct||0)-(a.pct||0)).slice(0,6);
+  document.getElementById('leaders').innerHTML=leaders.map(s=>`
+    <div class="stu-row">
+      <span class="stu-nick">${esc(s.nick)}</span>
+      <span class="stu-name">${esc(s.name)}</span>
+      <span class="stu-bar bar"><i style="width:${Math.min(100,s.pct||0)}%"></i></span>
+      <span class="stu-pct">${(s.pct||0).toFixed(0)}%</span>
+    </div>`).join('');
+
+  // laggers (most behind plan, then idle)
+  const laggers=studs.slice().sort((a,b)=>(b.behind-a.behind)||(b.idle-a.idle)).slice(0,6);
+  document.getElementById('laggers').innerHTML=laggers.map(s=>`
+    <div class="stu-row">
+      <span class="stu-nick">${esc(s.nick)}</span>
+      <span class="stu-name">${esc(s.name)}</span>
+      <span class="pill ${s.behind>0?'rev':'ok'}">${s.behind>0?s.behind+' behind':'on pace'}</span>
+      <span class="muted mono" style="font-size:10px;width:62px;text-align:right">${s.idle>900?'never':s.idle+'d idle'}</span>
+    </div>`).join('');
+
+  // alerts
+  const alerts=[];
+  if(R.totals.conflict) alerts.push({c:'bad',i:'⚠',h:`${R.totals.conflict} data conflict${R.totals.conflict>1?'s':''}`,b:`Lessons present in one system but missing in the other. <a class="link jump" onclick="go('crosscheck')">Cross-check →</a>`});
+  if(R.totals.review) alerts.push({c:'rev',i:'≈',h:`${R.totals.review} entries to review`,b:`Flight time or date differs between Operations and Progress.`});
+  const idleStu=studs.filter(s=>s.idle>=7&&s.idle<900).sort((a,b)=>b.idle-a.idle);
+  if(idleStu.length) alerts.push({c:'rev',i:'⏸',h:`${idleStu.length} student${idleStu.length>1?'s':''} idle ≥ 7 days`,b:idleStu.slice(0,5).map(s=>esc(s.nick)+' ('+s.idle+'d)').join(', ')});
+  if(canc) alerts.push({c:'info',i:'✕',h:`${canc} cancellation${canc>1?'s':''} on focus day`,b:'Review the board for rescheduling.'});
+  if(!alerts.length) alerts.push({c:'ok',i:'✓',h:'All clear',b:'No conflicts, no idle students, data in sync.'});
+  document.getElementById('alerts').innerHTML=alerts.map(a=>`<div class="alert ${a.c}"><span class="ai">${a.i}</span><div><b>${a.h}</b><div class="muted" style="margin-top:2px">${a.b}</div></div></div>`).join('');
+}
+
+(async function init(){
+  let source='snapshot';
+  try{const r=await fetch(WORKER_URL,{cache:'no-store'});
+    if(r.ok){const d=await r.json();if(d.ap127&&d.ap127.length){PROG=d;source='live';}}
+  }catch(e){console.warn('live fetch failed',e);}
+  const upd=PROG._updated?new Date(PROG._updated).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+  setSS(source==='live'?'live':'snap',(source==='live'?'Live · ':'Snapshot · ')+upd);
+  render();
+})();
+</script>
+</body>
+</html>

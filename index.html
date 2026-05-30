@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<title>AP127 V2 — Command & Progress</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root{--bg:#0d1117;--s1:#161b22;--bd:#30363d;--tx:#e6edf3;--tx2:#8b949e;--tx3:#6e7681;
+        --c127:#fb923c;--acc:#f59e0b;--done:#22c55e;--bad:#ef4444;--warn:#fbbf24;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;}
+  body{background:var(--bg);color:var(--tx);font-family:'Nunito',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;}
+  header{flex-shrink:0;display:flex;align-items:center;gap:4px;background:#0a0e13;border-bottom:1px solid var(--bd);padding:0 12px;height:48px;}
+  .brand{display:flex;align-items:center;gap:9px;padding-right:14px;margin-right:6px;border-right:1px solid var(--bd);height:100%;}
+  .brand .logo{width:9px;height:9px;border-radius:50%;background:var(--done);box-shadow:0 0 8px var(--done);animation:pulse 2.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .brand .wm{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;letter-spacing:1px;}
+  .brand .wm b{color:var(--c127);}
+  .brand .v{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);border:1px solid var(--bd);border-radius:4px;padding:1px 5px;margin-left:2px;}
+  nav.tabs{display:flex;gap:2px;height:100%;align-items:center;}
+  .tab{position:relative;display:flex;align-items:center;gap:7px;height:100%;padding:0 15px;cursor:pointer;
+       font-family:'Rajdhani',sans-serif;font-weight:600;font-size:14px;letter-spacing:.5px;color:var(--tx2);
+       border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;transition:color .12s;}
+  .tab:hover{color:var(--tx);}
+  .tab.active{color:var(--c127);border-bottom-color:var(--c127);}
+  .tab .ico{font-size:14px;}
+  .tab .badge{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;background:var(--bad);color:#fff;border-radius:99px;padding:1px 6px;min-width:16px;text-align:center;}
+  .tab .badge.zero{background:var(--done);}
+  .status{margin-left:auto;display:flex;align-items:center;gap:14px;padding-left:12px;}
+  .st{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);}
+  .st .dot{width:7px;height:7px;border-radius:50%;background:var(--tx3);}
+  .st .dot.live{background:var(--done);box-shadow:0 0 6px var(--done);}
+  .st .dot.snap{background:var(--acc);box-shadow:0 0 6px var(--acc);}
+  .st .dot.err{background:var(--bad);}
+  .st b{color:var(--tx2);font-weight:500;}
+  main{flex:1;min-height:0;position:relative;}
+  iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:var(--bg);display:none;}
+  iframe.active{display:block;}
+  .ld{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--tx3);
+      font-family:'JetBrains Mono',monospace;font-size:12px;}
+  @media(max-width:640px){
+    .brand .wm{font-size:15px;} .brand .v{display:none;}
+    .tab{padding:0 9px;font-size:12px;} .tab .lbl{display:none;} .tab .ico{font-size:16px;}
+    .status .st .txt{display:none;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo"></span><span class="wm">AP<b>127</b></span><span class="v">V2</span></div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="home"       data-src="overview/index.html"><span class="ico">◎</span><span class="lbl">Home</span></button>
+    <button class="tab"        data-tab="operations" data-src="ops/index.html"><span class="ico">✈</span><span class="lbl">Operations</span></button>
+    <button class="tab"        data-tab="progress"   data-src="progress/index.html"><span class="ico">▰</span><span class="lbl">Progress</span></button>
+    <button class="tab"        data-tab="crosscheck" data-src="crosscheck/index.html"><span class="ico">⇄</span><span class="lbl">Cross-Check</span> <span class="badge zero" id="cc-badge" style="display:none">0</span></button>
+  </nav>
+  <div class="status">
+    <div class="st" title="AP127 progress data feed"><span class="dot" id="pdot"></span><span class="txt">PROG</span> <b id="ptxt">…</b></div>
+    <div class="st" title="Operations schedule feed"><span class="dot" id="odot"></span><span class="txt">OPS</span> <b id="otxt">…</b></div>
+  </div>
+</header>
+<main id="main"></main>
+
+<script src="flight-data.js"></script>
+<script>
+(function(){
+  const tabs=[...document.querySelectorAll('.tab')];
+  const main=document.getElementById('main');
+  const frames={};
+  const loaded={};
+
+  function ensure(tab){
+    if(frames[tab]) return frames[tab];
+    const btn=tabs.find(t=>t.dataset.tab===tab);
+    const f=document.createElement('iframe');
+    f.src=btn.dataset.src; f.dataset.tab=tab;
+    main.appendChild(f); frames[tab]=f; loaded[tab]=true;
+    return f;
+  }
+  function show(tab){
+    tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+    const f=ensure(tab);
+    Object.values(frames).forEach(fr=>fr.classList.toggle('active',fr===f));
+    try{history.replaceState(null,'','#'+tab);}catch(e){}
+  }
+  tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.tab)));
+
+  // status indicators
+  const pdot=document.getElementById('pdot'),ptxt=document.getElementById('ptxt');
+  const odot=document.getElementById('odot'),otxt=document.getElementById('otxt');
+  // Operations freshness comes from the bundled flight-data.js loaded above.
+  if(window.FLIGHT_DATA&&window.FLIGHT_DATA.fetchedAt){
+    const d=new Date(window.FLIGHT_DATA.fetchedAt);
+    odot.className='dot snap';
+    otxt.textContent=d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  } else { odot.className='dot err'; otxt.textContent='n/a'; }
+
+  window.addEventListener('message',e=>{
+    const d=e.data||{};
+    if(d.type==='ap127-progress-status'){
+      pdot.className='dot '+(d.students?(d.source==='live'?'live':'snap'):'err');
+      const u=d.updated?new Date(d.updated).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+new Date(d.updated).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'n/a';
+      ptxt.textContent=d.students?u:'no data';
+    } else if(d.type==='ap127-crosscheck-status'){
+      const b=document.getElementById('cc-badge');
+      b.style.display='inline-block';
+      b.textContent=d.conflict;
+      b.className='badge'+(d.conflict?'':' zero');
+    } else if(d.type==='ap127-go'){
+      show(d.tab);
+    }
+  });
+
+  // Pre-warm the cross-check frame in the background so the conflict badge
+  // populates without the user opening the tab.
+  setTimeout(()=>{ if(!loaded.crosscheck){ const f=ensure('crosscheck'); } },1200);
+
+  // initial tab from hash
+  const initial=(location.hash||'').replace('#','');
+  show(tabs.some(t=>t.dataset.tab===initial)?initial:'home');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AP127 · Cross-Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/common.css">
+</head>
+<body>
+<div class="pgnav">
+  <span class="ttl">CROSS-CHECK</span>
+  <span class="sub">Operations ⇄ Progress reconciliation</span>
+  <div class="right"><div class="sdot" id="sdot"></div><span class="stxt" id="stxt">Loading…</span></div>
+</div>
+
+<div class="wrap">
+  <!-- KPI summary -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- explanation -->
+  <div class="panel"><div class="pb">
+    <div class="legend">
+      <span><span class="pill ok">OK</span> lesson logged identically in both systems</span>
+      <span><span class="pill rev">REVIEW</span> matched, but flight time or date differs beyond tolerance</span>
+      <span><span class="pill bad">CONFLICT</span> present in one system, missing in the other</span>
+    </div>
+    <div class="muted" style="margin-top:8px;font-size:11px">
+      Compares every AP127 flown lesson in <b>Progress</b> against <b>Completed</b> flights in <b>Operations</b>, in both directions.
+      Only the window both sources cover is checked (<span id="winnote" class="mono"></span>) — older Progress entries predate the Operations history and aren't flagged.
+    </div>
+  </div></div>
+
+  <!-- controls -->
+  <div class="panel"><div class="pb" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <input class="in" id="q" placeholder="Search student / lesson…" oninput="render()" style="flex:1;min-width:200px">
+    <span class="muted mono" style="font-size:10px">SHOW:</span>
+    <span class="chip sel" data-f="all"     onclick="setF('all')">All</span>
+    <span class="chip"     data-f="conflict" onclick="setF('conflict')">Conflicts</span>
+    <span class="chip"     data-f="review"  onclick="setF('review')">Review</span>
+    <span style="width:1px;height:16px;background:var(--bd)"></span>
+    <span class="muted mono" style="font-size:10px">TIME TOL</span>
+    <select class="in" id="durtol" onchange="render()">
+      <option value="10">±10m</option><option value="20" selected>±20m</option><option value="30">±30m</option><option value="45">±45m</option>
+    </select>
+    <span class="muted mono" style="font-size:10px">DATE TOL</span>
+    <select class="in" id="datetol" onchange="render()">
+      <option value="0">0d</option><option value="1" selected>±1d</option><option value="3">±3d</option><option value="7">±7d</option>
+    </select>
+  </div></div>
+
+  <div class="grid2">
+    <!-- discrepancies -->
+    <div class="panel">
+      <div class="ph"><span class="pt">Discrepancies</span><span class="ps" id="disc-meta">—</span></div>
+      <div class="tbwrap">
+        <table class="tb">
+          <thead><tr>
+            <th onclick="sortBy('sev')">Sev</th>
+            <th onclick="sortBy('student')">Student</th>
+            <th onclick="sortBy('lesson')">Lesson</th>
+            <th onclick="sortBy('date')">Date</th>
+            <th>Detail</th>
+          </tr></thead>
+          <tbody id="disc-rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- per-student -->
+    <div class="panel">
+      <div class="ph"><span class="pt">By Student</span><span class="ps">Progress vs Operations counts</span></div>
+      <div class="tbwrap">
+        <table class="tb">
+          <thead><tr>
+            <th onclick="sortStu('name')">Student</th>
+            <th class="num" onclick="sortStu('progDone')" title="Lessons logged in Progress">PROG</th>
+            <th class="num" onclick="sortStu('ccCompleted')" title="Completed flights in Operations (within window)">OPS</th>
+            <th class="num" onclick="sortStu('ok')">OK</th>
+            <th class="num" onclick="sortStu('review')">REV</th>
+            <th class="num" onclick="sortStu('conflict')">CONF</th>
+          </tr></thead>
+          <tbody id="stu-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- data + engine -->
+<script src="../flight-data.js"></script>
+<script src="../progress-data.js"></script>
+<script src="../assets/reconcile.js"></script>
+<script>
+const WORKER_URL='https://ap127-data-api.anusorn-tanmetha.workers.dev';
+let PROG = window.PROGRESS_DATA || {};
+let state = { filter:'all', sort:{key:'sev',dir:1}, sortStu:{key:'conflict',dir:-1} };
+const SEV_RANK = { conflict:0, review:1, ok:2 };
+
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fd(ds){if(!ds)return'—';try{return new Date(ds+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'});}catch{return ds;}}
+
+function setF(f){state.filter=f;document.querySelectorAll('.chip[data-f]').forEach(c=>c.classList.toggle('sel',c.dataset.f===f));render();}
+function sortBy(k){const s=state.sort;s.dir=s.key===k?-s.dir:1;s.key=k;render();}
+function sortStu(k){const s=state.sortStu;s.dir=s.key===k?-s.dir:1;s.key=k;render();}
+
+function compute(){
+  const durtol=+document.getElementById('durtol').value;
+  const datetol=+document.getElementById('datetol').value;
+  return window.AP127Reconcile.reconcile(window.FLIGHT_DATA, PROG, {durTolMin:durtol, dateTolDays:datetol});
+}
+
+function render(){
+  const R=compute();
+  const t=R.totals;
+  document.getElementById('winnote').textContent='from '+t.windowStart;
+  // KPIs
+  document.getElementById('kpis').innerHTML=[
+    {c:'acc',l:'Consistency',v:t.consistency+'%',s:t.ok+' of '+t.checked+' checks match'},
+    {c:'ok', l:'Matched',    v:t.ok,             s:'identical in both'},
+    {c:'rev',l:'To Review',  v:t.review,         s:'time / date differs'},
+    {c:'bad',l:'Conflicts',  v:t.conflict,       s:'missing one side'},
+    {c:'',   l:'Students',   v:t.students,       s:R.perStudent.filter(x=>x.matched).length+' matched in Ops'},
+  ].map(k=>`<div class="kpi ${k.c}"><div class="kl">${k.l}</div><div class="kv">${k.v}</div><div class="ks">${k.s}</div></div>`).join('');
+
+  // discrepancy rows (only review + conflict are discrepancies)
+  const q=document.getElementById('q').value.trim().toLowerCase();
+  let rows=R.rows.filter(r=>r.sev!=='ok');
+  if(state.filter!=='all') rows=rows.filter(r=>r.sev===state.filter);
+  if(q) rows=rows.filter(r=>(r.student+' '+r.lesson+' '+r.detail).toLowerCase().includes(q));
+  const sk=state.sort.key, sdir=state.sort.dir;
+  rows.sort((a,b)=>{
+    let av=sk==='sev'?SEV_RANK[a.sev]:a[sk], bv=sk==='sev'?SEV_RANK[b.sev]:b[sk];
+    av=av==null?'':av; bv=bv==null?'':bv;
+    return (av<bv?-1:av>bv?1:0)*sdir;
+  });
+  document.getElementById('disc-meta').textContent=rows.length+' shown';
+  const pill={conflict:'bad',review:'rev'};
+  const typeLabel={missing_in_ops:'PROG only',missing_in_progress:'OPS only',review:'mismatch'};
+  document.getElementById('disc-rows').innerHTML = rows.length? rows.map(r=>`
+    <tr>
+      <td><span class="pill ${pill[r.sev]}">${r.sev}</span></td>
+      <td>${esc(r.nick||'')} <span class="muted" style="font-size:9px">${esc(r.student)}</span></td>
+      <td class="mono">${esc(r.lesson)}</td>
+      <td class="mono">${fd(r.date)}</td>
+      <td><span class="muted mono" style="font-size:9px">[${typeLabel[r.type]||''}]</span> ${esc(r.detail)}</td>
+    </tr>`).join('') : `<tr><td colspan="5"><div class="empty">No discrepancies — fully consistent ✓</div></td></tr>`;
+
+  // per-student
+  const ss=state.sortStu;
+  const stu=R.perStudent.slice().sort((a,b)=>{
+    let av=a[ss.key],bv=b[ss.key];
+    if(ss.key==='name'){return (''+av).localeCompare(''+bv)*ss.dir;}
+    return ((av||0)-(bv||0))*ss.dir;
+  });
+  document.getElementById('stu-rows').innerHTML=stu.map(s=>{
+    const flag = s.conflict?'bad':s.review?'rev':'ok';
+    return `<tr>
+      <td>${esc(s.nick||'')} <span class="muted" style="font-size:9px">${esc(s.name)}</span>${s.matched?'':' <span class="pill info">no ops</span>'}</td>
+      <td class="num">${s.progDone}</td>
+      <td class="num">${s.ccCompleted}</td>
+      <td class="num" style="color:var(--done)">${s.ok}</td>
+      <td class="num" style="color:${s.review?'var(--warn)':'var(--tx3)'}">${s.review}</td>
+      <td class="num" style="color:${s.conflict?'var(--bad)':'var(--tx3)'};font-weight:${s.conflict?700:400}">${s.conflict}</td>
+    </tr>`;
+  }).join('');
+
+  // report to shell
+  try{window.parent!==window&&window.parent.postMessage({type:'ap127-crosscheck-status',conflict:t.conflict,review:t.review,consistency:t.consistency},'*');}catch(e){}
+}
+
+function setSS(cls,txt){document.getElementById('sdot').className='sdot '+cls;document.getElementById('stxt').textContent=txt;}
+
+(async function init(){
+  let source='snapshot';
+  try{
+    const r=await fetch(WORKER_URL,{cache:'no-store'});
+    if(r.ok){const d=await r.json(); if(d.ap127&&d.ap127.length){
+      const NICKS=["A-VIT","A-SORN","A-RUT","B-SET","J-YU","K-PONG","K-YA","K-KORN","K-SEE","KRIT","M-PHAN","N-PON","N-KALP","N-PHAT","P-THAN","P-KORN","P-KUL","P-DET","S-SIT","S-KORN","S-WITCH","S-WAN","T-KORN","T-WAJ","V-PHON","W-PHOL","W-POL","W-PONG"];
+      d.ap127.forEach((s,i)=>{s.nick=s.nick||NICKS[i]||'';});
+      PROG=d; source='live';
+    }}
+  }catch(e){console.warn('live fetch failed, using snapshot',e);}
+  if(source==='snapshot'&&PROG.ap127){
+    const NICKS=["A-VIT","A-SORN","A-RUT","B-SET","J-YU","K-PONG","K-YA","K-KORN","K-SEE","KRIT","M-PHAN","N-PON","N-KALP","N-PHAT","P-THAN","P-KORN","P-KUL","P-DET","S-SIT","S-KORN","S-WITCH","S-WAN","T-KORN","T-WAJ","V-PHON","W-PHOL","W-POL","W-PONG"];
+    PROG.ap127.forEach((s,i)=>{s.nick=s.nick||NICKS[i]||'';});
+  }
+  const upd=PROG._updated?new Date(PROG._updated).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+  setSS(source==='live'?'live':'snap',(source==='live'?'Live · ':'Snapshot · ')+upd+' · ops '+ (window.FLIGHT_DATA.fetchedAt? new Date(window.FLIGHT_DATA.fetchedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):'—'));
+  render();
+})();
+</script>
+</body>
+</html>

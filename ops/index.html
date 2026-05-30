@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<!-- Tell browsers to always revalidate index.html with the server on every
+     load/refresh. The JS and data files are already cache-busted via ?v=
+     tokens, so once the browser gets a fresh index.html it will fetch the
+     correct versions of everything else automatically. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
+<title>AP127 Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  html, body, #root { margin:0; padding:0; height:100%; }
+  body { font-family:'Inter',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; }
+  *::-webkit-scrollbar { width:8px; height:8px; }
+  *::-webkit-scrollbar-track { background:transparent; }
+  *::-webkit-scrollbar-thumb { background:color-mix(in oklch,var(--ink,#888) 18%,transparent); border-radius:999px; border:2px solid transparent; background-clip:padding-box; }
+  *::-webkit-scrollbar-thumb:hover { background:color-mix(in oklch,var(--ink,#888) 36%,transparent); background-clip:padding-box; }
+  button { font-family:inherit; }
+  select { appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%23888' d='M1 1l5 5 5-5'/></svg>"); background-repeat:no-repeat; background-position:right 6px center; background-size:10px; padding-right:22px; }
+  #root { display:flex; flex-direction:column; }
+</style>
+</head>
+<body data-theme="cockpit">
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Pre-generated data — run scripts/generate_flight_data.py to refresh -->
+<script src="flight-data.js?v=1778610943"></script>
+
+<!-- Shared components and context.
+     The ?v= token cache-busts the app JS — bump it whenever a js/ file changes
+     so browsers don't serve stale code after a deploy. -->
+<script type="text/babel" src="js/app-shared.js?v=r40"></script>
+
+<!-- Views -->
+<script type="text/babel" src="js/view-daily.js?v=r40"></script>
+<script type="text/babel" src="js/view-board.js?v=r40"></script>
+<script type="text/babel" src="js/view-gantt.js?v=r40"></script>
+<script type="text/babel" src="js/view-weekly.js?v=r40"></script>
+<script type="text/babel" src="js/view-summary.js?v=r40"></script>
+<script type="text/babel" src="js/view-roster.js?v=r40"></script>
+<script type="text/babel" src="js/view-slotfinder.js?v=r40"></script>
+<script type="text/babel" src="js/view-autoslotfinder.js?v=r40"></script>
+<script type="text/babel" src="js/view-calendar.js?v=r40"></script>
+
+<script type="text/babel" data-presets="env,react">
+const VIEWS = [
+  { id:'daily',   label:'DAY GLANCE', desc:'Single-day overview — KPIs, schedule pulse, batch/instructor/fleet stats, AP-127 spotlight' },
+  { id:'board',   label:'BOARD',     desc:'Sortable daily ops table — all flights for the selected date' },
+  { id:'gantt',   label:'GANTT',     desc:'Timeline bars grouped by instructor, aircraft, or batch — shows all activity types' },
+  { id:'weekly',  label:'WEEKLY',    desc:'Week-by-week calendar showing scheduled flights per day' },
+  { id:'summary', label:'ANALYTICS', desc:'Aggregate stats, AP-127 student progress, and batch breakdowns' },
+  { id:'roster',         label:'ROSTER',           desc:'Instructor workload heat-map — spot over/under-loaded days' },
+  { id:'autoslotfinder', label:'AUTO SLOT FINDER', desc:'Auto-rank AP-127 SPs from the NGT site and propose the best slot for each — pick from FI × A/C options' },
+  { id:'calendar',       label:'CALENDAR',         desc:'Monthly overview — flight stats, FI/SP leave status, AP-127 highlights' },
+];
+
+// Sidebar — uses useApp() so must be rendered inside AppProvider
+function Sidebar({ view, setView, width, mobile=false, onClose }) {
+  const { tweaks, setTweak } = useApp();
+  const Chip = ({ on, onClick, children, color='var(--ink-2)', block=false }) => (
+    <button onClick={onClick} className="mono uc" style={{
+      padding:'4px 10px', fontSize:9, borderRadius:4, cursor:'pointer',
+      border:`1px solid ${on?color:'var(--line)'}`,
+      background:on?`color-mix(in oklch,${color} 14%,var(--surface))`:'transparent',
+      color:on?color:'var(--ink-3)', fontWeight:on?600:400, transition:'all .1s',
+      width:block?'100%':'auto', textAlign:block?'left':'center',
+    }}>{children}</button>
+  );
+  return (
+    <div style={{
+      width: mobile ? 256 : width,
+      flexShrink: 0,
+      background:'var(--bg-2)',
+      borderRight:'1px solid var(--line)',
+      display:'flex', flexDirection:'column',
+      height: mobile ? '100vh' : '100%',
+      position: mobile ? 'fixed' : 'relative',
+      top: mobile ? 0 : 'auto',
+      left: mobile ? 0 : 'auto',
+      zIndex: mobile ? 200 : 'auto',
+      overflow:'hidden',
+      boxShadow: mobile ? '6px 0 24px oklch(0 0 0 / 0.45)' : 'none',
+    }}>
+      {/* Wordmark */}
+      <div style={{ padding:'14px 16px', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+        <span style={{ width:8,height:8,borderRadius:999,background:'var(--col-done)',boxShadow:'0 0 6px var(--col-done)',animation:'pulse 2s ease-in-out infinite',flexShrink:0 }}/>
+        <span className="mono uc" style={{ fontSize:11,fontWeight:700,letterSpacing:'0.06em',flex:1 }}>AP127 COMMAND CENTER</span>
+        {mobile && <button onClick={onClose} style={{ background:'none',border:'none',color:'var(--ink-3)',cursor:'pointer',fontSize:18,padding:'2px 6px',lineHeight:1 }}>✕</button>}
+      </div>
+
+      {/* Navigation */}
+      <nav style={{ padding:'8px', display:'flex', flexDirection:'column', gap:2, flexShrink:0, borderBottom:'1px solid var(--line-soft)' }}>
+        {VIEWS.map((v,i) => {
+          const active = view===v.id;
+          return (
+            <button key={v.id} onClick={()=>{ setView(v.id); if(onClose) onClose(); }}
+              className="mono uc"
+              title={v.desc}
+              style={{
+                padding:'8px 12px', borderRadius:5, cursor:'pointer', textAlign:'left',
+                background:active?`color-mix(in oklch,var(--col-pending) 14%,var(--surface))`:'transparent',
+                border:`1px solid ${active?'var(--col-pending)':'transparent'}`,
+                color:active?'var(--col-pending)':'var(--ink-3)',
+                fontWeight:active?600:400, fontSize:10, transition:'all .1s',
+                display:'flex', flexDirection:'column', gap:active?3:0,
+              }}>
+              <span style={{ display:'flex', alignItems:'center', gap:9 }}>
+                <span style={{ opacity: active?1:0.55, flexShrink:0 }}>
+                  <ViewIcon id={v.id} size={13} color={active?'var(--col-pending)':'currentColor'}/>
+                </span>
+                {v.label}
+              </span>
+              {active && <span style={{ fontSize:8, fontWeight:400, color:'var(--ink-3)', textTransform:'none', letterSpacing:'0.01em', lineHeight:1.3, paddingLeft:22 }}>{v.desc}</span>}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Settings */}
+      <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--line-soft)', flexShrink:0, display:'flex', flexDirection:'column', gap:6 }}>
+        <div className="mono uc" style={{ fontSize:8,color:'var(--ink-3)',marginBottom:2 }}>THEME</div>
+        <div style={{ display:'flex',gap:4,flexWrap:'wrap' }}>
+          {['cockpit','light','warm'].map(th=>(
+            <Chip key={th} on={tweaks.theme===th} onClick={()=>setTweak('theme',th)}>{th}</Chip>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ flex:1, minHeight:0 }}/>
+    </div>
+  );
+}
+
+// Compact top bar shown on mobile in place of full sidebar
+function MobileTopBar({ view, onMenuOpen }) {
+  const LABELS = { daily:'DAY GLANCE', board:'BOARD', gantt:'GANTT', weekly:'WEEKLY', summary:'ANALYTICS', roster:'ROSTER', autoslotfinder:'AUTO SLOT FINDER', calendar:'CALENDAR' };
+  return (
+    <div style={{
+      height:46, padding:'0 14px', background:'var(--bg-2)',
+      borderBottom:'1px solid var(--line)', display:'flex',
+      alignItems:'center', gap:10, flexShrink:0,
+    }}>
+      <button onClick={onMenuOpen} style={{
+        background:'none', border:'none', color:'var(--ink)',
+        cursor:'pointer', fontSize:22, lineHeight:1, padding:'0 4px',
+      }}>☰</button>
+      <div style={{ display:'flex',alignItems:'center',gap:7 }}>
+        <span style={{ width:7,height:7,borderRadius:999,background:'var(--col-done)',boxShadow:'0 0 5px var(--col-done)' }}/>
+        <span className="mono uc" style={{ fontSize:11,fontWeight:700,letterSpacing:'0.06em' }}>AP127 COMMAND CENTER</span>
+      </div>
+      <div style={{ flex:1 }}/>
+      <LastUpdate showOnMobile/>
+      <div style={{ display:'flex',alignItems:'center',gap:6,color:'var(--col-pending)' }}>
+        <ViewIcon id={view} size={12} color="var(--col-pending)"/>
+        <span className="mono uc" style={{ fontSize:10,fontWeight:600,letterSpacing:'0.05em' }}>
+          {LABELS[view] || view.toUpperCase()}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [view, setView]         = React.useState(() => {
+    const saved = localStorage.getItem('ap127-view');
+    return VIEWS.some(v => v.id === saved) ? saved : 'daily';
+  });
+  const [tweaks, setTweakState] = React.useState(() => ({ theme: localStorage.getItem('ap127-theme') || 'cockpit', showSim:false, showStandby:true, groupBy:'instructor' }));
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [windowW, setWindowW]   = React.useState(window.innerWidth);
+  const [windowH, setWindowH]   = React.useState(window.innerHeight);
+  const [sidebarW, setSidebarW] = React.useState(220);
+  const sidebarDrag = React.useRef(null);
+
+  React.useEffect(() => {
+    const h = () => { setWindowW(window.innerWidth); setWindowH(window.innerHeight); };
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+
+  // Persist last-used theme and view across page reloads
+  React.useEffect(() => { localStorage.setItem('ap127-theme', tweaks.theme); }, [tweaks.theme]);
+  React.useEffect(() => { localStorage.setItem('ap127-view', view); }, [view]);
+
+  // Mobile if small portrait OR small landscape (phone rotated)
+  const isMobile = windowW < 768 || (windowW < 1100 && windowH < 560);
+
+  const setTweak = React.useCallback((k, v) => {
+    setTweakState(t => ({ ...t, [k]: typeof v === 'function' ? v(t[k]) : v }));
+  }, []);
+
+  // Sidebar width drag (desktop only)
+  const handleSidebarMouseDown = React.useCallback(e => {
+    sidebarDrag.current = { startX: e.clientX, startW: sidebarW };
+    e.preventDefault();
+  }, [sidebarW]);
+
+  React.useEffect(() => {
+    const onMove = e => {
+      if (!sidebarDrag.current) return;
+      const next = Math.max(180, Math.min(360, sidebarDrag.current.startW + (e.clientX - sidebarDrag.current.startX)));
+      setSidebarW(next);
+    };
+    const onUp = () => { sidebarDrag.current = null; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, []);
+
+  return (
+    <AppProvider tweaks={tweaks} setTweak={setTweak} isMobile={isMobile} setView={setView}>
+      <ThemeStyle/>
+      <div style={{ display:'flex', height:'100%', overflow:'hidden' }}>
+
+        {/* Desktop: persistent sidebar + horizontal resize handle */}
+        {!isMobile && (
+          <>
+            <Sidebar view={view} setView={setView} width={sidebarW}/>
+            <div
+              onMouseDown={handleSidebarMouseDown}
+              onMouseEnter={e => e.currentTarget.style.background='color-mix(in oklch,var(--col-pending) 40%,var(--line))'}
+              onMouseLeave={e => e.currentTarget.style.background='var(--line)'}
+              style={{ width:5, flexShrink:0, cursor:'ew-resize', background:'var(--line)', transition:'background .1s', userSelect:'none' }}
+            />
+          </>
+        )}
+
+        {/* Mobile: overlay sidebar + backdrop */}
+        {isMobile && sidebarOpen && (
+          <>
+            <div onClick={()=>setSidebarOpen(false)} style={{ position:'fixed',inset:0,background:'oklch(0 0 0 / 0.5)',zIndex:199 }}/>
+            <Sidebar view={view} setView={setView} mobile onClose={()=>setSidebarOpen(false)}/>
+          </>
+        )}
+
+        {/* Main content column */}
+        <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
+          {isMobile && <MobileTopBar view={view} onMenuOpen={()=>setSidebarOpen(s=>!s)}/>}
+          <div style={{ flex:1, minHeight:0, overflow:'hidden', position:'relative' }}>
+            {view==='daily'   && <DailyBoard/>}
+            {view==='board'   && <OpsBoard/>}
+            {view==='gantt'   && <GanttBoard/>}
+            {view==='weekly'  && <WeeklyBoard/>}
+            {view==='summary' && <SummaryBoard/>}
+            {view==='roster'         && <RosterBoard/>}
+            {view==='slotfinder'     && <SlotFinderBoard/>}
+            {view==='autoslotfinder' && <AutoSlotFinderBoard/>}
+            {view==='calendar'       && <CalendarBoard/>}
+          </div>
+        </div>
+      </div>
+    </AppProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+
+<style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}</style>
+</body>
+</html>
