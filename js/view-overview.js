@@ -8,7 +8,7 @@
 
   function OverviewView() {
     const d = window.useData();
-    const { FLIGHTS, students, curriculum, reconciliation, bkkToday, setStudentLens, setDate } = d;
+    const { FLIGHTS, students, curriculum, reconciliation, bkkToday, setStudentLens, setDate, isMobile } = d;
     const go = d.go || (() => {});
 
     const model = useMemo(() => {
@@ -51,7 +51,7 @@
         kpi('rev', 'Pace Spread', model.spread, `lessons · leader ${model.lead} · lagger ${model.lag}`, () => go('cohort')),
         kpi(t.conflict ? 'bad' : 'ok', 'Data Conflicts', t.conflict, `${t.review} to review · ${t.consistency}% match`, () => go('crosscheck')),
       ),
-      h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr)', gap: 14 } },
+      h('div', { style: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,2fr) minmax(0,1fr)', gap: 14 } },
         // On the line
         h('div', { className: 'panel' },
           h('div', { className: 'ph' }, h('span', { className: 'pt' }, 'On The Line'),
@@ -79,7 +79,7 @@
           })()),
         ),
       ),
-      h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 } },
+      h('div', { style: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 } },
         h('div', { className: 'panel' },
           h('div', { className: 'ph' }, h('span', { className: 'pt' }, 'Pace Leaders'), h('span', { className: 'ps link', onClick: () => go('cohort') }, 'cohort →')),
           h('div', { className: 'pb' }, leaders.map((s, i) => h('div', { key: i, onClick: () => lensTo(s), style: { display: 'flex', alignItems: 'center', gap: 9, padding: '7px 0', borderBottom: '1px solid var(--line-soft)', cursor: 'pointer' } },

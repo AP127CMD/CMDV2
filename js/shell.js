@@ -92,9 +92,9 @@
       h('div', { className: 'panel', style: { maxWidth: 640, margin: '40px auto' } },
         h('div', { className: 'ph' }, h('span', { className: 'pt' }, LABEL[view] || view), h('span', { className: 'ps' }, 'revamp in progress')),
         h('div', { className: 'pb' },
-          h('p', { style: { fontSize: 13, lineHeight: 1.6 } }, `The “${LABEL[view] || view}” view is being ported natively into the unified app. Until then, the full original is live in the `,
-            h('a', { className: 'link', href: '../index.html', target: '_top' }, 'v1 dashboard'), '.'),
-          h('p', { className: 'muted', style: { fontSize: 11, marginTop: 10 } }, 'Feature checklist for this view is tracked in REVAMP.md §3. Phase 2 = Operations, Phase 3 = Planning, Phase 4 = Progress.'))));
+          h('p', { style: { fontSize: 13, lineHeight: 1.6 } }, `No view is registered for “${view}”. Pick a destination from the sidebar, or open the `,
+            h('a', { className: 'link', href: 'legacy.html', target: '_top' }, 'v1 dashboard'), '.'),
+          h('p', { className: 'muted', style: { fontSize: 11, marginTop: 10 } }, 'If you reached this from a bookmark, the route may have been renamed in the unified app.'))));
   }
 
   // Student Lens — the unifying view: one student's Operations schedule linked to

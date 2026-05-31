@@ -50,16 +50,23 @@ For every AP127 student, each lesson is matched across both sources:
 ## Structure
 
 ```
-index.html              # shell: tab bar, iframes, unified status + conflict badge
+index.html              # THE unified single-page app (was app.html) — boots <App/> into #root
+app.html                # redirect → index.html (kept for old bookmarks)
+legacy.html             # the original v1 iframe shell (Home/Ops/Progress/Cross-Check)
 flight-data.js          # operations snapshot  (window.FLIGHT_DATA)
-progress-data.js        # progress snapshot     (window.PROGRESS_DATA) — fallback
-overview/index.html     # HOME — unified at-a-glance
-crosscheck/index.html   # CROSS-CHECK — reconciliation UI
-ops/                    # Command Center app (verbatim) + its js/ + flight-data.js
-progress/index.html     # DashboardR1 app (snapshot fallback + freshness wired in)
+progress-data.js        # progress snapshot     (window.PROGRESS_DATA) — live fetch w/ fallback
+css/
+  theme.css             # design tokens + 3 themes (cockpit / light / warm)
+  progress.css          # scoped dark palette for the ported Progress dashboard
+js/
+  shared.js             # unified context (AppProvider/useData), atoms, drawer
+  view-*.js             # one file per view (ops reused from CC; cohort from DashboardR1)
+  view-overview.js      # role-aware Overview (home)
+  view-crosscheck.js    # native Cross-Check over the shared reconciliation
+  shell.js              # sidebar + top bar + routing + Student Lens + boots AP127App
 assets/
   reconcile.js          # shared cross-check engine (pure, no DOM)
-  common.css            # styling for the new Home / Cross-Check pages
+legacy support: overview/ crosscheck/ ops/ progress/  # iframed only by legacy.html
 ```
 
 ## Refreshing the bundled snapshots

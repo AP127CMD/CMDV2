@@ -2,60 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
-<title>AP127 V2 — Unified</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="css/theme.css"/>
-<link rel="stylesheet" href="css/progress.css"/>
+<meta http-equiv="refresh" content="0; url=index.html"/>
+<link rel="canonical" href="index.html"/>
+<title>AP127 V2 — moved</title>
+<script>location.replace('index.html' + location.hash);</script>
 </head>
-<body data-theme="cockpit">
-<div id="root"></div>
-
-<!-- React + Babel (views use JSX) -->
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
-
-<!-- Chart.js (progress views) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-
-<!-- data: cross-check engine + bundled snapshots (progress also fetched live) -->
-<script src="assets/reconcile.js"></script>
-<script src="flight-data.js"></script>
-<script src="progress-data.js"></script>
-
-<!-- shared context + atoms (augmented Command Center app-shared) -->
-<script type="text/babel" src="js/shared.js"></script>
-
-<!-- Operations views (reused from Command Center) -->
-<script type="text/babel" src="js/view-daily.js"></script>
-<script type="text/babel" src="js/view-board.js"></script>
-<script type="text/babel" src="js/view-gantt.js"></script>
-<script type="text/babel" src="js/view-weekly.js"></script>
-<script type="text/babel" src="js/view-summary.js"></script>
-<script type="text/babel" src="js/view-roster.js"></script>
-<script type="text/babel" src="js/view-slotfinder.js"></script>
-<script type="text/babel" src="js/view-autoslotfinder.js"></script>
-<script type="text/babel" src="js/view-calendar.js"></script>
-
-<!-- Progress view (ported from DashboardR1 into React — full dashboard) -->
-<script type="text/babel" src="js/view-cohort.js"></script>
-
-<!-- Integrity + Home + Shell -->
-<script type="text/babel" src="js/view-crosscheck.js"></script>
-<script type="text/babel" src="js/view-overview.js"></script>
-<script type="text/babel" src="js/shell.js"></script>
-
-<!-- boot -->
-<script type="text/babel" data-presets="env,react">
-  const App = window.AP127App;
-  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-</script>
+<body>
+<p>The unified app now lives at <a href="index.html">index.html</a>. Redirecting…</p>
 </body>
 </html>

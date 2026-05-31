@@ -361,18 +361,22 @@ Use the `ap127v2` preview (port 7423) + screenshots/snapshots; check console for
 |------|-------|------|--------------|
 | 2026-05-31 | v1 | iframe shell (Home/Operations/Progress/Cross-Check), reconcile.js, snapshots, Pages live | Worked but not "one app". `index.html` = v1, still live. |
 | 2026-05-31 | 0 | Full audit of both apps; wrote this REVAMP.md spec | — |
-| 2026-05-31 | **1 ✅** | Foundation built & verified: `css/theme.css` (3 themes), `js/data.js` (DataProvider: both feeds live+fallback, reconciliation, freshness, global state, `go()` nav), `js/view-overview.js` (native role-aware Overview), `js/shell.js` (grouped sidebar, top bar w/ Student-Lens picker + PROG/OPS freshness + conflict badge + theme + sync, hash routing, mobile drawer, placeholder + StudentLens scaffold), `app.html` boot entry. Verified desktop+mobile, 3 themes, nav, no console errors. | **NEXT: Phase 2** — port Operations views. |
+| 2026-05-31 | **1 ✅** | Foundation built & verified: `css/theme.css` (3 themes), shared context, native role-aware Overview, shell (sidebar, top bar w/ Student-Lens picker + freshness + conflict badge + theme + sync, hash routing, mobile drawer), boot entry. | — |
+| 2026-05-31 | **2 ✅** | Operations parity: today/board/gantt/weekly/roster/calendar/analytics ported from Command Center into `js/view-*.js`, rewired to `window.useData()`, registered in shell registry. Babel Standalone added. | — |
+| 2026-05-31 | **3 ✅** | Planning parity: slot-finder + auto-slot-finder ported (NGT cache feed + snapshot confirmed). | — |
+| 2026-05-31 | **4 ✅** | Progress parity: DashboardR1 full dashboard ported VERBATIM into `js/view-cohort.js` (IIFE-scoped, mounted in React container, no iframe); `css/progress.css` scopes its dark palette. Nav consolidated (Progress = page + Analytics). Verified: 28-row ranking, 4 charts, KPIs. |
+| 2026-05-31 | **5 ✅** | Unifying value: native Cross-Check (`view-crosscheck.js`) over shared reconciliation w/ adjustable tol + sortable discrepancy/per-student tables; **Student Lens** (shell.js) links one student's Ops schedule ⇄ Progress lessons ⇄ upcoming plan. Overview alerts deep-link to Cross-Check. Verified all. |
+| 2026-05-31 | **6 ✅** | Polish & **SWAP**: verified all 12 routes render no-error, 3 themes, mobile responsive (fixed Overview grids to collapse via `isMobile`). Added `?v=` cache-busting to local includes. **`index.html` is now the unified app** (`app.html`→redirect; old v1 preserved as `legacy.html`). | Phase 7 (optional): GH Action to auto-refresh both snapshots. |
 
-**Boot model:** new app = **`app.html`** (loads `css/theme.css` + `js/*`). `index.html` stays the **v1 iframe app**
-so the live Pages site keeps working until the revamp reaches parity (then swap `app.html`→`index.html` in Phase 6).
-Phase 1 modules use `React.createElement` (no JSX) → no Babel needed yet; **add Babel Standalone to `app.html` in Phase 2**
-when porting the JSX-based Operations/Progress views (or convert them to `createElement`).
+**Boot model (current):** **`index.html` IS the unified app** — loads `css/theme.css?v=` + `css/progress.css?v=`,
+CDNs (React/Babel/Chart.js), data (`reconcile.js`, `flight-data.js`, `progress-data.js`), then `js/shared.js` →
+`js/view-*.js` → `js/shell.js`, and boots `window.AP127App` into `#root`. `app.html` is a redirect to `index.html`.
+`legacy.html` is the original v1 iframe shell (still functional via `overview/ ops/ progress/ crosscheck/`).
+Bump the `?v=` token on every deploy so GitHub Pages clients pick up new assets (Pages caches assets ~10 min).
 
-**Current next step:** Begin **Phase 2 (Operations parity)**. Port `view-today` (from CC `view-daily.js`),
-then board/gantt/weekly/roster/calendar/analytics. For each: lift the CC component, replace its `useApp()` with
-`window.useData()` (same field names — should be near drop-in), register it in `window.VIEWS_REGISTRY[id]`, add
-Babel to `app.html`, and tick its §3A checklist against the original side-by-side. The shell already routes any id
-present in `VIEWS_REGISTRY`; unregistered ids fall back to the Placeholder.
+**Current next step:** Parity is reached and the swap is live. Remaining = optional **Phase 7** (GitHub Action to
+auto-refresh `flight-data.js` + `progress-data.js` snapshots like Command Center does), plus any feature-checklist
+gaps in §3A/§3B found in real use. Verify on the live Pages URL after push.
 
 **Integration contract for ported views (IMPORTANT):**
 - A view file does: `(window.VIEWS_REGISTRY = window.VIEWS_REGISTRY || {})['board'] = OpsBoard;`
