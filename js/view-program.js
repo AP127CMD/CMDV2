@@ -438,14 +438,13 @@ function renderPerformance(){
     const sub2=document.getElementById("pf-best-wd-sub");if(sub2)sub2.textContent="-";
     const sub3=document.getElementById("pf-top-batch-sub");if(sub3)sub3.textContent="-";
     const recent=document.getElementById("pf-recent");if(recent)recent.innerHTML=`<div class="d127-ad">No historical data yet.</div>`;
-    if(CHARTS.perfDaily){CHARTS.perfDaily.destroy();CHARTS.perfDaily=null;}
-    if(CHARTS.perfMonthly){CHARTS.perfMonthly.destroy();CHARTS.perfMonthly=null;}
+    ["perfDailyF","perfDailyH","perfMonthly"].forEach(k=>{if(CHARTS[k]){CHARTS[k].destroy();CHARTS[k]=null;}});
     return;
   }
   const totalFlights=rec.length,totalHours=rec.reduce((a,r)=>a+r.mins,0)/60;
   const dm={};
-  allDates.forEach(d=>{dm[d]={n:0,h:0,b:{AP124:0,AP126:0,AP127:0,AP129:0}};});
-  rec.forEach(r=>{if(!dm[r.date])dm[r.date]={n:0,h:0,b:{AP124:0,AP126:0,AP127:0,AP129:0}};dm[r.date].n++;dm[r.date].h+=r.mins/60;dm[r.date].b[r.batch]=(dm[r.date].b[r.batch]||0)+(r.mins/60);});
+  allDates.forEach(d=>{dm[d]={n:0,h:0,b:{AP124:0,AP126:0,AP127:0,AP129:0},bn:{AP124:0,AP126:0,AP127:0,AP129:0}};});
+  rec.forEach(r=>{if(!dm[r.date])dm[r.date]={n:0,h:0,b:{AP124:0,AP126:0,AP127:0,AP129:0},bn:{AP124:0,AP126:0,AP127:0,AP129:0}};dm[r.date].n++;dm[r.date].h+=r.mins/60;dm[r.date].b[r.batch]=(dm[r.date].b[r.batch]||0)+(r.mins/60);dm[r.date].bn[r.batch]=(dm[r.date].bn[r.batch]||0)+1;});
   const dates=[...allDates];
   const days=dates.length,avg=totalFlights/days;
   const med=(()=>{const a=dates.map(d=>dm[d].n).sort((x,y)=>x-y);const m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2;})();
@@ -471,26 +470,17 @@ function renderPerformance(){
   document.getElementById("pf-top-batch").textContent=topBatch[0];
   document.getElementById("pf-top-batch-sub").textContent=`${topBatch[1].toFixed(1)}h`;
 
-  CHARTS.perfDaily=mkC("c-perf-daily",{
-    type:"bar",
-    data:{
-      labels:dates,
-      datasets:[
-        {label:"Flights",data:dates.map(d=>dm[d].n),backgroundColor:"rgba(245,158,11,.68)",yAxisID:"y"},
-        {label:"Hours",data:dates.map(d=>+dm[d].h.toFixed(2)),type:"line",borderColor:"#7acf7e",pointRadius:0,borderWidth:1.8,yAxisID:"y1"}
-      ]
-    },
-    options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      plugins:{legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}}},
-      scales:{
-        x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxTicksLimit:18},grid:{color:"#21262d"}},
-        y:{position:"left",ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},grid:{color:"#21262d"}},
-        y1:{position:"right",grid:{drawOnChartArea:false},ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"}}
-      }
-    }
-  });
+  // Batch palette (canonical, matches TODAY view).
+  const BPAL=[["AP124","rgba(75,163,247,.80)"],["AP126","rgba(122,207,126,.80)"],["AP127","rgba(232,138,255,.80)"],["AP129","rgba(233,189,99,.80)"]];
+  const dailyOpts=(unit)=>({responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}},
+      tooltip:{callbacks:{title:([c])=>ap127FmtDate(dates[c.dataIndex]),footer:(items)=>"Total: "+items.reduce((a,i)=>a+(i.raw||0),0).toFixed(unit==="h"?1:0)+" "+(unit==="h"?"hrs":"flights")}}},
+    scales:{x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxTicksLimit:18},grid:{color:"#21262d"}},
+      y:{stacked:true,beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},grid:{color:"#21262d"},title:{display:true,text:unit==="h"?"hours / day":"flights / day",color:"#8b949e",font:{size:9,family:"JetBrains Mono"}}}}});
+  // Daily FLIGHTS — stacked by batch.
+  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f"}))},options:dailyOpts("n")});
+  // Daily HOURS — stacked by batch.
+  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h"}))},options:dailyOpts("h")});
 
   const mm={};
   rec.forEach(r=>{const m=r.date.slice(0,7);if(!mm[m])mm[m]={AP124:0,AP126:0,AP127:0,AP129:0};mm[m][r.batch]+=r.mins/60;});
@@ -601,11 +591,12 @@ function resetPerformanceFilters(){
       grp.forEach((s, i) => rankMap.set(s.catc_id, ap127RankClass(i + 1, grp.length)));
     });
     document.getElementById("sg").innerHTML = arr.map(s => makeCard(s, rankMap.get(s.catc_id) || "")).join("");
-    document.getElementById("pc").textContent = arr.length + " students";
+    document.getElementById("pc").textContent = arr.length + " students" + (AB === "ALL" ? "" : " · " + AB);
   }
+  function setPlansBatch(b) { AB = b || "ALL"; renderPlans(); }
 
   // Expose inline-handler targets referenced by the embedded markup + generated rows.
-  Object.assign(window, { renderPerformance, resetPerformanceFilters, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans });
+  Object.assign(window, { renderPerformance, resetPerformanceFilters, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch });
 
   // ---- page markups (verbatim from NGT_001 index.html) ----
 const MK_OVERVIEW = `
@@ -634,6 +625,11 @@ const MK_PLANS = `
     <div class="pt">Progress Detail — per-student plan</div>
     <div class="fr">
       <input id="si" type="text" placeholder="Search name / callsign..." oninput="renderPlans()">
+      <select id="pl-batch" onchange="setPlansBatch(this.value)">
+        <option value="ALL">All batches</option>
+        <option value="AP124">AP124</option><option value="AP126">AP126</option>
+        <option value="AP127">AP127</option><option value="AP129">AP129</option>
+      </select>
       <select id="ss-sel" onchange="renderPlans()">
         <option value="batch">Batch order</option><option value="finish">Finish date</option>
         <option value="pct">Progress %</option><option value="name">Name A–Z</option>
@@ -684,11 +680,12 @@ const MK_PERF = `
     <div class="sc c129"><div class="sl">Top Batch Share</div><div class="sv" style="color:var(--c129)" id="pf-top-batch">-</div><div class="ss2" id="pf-top-batch-sub">-</div></div>
   </div>
   <div class="cr c2">
-    <div class="cb"><div class="ch">Daily Actual Flights & Hours</div><div class="cs">Bars = flights/day · line = hours/day</div><div style="position:relative;height:240px"><canvas id="c-perf-daily"></canvas></div></div>
-    <div class="cb"><div class="ch" id="pf-recent-title">Recent Operating Days</div><div class="cs">Quick intensity scan</div><div class="pr-list" id="pf-recent"></div></div>
+    <div class="cb"><div class="ch">Daily Flights by Batch</div><div class="cs">Stacked bars · flights/day, coloured by batch</div><div style="position:relative;height:250px"><canvas id="c-perf-daily-f"></canvas></div></div>
+    <div class="cb"><div class="ch">Daily Hours by Batch</div><div class="cs">Stacked bars · flight-hours/day, coloured by batch</div><div style="position:relative;height:250px"><canvas id="c-perf-daily-h"></canvas></div></div>
   </div>
-  <div class="cr c1">
-    <div class="cb"><div class="ch">Monthly Actual Hours by Batch</div><div class="cs">Historical stacked hours contribution</div><div style="position:relative;height:230px"><canvas id="c-perf-monthly"></canvas></div></div>
+  <div class="cr c2">
+    <div class="cb"><div class="ch">Monthly Actual Hours by Batch</div><div class="cs">Historical stacked hours contribution</div><div style="position:relative;height:250px"><canvas id="c-perf-monthly"></canvas></div></div>
+    <div class="cb"><div class="ch" id="pf-recent-title">Recent Operating Days</div><div class="cs">Quick intensity scan</div><div class="pr-list" id="pf-recent"></div></div>
   </div>
 </div>
 
@@ -853,5 +850,5 @@ const MK_SIM = `
     renderSimulation();
     if (SIM_G) { renderSimFinish(); buildSimCapacityChart(); }
   });
-  window.ProgressDetailView = makeView(MK_PLANS, () => { renderPlans(); });
+  window.ProgressDetailView = makeView(MK_PLANS, () => { AB = "ALL"; renderPlans(); });
 })();
