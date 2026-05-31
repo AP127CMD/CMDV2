@@ -1,1 +1,828 @@
-/* AP127 V2 — cohort view (stub, pending port). See REVAMP.md */
+/* ============================================================================
+ * AP127 V2 revamp — Progress view (Cohort, Charts, Timeline, Drawer).
+ * Reuses DashboardR1's proven logic VERBATIM, IIFE-scoped (so its const arrays
+ * don't collide with shared.js globals) and mounted natively into a React
+ * container instead of an iframe. Data comes from the unified context
+ * (useData().students / .curriculum). See REVAMP.md §3B / §4D.
+ * ==========================================================================*/
+(function () {
+  const MARKUP = `
+<div class="d127-wrap">
+  <div class="d127-wrap">
+    <div class="d127-kpis">
+      <div class="d127-kpi"><div class="d127-kl">Students</div><div class="d127-kv" id="d127-k-stu">-</div><div class="d127-ks">Person</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Curriculum</div><div class="d127-kv" id="d127-k-cur">-</div><div class="d127-ks">Lessons</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Progress</div><div class="d127-kv" id="d127-k-prg">-</div><div class="d127-ks">Done vs Total</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Total Hours</div><div class="d127-kv" id="d127-k-hrs">-</div><div class="d127-ks">Actual / Total</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Ahead / Behind</div><div class="d127-person" id="d127-k-ahead"><small>Ahead</small>-</div><div class="d127-person" id="d127-k-behind"><small>Behind</small>-</div></div>
+    </div>
+    <div class="d127-controls">
+      <input id="d127-q" placeholder="Search name..." oninput="renderAP127Detail()">
+      <select id="d127-sort" onchange="renderAP127Detail()">
+        <option value="behind">Sort: Most behind first</option>
+        <option value="ahead">Sort: Most ahead first</option>
+        <option value="hours">Sort: Most hours first</option>
+        <option value="name">Sort: Name A-Z</option>
+      </select>
+      <span class="d127-meta" id="d127-meta">-</span>
+    </div>
+    <div class="d127-grid">
+      <div class="d127-panel">
+        <div class="d127-h"><span class="d127-t">Progress Ranking</span><span style="display:flex;align-items:center;gap:8px"><button class="d127-reset" id="d127-reset" title="Reset sort to default" onclick="ap127ResetSort()">⟳ Reset</button><span class="d127-s" id="d127-asof">As of -</span></span></div>
+        <div class="d127-table-wrap">
+          <table class="d127-table">
+            <thead><tr>
+              <th>Rank</th>
+              <th data-key="name" title="Sort by name">Name</th>
+              <th data-key="nick" title="Sort by call sign">CALL<br>SIGN</th>
+              <th data-key="se" title="Sort by single-engine type">SE<br>TYPE</th>
+              <th data-key="fi" title="Sort by Flight Instructor">FI</th>
+              <th data-key="ahead" title="Sort by progress (most ahead first)">Progress</th>
+              <th data-key="hours" title="Sort by hours done (most first)">HRS<br>DONE</th>
+              <th data-key="ahead" title="Sort by lessons done (most first)">LESSON<br>DONE</th>
+              <th data-key="lastLesson" title="Sort by last lesson code">Last<br>Lesson</th>
+              <th data-key="lastFlt" title="Sort by last flight date (newest first)">Last FLT</th>
+              <th data-key="idle" title="Sort by idle days (most idle first)">IDLE<br>DAYS</th>
+              <th data-key="dayDelta" title="DAY Delta = today − planned date of last completed lesson. Positive = delay.">DAY<br>Delta</th>
+              <th data-key="hrsDelta" title="HRS Delta = actual hours flown − planned curriculum hours up to today.">HRS<br>Delta</th>
+            </tr></thead>
+            <tbody id="d127-rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="d127-side">
+        <div class="d127-panel"><div class="d127-h"><span class="d127-t">Pace Bands</span><span class="d127-s">leader → lagger spread</span></div><div class="d127-body" id="d127-bands"></div></div>
+        <div class="d127-panel"><div class="d127-h"><span class="d127-t">Recent Flight</span><span class="d127-s">Latest updates</span></div><div class="d127-body d127-act" id="d127-activity"></div></div>
+        <div class="d127-panel">
+          <div class="d127-h"><span class="d127-t">Lesson Codes</span><span class="d127-s">Quick legend</span></div>
+          <div class="d127-body d127-legend">
+            <div><div class="d127-code">GL</div><div class="d127-desc">General handling</div></div>
+            <div><div class="d127-code">IL / IF</div><div class="d127-desc">Instrument phases</div></div>
+            <div><div class="d127-code">XV / XI</div><div class="d127-desc">Cross-country</div></div>
+            <div><div class="d127-code">NL</div><div class="d127-desc">Night flights</div></div>
+            <div><div class="d127-code">SP / PIC</div><div class="d127-desc">Solo / SPIC</div></div>
+            <div><div class="d127-code">M</div><div class="d127-desc">Multi-engine</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="d127-panel">
+      <div class="d127-h" style="flex-wrap:wrap;gap:6px">
+        <span class="d127-t">Combined Progress vs Plan</span>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+          <button class="cpv-btn" data-f="today"   onclick="setCPVFilter('today')">To Today</button>
+          <button class="cpv-btn" data-f="plan"    onclick="setCPVFilter('plan')">To Plan End</button>
+          <button class="cpv-btn sel" data-f="proj" onclick="setCPVFilter('proj')">To Proj. End</button>
+          <span style="width:1px;height:14px;background:var(--bd);display:inline-block;margin:0 2px"></span>
+          <button class="cpv-btn cpv-mode sel" data-m="lessons" onclick="setCPVMode('lessons')">Lessons</button>
+          <button class="cpv-btn cpv-mode"     data-m="hours"   onclick="setCPVMode('hours')">Hours</button>
+          <span style="width:1px;height:14px;background:var(--bd);display:inline-block;margin:0 2px"></span>
+          <button class="cpv-btn" onclick="CHARTS.ap127combined?.resetZoom()" title="Reset zoom">⟳ Zoom</button>
+        </div>
+      </div>
+      <div class="d127-body">
+        <div class="cpv-kpis" id="cpv-kpis"></div>
+        <div style="position:relative;height:300px"><canvas id="d127-combined"></canvas></div>
+      </div>
+    </div>
+    <div class="d127-panel">
+      <div class="d127-h"><span class="d127-t">Flight Timeline vs Progress</span><span class="d127-s" id="d127-tl-meta">-</span></div>
+      <div class="d127-body">
+        <div class="d127-note">Rows are sorted leader to lagger. Dots mark dates each student actually flew, colored by lesson phase. Red segments mark gaps &gt; 7 days. Click any dot for details.</div>
+        <div class="d127-phase-legend" id="d127-phase-legend"></div>
+        <div id="d127-timeline-wrap" style="position:relative;height:330px;width:100%"><canvas id="d127-timeline"></canvas></div>
+      </div>
+    </div>
+    <div class="d127-panel">
+      <div class="d127-h"><span class="d127-t">Actual vs Planned</span><span class="d127-s" id="d127-race-meta">All 28 students with planned baseline</span></div>
+      <div class="d127-body">
+        <div class="d127-note">Solid lines are actual cumulative lessons to current date. Dashed line is planned target from curriculum dates.</div>
+        <div style="position:relative;height:330px"><canvas id="d127-race"></canvas></div>
+        <div id="d127-race-toggles" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding:8px;background:var(--s2);border-radius:4px;font-size:11px"></div>
+      </div>
+    </div>
+    <div class="d127-panel">
+      <div class="d127-h"><span class="d127-t">Overall Progress Bar View</span><span class="d127-s">Ahead at top, lag at bottom</span></div>
+      <div class="d127-body">
+        <div class="d127-note">X-axis = lesson number, Y-axis = all 28 students.</div>
+        <div style="position:relative;height:560px;width:100%"><canvas id="d127-overall"></canvas></div>
+      </div>
+    </div>
+  </div>
+<div class="toast" id="toast"></div>
+<div class="d127-draw-ov" id="d127-draw-ov" onclick="closeAP127Drawer()">
+  <div class="d127-draw" onclick="event.stopPropagation()">
+    <div class="d127-dh">
+      <div><div class="d127-dn" id="d127-d-name">-</div><div class="d127-dm" id="d127-d-meta">-</div></div>
+      <button class="d127-close" onclick="closeAP127Drawer()">Close</button>
+    </div>
+    <div class="d127-dg">
+      <div class="d127-list"><div class="d127-lh">Recent Completed Flights</div><div id="d127-d-flown"></div></div>
+      <div class="d127-list"><div class="d127-lh">Upcoming Planned Flights</div><div id="d127-d-plan"></div></div>
+    </div>
+  </div>
+</div>
+`;
+
+  // ---------- DashboardR1 logic (verbatim, lines 256–931 of its index.html) ----------
+const AP127_NICKS=["A-VIT","A-SORN","A-RUT","B-SET","J-YU","K-PONG","K-YA","K-KORN","K-SEE","KRIT","M-PHAN","N-PON","N-KALP","N-PHAT","P-THAN","P-KORN","P-KUL","P-DET","S-SIT","S-KORN","S-WITCH","S-WAN","T-KORN","T-WAJ","V-PHON","W-PHOL","W-POL","W-PONG"];
+const AP127_FI=["W-CHAI","P-YUTH","P-YA","S-TI","N-TORN","I-POL","SN-TI","S-TI","A-WAT","W-NU","K-POL","C-CHAI","P-YUTH","SN-TI","E-PHOB","K-POL","S-WAN","N-TORN","E-PHOB","I-POL","K-CHAI","K-CHAI","P-YA","S-WAN","C-CHAI","W-NU","W-CHAI","A-WAT"];
+const AP127_SE=["DA40-TDI","DA40-CS","DA40-CS","DA40-CS","DA40-TDI","DA40-TDI","DA40-CS","DA40-CS","DA40-TDI","DA40-TDI","DA40-CS","DA40-CS","DA40-CS","DA40-CS","DA40-TDI","DA40-CS","DA40-CS","DA40-TDI","DA40-TDI","DA40-TDI","DA40-CS","DA40-CS","DA40-CS","DA40-CS","DA40-CS","DA40-TDI","DA40-TDI","DA40-TDI"];
+const HOL=new Set(["2026-05-01","2026-05-04","2026-05-13","2026-06-01","2026-06-03","2026-07-28","2026-07-29","2026-07-30","2026-08-12","2026-10-13","2026-10-23","2026-12-07","2026-12-10","2026-12-31"]);
+const AP127_FI_FULL={"W-CHAI":"WUTTHICHAI L.","P-YUTH":"PHAHOLYUTH P.","P-YA":"PARINYA B.","S-TI":"SANTI SUK.","N-TORN":"NAPATTORN S.","I-POL":"ITTIPOL P.","SN-TI":"SANTI PO.","A-WAT":"THAWATANAN P.","W-NU":"WISANU T.","K-POL":"KOONPHOL U.","C-CHAI":"CHAROENCHAI U.","E-PHOB":"EKKAPHOP R.","S-WAN":"SOWAN C.","K-CHAI":"KITTICHAI C."};
+// ##AP127NICKS_END##
+
+// Worker URL is injected at deploy time via CF_WORKER_URL GitHub secret.
+// Format: https://your-worker.your-subdomain.workers.dev/ap127data
+const WORKER_URL='https://ap127-data-api.anusorn-tanmetha.workers.dev';
+
+let G=null;
+const CHARTS={};
+let AP127_VIEW_ROWS=[];
+let tmr=null;
+
+function escHtml(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function toast(msg,type="ok"){const el=document.getElementById("toast");el.textContent=msg;el.className="toast "+type+" show";clearTimeout(tmr);tmr=setTimeout(()=>el.classList.remove("show"),4000);}
+function setSS(state,txt){document.getElementById("sdot").className="sdot "+state;document.getElementById("stxt").textContent=txt;}
+function fd(ds){if(!ds||ds==="COMPLETE"||ds==="N/A")return ds;try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"2-digit"});}catch{return ds;}}
+function hm(m){if(!m)return"";return Math.floor(m/60)+"h"+(m%60?String(m%60).padStart(2,"0")+"m":"");}
+function mkC(id,cfg){const ctx=document.getElementById(id);if(!ctx)return null;const ex=Chart.getChart(ctx);if(ex)ex.destroy();return new Chart(ctx,cfg);}
+function copts(sx={},sy={},extra={}){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}},...(extra.p||{})},scales:{x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681"},...sx},y:{ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},...sy}}};}
+
+// ##AP127JS_START##
+// ── AP127 DETAIL ──
+function ap127TodayBKK(){const now=new Date();const bkk=new Date(now.getTime()+(now.getTimezoneOffset()+420)*60000);return bkk.toISOString().slice(0,10);}
+const AP127_PHASE_DEFS=[
+  {k:"CDGL",label:"CDGL",test:/^CDGL/i,c:"#fb923c"},
+  {k:"GL",  label:"GL",  test:/^GL/i,  c:"#4ade80"},
+  {k:"IF",  label:"IF/IL",test:/^(IF|IL)/i,c:"#38bdf8"},
+  {k:"XV",  label:"XV/XI",test:/^(XV|XI)/i,c:"#a78bfa"},
+  {k:"NL",  label:"NL",  test:/^NL/i,  c:"#818cf8"},
+  {k:"SP",  label:"SP/PIC",test:/^(SP|PIC)/i,c:"#f59e0b"},
+  {k:"M",   label:"M",   test:/^M/i,   c:"#f472b6"},
+];
+const AP127_PHASE_OTHER={k:"OTH",label:"Other",c:"#6b7280"};
+function ap127LessonPhase(code){if(!code)return AP127_PHASE_OTHER;const c=String(code).trim();for(const d of AP127_PHASE_DEFS){if(d.test.test(c))return d;}return AP127_PHASE_OTHER;}
+function ap127IdleLineColor(d){if(d<=2)return"#e6edf3";if(d<=5)return"#fbbf24";return"#ff6b6b";}
+function ap127RelDays(asOf,date){const d=ap127DateDiff(asOf,date);return d===null?"":d<=0?"today":d===1?"1d":`${d}d`;}
+function ap127ShortName(n){const p=n.trim().split(/\s+/);return p.length<2?n:p[0]+" "+p[p.length-1][0]+".";}
+function ap127FmtDate(ds){if(!ds)return"-";try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}catch{return ds;}}
+function ap127ShortDate(ds){if(!ds)return"-";try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}catch{return ds;}}
+function ap127FlightMins(f){return f.actual_mins||f.mins||0;}
+function ap127Hours(s){const cur=G?.cur127||[];const lessonsMap={};cur.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});return ((s.flown||[]).reduce((a,f)=>a+(lessonsMap[f.lesson]||ap127FlightMins(f)),0))/60;}
+function ap127CurriculumHours(){return ((G?.cur127||[]).reduce((a,c)=>a+(c.planned_mins||c.mins||0),0))/60;}
+function ap127PlannedHoursAsOf(today){return ((G?.cur127||[]).filter(c=>c.planned_date&&c.planned_date<=today).reduce((a,c)=>a+(c.planned_mins||0),0))/60;}
+function ap127FmtNum(n,d=1){return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});}
+function ap127LastFlightDate(s){return (s.flown||[]).map(f=>f.date).filter(Boolean).sort().at(-1)||"";}
+function ap127IdleDays(s,asOf){const last=ap127LastFlightDate(s);return last&&asOf?Math.max(0,ap127DateDiff(asOf,last)||0):9999;}
+function ap127DateDiff(a,b){if(!a||!b)return null;const ad=new Date(a+"T00:00:00"),bd=new Date(b+"T00:00:00");if(Number.isNaN(ad)||Number.isNaN(bd))return null;return Math.round((ad-bd)/86400000);}
+function ap127PlanDeltaDays(s,planMap){
+  const deltas=[];
+  (s.flown||[]).forEach(f=>{const pd=planMap[f.lesson];const dd=ap127DateDiff(f.date,pd);if(dd!==null)deltas.push(dd);});
+  if(!deltas.length)return null;
+  return deltas.reduce((a,v)=>a+v,0)/deltas.length;
+}
+function ap127DayDelta(s,planMap,today){const last=(s.flown||[]).at(-1);if(!last)return null;const planDate=planMap[last.lesson];if(!planDate)return null;const delta=ap127DateDiff(today,planDate);return delta;}
+function ap127PaceSort(arr,asOf){return [...arr].sort((a,b)=>(b.done||0)-(a.done||0)||ap127IdleDays(a,asOf)-ap127IdleDays(b,asOf));}
+function ap127BehindSort(arr,asOf){return [...arr].sort((a,b)=>(a.done||0)-(b.done||0)||ap127IdleDays(b,asOf)-ap127IdleDays(a,asOf));}
+function ap127SortRows(arr,asOf="",planMap={},today=""){
+  const mode=document.getElementById("d127-sort")?.value||"behind";
+  const cmpStr=(a,b)=>(a||"").toString().localeCompare((b||"").toString());
+  if(mode==="ahead")return ap127PaceSort(arr,asOf);
+  if(mode==="hours")return [...arr].sort((a,b)=>ap127Hours(b)-ap127Hours(a)||(b.done||0)-(a.done||0));
+  if(mode==="name")return [...arr].sort((a,b)=>a.name.localeCompare(b.name));
+  if(mode==="nick")return [...arr].sort((a,b)=>cmpStr(a.nick,b.nick));
+  if(mode==="se")return [...arr].sort((a,b)=>cmpStr(a.se,b.se)||(b.done||0)-(a.done||0));
+  if(mode==="fi")return [...arr].sort((a,b)=>cmpStr(a.fi,b.fi)||(b.done||0)-(a.done||0));
+  if(mode==="lastLesson")return [...arr].sort((a,b)=>cmpStr((a.flown||[]).at(-1)?.lesson||a.next_lesson,(b.flown||[]).at(-1)?.lesson||b.next_lesson));
+  if(mode==="lastFlt")return [...arr].sort((a,b)=>(ap127LastFlightDate(b)||"").localeCompare(ap127LastFlightDate(a)||""));
+  if(mode==="idle")return [...arr].sort((a,b)=>ap127IdleDays(b,asOf)-ap127IdleDays(a,asOf));
+  if(mode==="dayDelta"){const f=s=>{const v=ap127DayDelta(s,planMap,today);return v===null?-Infinity:v;};return [...arr].sort((a,b)=>f(b)-f(a));}
+  if(mode==="hrsDelta"){const ph=ap127PlannedHoursAsOf(today);const f=s=>ap127Hours(s)-ph;return [...arr].sort((a,b)=>f(a)-f(b));}
+  return ap127BehindSort(arr,asOf);
+}
+function ap127ResetSort(){
+  const sel=document.getElementById("d127-sort");
+  if(sel){[...sel.querySelectorAll("option[data-dyn='1']")].forEach(o=>o.remove());sel.value="behind";}
+  const q=document.getElementById("d127-q");if(q)q.value="";
+  renderAP127Detail();
+}
+function ap127HeaderClick(key){
+  const sel=document.getElementById("d127-sort");
+  if(!sel||!key)return;
+  if(![...sel.options].some(o=>o.value===key)){const o=document.createElement("option");o.value=key;o.textContent="Sort: "+key;o.dataset.dyn="1";sel.appendChild(o);}
+  sel.value=key;
+  renderAP127Detail();
+}
+function ap127RankClass(rank,total){if(rank<=3)return"bad";if(rank<=Math.ceil(total*.4))return"mid";return"ok";}
+function renderAP127Detail(){
+  if(!G||!G.ap127)return;
+  const all=[...(G.ap127||[])];
+  const total=all.length;
+  const curriculum=all[0]?.total||0;
+  const doneAll=all.reduce((a,s)=>a+(s.done||0),0);
+  const hrsAll=all.reduce((a,s)=>a+ap127Hours(s),0);
+  const totalHours=ap127CurriculumHours()*total;
+  const avgDone=total?doneAll/total:0;
+  const maxDate=all.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"";
+  const sortedLead=ap127PaceSort(all,maxDate);
+  const sortedLag=ap127BehindSort(all,maxDate);
+  const aheadNames=sortedLead.slice(0,3).map(s=>ap127ShortName(s.name)).join(", ");
+  const lagNames=sortedLag.slice(0,3).map(s=>ap127ShortName(s.name)).join(", ");
+  const prg=(total&&curriculum)?(doneAll/(total*curriculum)*100):0;
+  const planMap={};(G.cur127||[]).forEach(c=>{if(c.lesson&&c.planned_date)planMap[c.lesson]=c.planned_date;});
+  document.getElementById("d127-k-stu").textContent=total||"-";
+  document.getElementById("d127-k-cur").textContent=curriculum||"-";
+  document.getElementById("d127-k-prg").textContent=prg.toFixed(1)+"%";
+  document.getElementById("d127-k-hrs").textContent=totalHours?`${ap127FmtNum(hrsAll)} / ${ap127FmtNum(totalHours,0)}`:ap127FmtNum(hrsAll);
+  document.getElementById("d127-k-ahead").innerHTML=`<small>Ahead</small>${aheadNames||"-"}`;
+  document.getElementById("d127-k-behind").innerHTML=`<small>Behind</small>${lagNames||"-"}`;
+  document.getElementById("d127-meta").textContent=`${doneAll} lessons done · Avg ${avgDone.toFixed(1)}`;
+
+  const today=ap127TodayBKK();
+  const q=(document.getElementById("d127-q")?.value||"").toLowerCase().trim();
+  let rows=ap127SortRows(all,maxDate,planMap,today);
+  if(q)rows=rows.filter(s=>s.name.toLowerCase().includes(q)||(s.nick||"").toLowerCase().includes(q)||(s.fi||"").toLowerCase().includes(q));
+  AP127_VIEW_ROWS=rows;
+  const updTxt=G._updated?new Date(G._updated).toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+  document.getElementById("d127-asof").textContent=`Updated ${updTxt}`;
+
+  const paced=ap127PaceSort(all,maxDate);
+  const leaderDone=paced[0]?.done||0,lagDone=paced.at(-1)?.done||0;
+  const spread=Math.max(leaderDone-lagDone,1),step=Math.max(Math.ceil(spread/3),1);
+  const aheadLo=leaderDone-step+1,midLo=leaderDone-step*2+1;
+  const getBandColor=(done)=>{if(done>=aheadLo)return"#7be9b8";if(done>=midLo)return"#ffd67a";return"#ffa0a0";};
+  const tbody=document.getElementById("d127-rows");
+  const plannedHrsToday=ap127PlannedHoursAsOf(today);
+  tbody.innerHTML=rows.map((s,idx)=>{
+    const rank=idx+1,pct=curriculum?((s.done||0)/curriculum*100):0;
+    const hrs=ap127Hours(s);
+    const hrsDelta=hrs-plannedHrsToday;
+    const hrsDeltaTxt=(hrsDelta>=0?"+":"")+hrsDelta.toFixed(1)+"h";
+    const hrsDeltaColor=hrsDelta>=0?"#51cf66":"#ff6b6b";
+    const idle=ap127IdleDays(s,maxDate);
+    const idleTxt=idle===9999?"-":idle.toString();
+    let idleStyle="";
+    if(idle!==9999){if(idle<=2)idleStyle="color:var(--tx)";else if(idle<=5)idleStyle="color:#fbbf24";else if(idle<=10)idleStyle="color:#ff6b6b";else idleStyle="color:#ff6b6b;background:rgba(255,255,255,0.85);border-radius:3px;padding:1px 5px;font-weight:700";}
+    const dayDelta=ap127DayDelta(s,planMap,today);
+    const dayDeltaTxt=dayDelta===null?"-":(dayDelta>=0?`+${dayDelta}d`:`${dayDelta}d`);
+    const dayDeltaColor=dayDelta===null?"":dayDelta>0?"#ff6b6b":"#51cf66";
+    const rankColor=getBandColor(s.done||0);
+    const last=(s.flown||[]).at(-1)||{};
+    const flewToday=last.date===today;
+    const rel=last.date?ap127RelDays(today,last.date):"";
+    return `<tr onclick="openAP127Drawer(${idx})"><td><span class="d127-rank" style="background:${rankColor};color:#000">${rank}</span>${flewToday?'<span class="d127-today-dot" title="Flew today"></span>':""}</td><td><div class="d127-name">${ap127ShortName(s.name)}</div></td><td class="d127-mono" style="font-weight:700;color:var(--c127)">${s.nick||"-"}</td><td class="d127-mono" style="color:${s.se==="DA40-TDI"?"#fb923c":"#38bdf8"};font-weight:600">${s.se||"-"}</td><td class="d127-mono">${AP127_FI_FULL[s.fi]||s.fi||"-"}</td><td style="padding:0 4px"><span class="d127-pbg"><span class="d127-pf" style="width:${pct.toFixed(1)}%"></span></span><span class="d127-mono" style="font-size:9px">${pct.toFixed(0)}%</span></td><td class="d127-mono">${hrs.toFixed(1)}</td><td class="d127-mono">${s.done||0}</td><td class="d127-mono">${last.lesson||s.next_lesson||"-"}</td><td class="d127-mono">${ap127ShortDate(last.date)}${rel?`<span class="d127-rel">(${rel})</span>`:""}</td><td class="d127-mono" style="${idleStyle}">${idleTxt}</td><td class="d127-mono" style="color:${dayDeltaColor}">${dayDeltaTxt}</td><td class="d127-mono" style="color:${hrsDeltaColor}">${hrsDeltaTxt}</td></tr>`;
+  }).join("");
+  const curSort=document.getElementById("d127-sort")?.value||"behind";
+  document.querySelectorAll(".d127-table th[data-key]").forEach(th=>{
+    th.onclick=()=>ap127HeaderClick(th.getAttribute("data-key"));
+    const existing=th.querySelector(".d127-sarr");if(existing)existing.remove();
+    if(th.getAttribute("data-key")===curSort){const s=document.createElement("span");s.className="d127-sarr";s.textContent="▼";th.appendChild(s);}
+  });
+  const bandDefs=[
+    {label:"AHEAD", lo:aheadLo,   hi:leaderDone, c:"#7be9b8"},
+    {label:"MID",   lo:midLo,     hi:aheadLo-1,  c:"#ffd67a"},
+    {label:"BEHIND",lo:lagDone,   hi:midLo-1,    c:"#ffa0a0"},
+  ];
+  bandDefs.forEach(b=>{b.students=paced.filter(s=>(s.done||0)>=b.lo&&(s.done||0)<=b.hi);});
+  const maxN=Math.max(...bandDefs.map(b=>b.students.length),1);
+  document.getElementById("d127-bands").innerHTML=bandDefs.map(b=>{
+    const rangeStr=b.lo>=b.hi?`${b.lo}`:`${b.lo}–${b.hi}`;
+    const names=b.students.map(s=>`<span style="font-family:'JetBrains Mono',monospace;font-size:8px;padding:1px 5px;border-radius:2px;background:${b.c}22;color:${b.c}">${ap127ShortName(s.name)}</span>`).join("");
+    return `<div style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><div style="width:74px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.5px;color:${b.c}">${b.label}<br><span style="color:var(--tx3);font-size:8px">${rangeStr}</span></div><div style="flex:1;height:16px;background:var(--s3);border-radius:99px;overflow:hidden"><div style="height:100%;width:${(b.students.length/maxN*100)}%;background:${b.c};display:flex;align-items:center;padding-left:7px;font-family:'JetBrains Mono',monospace;font-size:9px;color:#000">${b.students.length}</div></div></div><div style="display:flex;flex-wrap:wrap;gap:3px;padding-left:81px">${names||"—"}</div></div>`;
+  }).join("");
+
+  const recent=[...all].map(s=>({s,last:(s.flown||[]).at(-1)||{}})).filter(x=>x.last.date).sort((a,b)=>(b.last.date||"").localeCompare(a.last.date||"")||(b.s.done||0)-(a.s.done||0)).slice(0,8);
+  document.getElementById("d127-activity").innerHTML=recent.map(x=>`<div class="d127-ai"><div class="d127-an">${ap127ShortName(x.s.name)} · ${x.last.lesson||"-"}</div><div class="d127-ad">${ap127FmtDate(x.last.date)} · ${ap127Hours(x.s).toFixed(2)} hrs · ${x.s.done||0}/${curriculum}</div></div>`).join("")||`<div class="d127-ad">No activity yet.</div>`;
+  buildAP127CombinedChart();
+  buildAP127Timeline(all,curriculum,maxDate);
+  buildAP127RaceChart(all,curriculum,maxDate);
+  buildAP127OverallChart(all,curriculum,maxDate);
+}
+function openAP127Drawer(idx){
+  const s=AP127_VIEW_ROWS[idx];if(!s)return;
+  const total=s.total||0,done=s.done||0;
+  document.getElementById("d127-d-name").textContent=s.name;
+  document.getElementById("d127-d-meta").textContent=`${s.catc_id||"-"} · ${done}/${total} lessons · ${ap127Hours(s).toFixed(2)} hrs`;
+  const flown=(s.flown||[]).slice(-14).reverse();
+  document.getElementById("d127-d-flown").innerHTML=flown.length?flown.map(f=>`<div class="d127-li"><div class="d127-ldt">${ap127FmtDate(f.date)}</div><div class="d127-ll">${f.lesson||"-"}</div><div class="d127-ld">${hm(ap127FlightMins(f))}</div></div>`).join(""):`<div class="d127-ad">No completed flights.</div>`;
+  const plan=(s.planned||[]).slice(0,14);
+  document.getElementById("d127-d-plan").innerHTML=plan.length?plan.map(p=>`<div class="d127-li"><div class="d127-ldt">${ap127FmtDate(p.date)}</div><div class="d127-ll">${p.lesson||"-"}</div><div class="d127-ld">${hm(p.mins||p.planned_mins||0)}</div></div>`).join(""):`<div class="d127-ad">No planned flights.</div>`;
+  document.getElementById("d127-draw-ov").classList.add("show");
+}
+function closeAP127Drawer(){document.getElementById("d127-draw-ov").classList.remove("show");}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeAP127Drawer();});
+
+function buildAP127Timeline(all,curriculum,maxDate){
+  const sorted=ap127PaceSort(all,maxDate);
+  const wrap=document.getElementById("d127-timeline-wrap");
+  if(wrap)wrap.style.height=Math.max(420,sorted.length*22)+"px";
+  const today=ap127TodayBKK();
+  const DAY=86400000;
+  const toDayNum=ds=>{const d=new Date(ds+"T12:00:00Z");return Math.floor(d.getTime()/DAY);};
+  const allDates=[];
+  sorted.forEach(s=>(s.flown||[]).forEach(f=>{if(f.date)allDates.push(f.date);}));
+  if(!allDates.length)allDates.push(today);
+  const minDay=Math.min(...allDates.map(toDayNum));
+  const todayDay=toDayNum(today);
+  const maxDay=Math.max(todayDay,...allDates.map(toDayNum));
+  const span=Math.max(maxDay-minDay,1);
+  const rightPad=Math.max(6,Math.ceil(span*0.08));
+  const xMin=minDay-1,xMax=maxDay+rightPad;
+  const countX=maxDay+1;
+  const legend=document.getElementById("d127-phase-legend");
+  if(legend){
+    const items=[...AP127_PHASE_DEFS,AP127_PHASE_OTHER].map(d=>`<span class="d127-pc"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("");
+    legend.innerHTML=items+`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#fca5a5;border-radius:2px;width:14px;height:3px"></span>gap &gt; 7 days</span><span class="d127-pc"><span class="d127-pdot" style="background:#e6edf3;border-radius:2px;width:14px;height:3px"></span>idle 1-2d</span><span class="d127-pc"><span class="d127-pdot" style="background:#fbbf24;border-radius:2px;width:14px;height:3px"></span>idle 3-5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#ff6b6b;border-radius:2px;width:14px;height:3px"></span>idle &gt;5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#f59e0b;width:2px;height:10px;border-radius:0"></span>today</span>`;
+  }
+  const phaseColor=code=>ap127LessonPhase(code).c;
+  const datasets=[];
+  sorted.forEach((s,idx)=>{
+    const flights=(s.flown||[]).filter(f=>f.date).sort((a,b)=>a.date.localeCompare(b.date));
+    const pts=flights.map(f=>({x:toDayNum(f.date),y:idx+1,date:f.date,lesson:f.lesson||"-",mins:ap127FlightMins(f),sIdx:idx,studentName:s.name}));
+    const colors=flights.map(f=>phaseColor(f.lesson));
+    datasets.push({
+      label:ap127ShortName(s.name),
+      data:pts,
+      showLine:true,
+      borderColor:"rgba(180,180,180,0.35)",
+      borderWidth:0.8,
+      pointRadius:3.2,
+      pointHoverRadius:5,
+      pointHitRadius:8,
+      pointBackgroundColor:colors,
+      pointBorderWidth:0,
+      tension:0,
+      segment:{
+        borderColor:ctx=>{
+          const a=ctx.p0?.raw,b=ctx.p1?.raw;
+          if(!a||!b)return "rgba(180,180,180,0.35)";
+          return (b.x-a.x)>7?"#fca5a5":"rgba(180,180,180,0.35)";
+        },
+        borderWidth:ctx=>{
+          const a=ctx.p0?.raw,b=ctx.p1?.raw;
+          if(!a||!b)return 0.8;
+          return (b.x-a.x)>7?1.4:0.8;
+        }
+      }
+    });
+    if(flights.length){
+      const lastFlightDay=pts[pts.length-1].x;
+      const idleDays=todayDay-lastFlightDay;
+      if(idleDays>0){
+        const idleColor=ap127IdleLineColor(idleDays);
+        datasets.push({
+          label:"__idle_"+idx,
+          data:[{x:lastFlightDay,y:idx+1},{x:todayDay,y:idx+1}],
+          showLine:true,
+          borderColor:idleColor,
+          borderWidth:idleDays>10?2:1.4,
+          borderDash:[3,3],
+          pointRadius:0,
+          pointHoverRadius:0,
+          pointHitRadius:0,
+          _isIdle:true,
+          _idleDays:idleDays,
+          _idleColor:idleColor
+        });
+      }
+      datasets.push({
+        label:"__count_"+idx,
+        data:[{x:countX,y:idx+1,_count:flights.length}],
+        showLine:false,
+        pointRadius:0,
+        pointHoverRadius:0,
+        pointHitRadius:0,
+        _isCount:true,
+        _countText:`· ${flights.length} flt`
+      });
+    }
+  });
+  datasets.push({
+    label:"__today",
+    data:[{x:todayDay,y:0.5},{x:todayDay,y:sorted.length+0.5}],
+    showLine:true,
+    borderColor:"#f59e0b",
+    borderWidth:1.4,
+    borderDash:[5,4],
+    pointRadius:0,
+    pointHoverRadius:0,
+    pointHitRadius:0,
+    _isToday:true
+  });
+  const countPlugin={
+    id:"d127CountLabels",
+    afterDatasetsDraw(chart){
+      const{ctx}=chart;
+      ctx.save();ctx.font="9px JetBrains Mono, monospace";ctx.fillStyle="#8b949e";ctx.textAlign="left";ctx.textBaseline="middle";
+      chart.data.datasets.forEach((ds,di)=>{
+        if(!ds._isCount)return;
+        const meta=chart.getDatasetMeta(di);if(meta.hidden)return;
+        const pt=meta.data[0];if(!pt)return;
+        ctx.fillText(ds._countText,pt.x+4,pt.y);
+      });
+      ctx.restore();
+    }
+  };
+  const gapPlugin={
+    id:"d127GapLabels",
+    afterDatasetsDraw(chart){
+      const{ctx}=chart;
+      ctx.save();ctx.font="700 8.5px JetBrains Mono, monospace";ctx.textAlign="center";ctx.textBaseline="middle";
+      chart.data.datasets.forEach((ds,di)=>{
+        if(ds._isToday||ds._isCount||ds._isIdle)return;
+        const meta=chart.getDatasetMeta(di);if(meta.hidden)return;
+        const pts=meta.data||[];
+        for(let i=1;i<pts.length;i++){
+          const a=ds.data[i-1],b=ds.data[i];
+          if(!a||!b)continue;
+          const gap=b.x-a.x;
+          if(gap<=7)continue;
+          const px=(pts[i-1].x+pts[i].x)/2;
+          const py=pts[i].y-7;
+          const txt=`${gap}d`;
+          const w=ctx.measureText(txt).width+4;
+          ctx.fillStyle="rgba(13,17,23,0.85)";ctx.fillRect(px-w/2,py-5,w,10);
+          ctx.fillStyle="#fca5a5";ctx.fillText(txt,px,py);
+        }
+      });
+      ctx.restore();
+    }
+  };
+  const idlePlugin={
+    id:"d127IdleLabels",
+    afterDatasetsDraw(chart){
+      const{ctx}=chart;
+      ctx.save();ctx.font="700 8.5px JetBrains Mono, monospace";ctx.textAlign="center";ctx.textBaseline="middle";
+      chart.data.datasets.forEach((ds,di)=>{
+        if(!ds._isIdle)return;
+        const meta=chart.getDatasetMeta(di);if(meta.hidden)return;
+        const pts=meta.data||[];if(pts.length<2)return;
+        const px=(pts[0].x+pts[1].x)/2;
+        const py=pts[1].y-7;
+        const txt=`${ds._idleDays}d`;
+        const w=ctx.measureText(txt).width+4;
+        ctx.fillStyle="rgba(13,17,23,0.85)";ctx.fillRect(px-w/2,py-5,w,10);
+        ctx.fillStyle=ds._idleColor;ctx.fillText(txt,px,py);
+      });
+      ctx.restore();
+    }
+  };
+  const labelPlugin={
+    id:"d127RowLabels",
+    afterDatasetsDraw(chart){
+      const{ctx,scales:{y}}=chart;
+      if(!y||sorted.length<2)return;
+      const cell=Math.abs(y.getPixelForValue(2)-y.getPixelForValue(1));
+      ctx.save();ctx.font="7px JetBrains Mono, monospace";ctx.fillStyle="#8b949e";ctx.textAlign="right";ctx.textBaseline="middle";
+      for(let i=0;i<sorted.length;i++){
+        const py=y.getPixelForValue(i+1)+cell/2;
+        ctx.fillText(`${i+1}. ${ap127ShortName(sorted[i].name)}`,y.left+y.width-6,py);
+      }
+      ctx.restore();
+    }
+  };
+  CHARTS.ap127timeline=mkC("d127-timeline",{
+    type:"line",
+    data:{datasets},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      parsing:false,
+      onClick:(evt,els,chart)=>{
+        if(!els||!els.length)return;
+        const el=els[0];const ds=chart.data.datasets[el.datasetIndex];if(!ds||ds._isToday||ds._isCount||ds._isIdle)return;
+        const raw=ds.data[el.index];if(!raw||raw.sIdx==null)return;
+        const student=sorted[raw.sIdx];if(!student)return;
+        const viewIdx=AP127_VIEW_ROWS.findIndex(s=>s.catc_id===student.catc_id);
+        if(viewIdx>=0)openAP127Drawer(viewIdx);
+      },
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          filter:(item)=>{const ds=item.chart.data.datasets[item.datasetIndex];return !ds._isToday&&!ds._isCount&&!ds._isIdle;},
+          callbacks:{
+            title:(ctx)=>{const r=ctx[0]?.raw;return r?ap127FmtDate(r.date):"";},
+            label:(ctx)=>{const r=ctx.raw;if(!r)return"";return `${ap127ShortName(r.studentName||ctx.dataset.label)} · ${r.lesson} · ${hm(r.mins||0)}`;}
+          }
+        }
+      },
+      scales:{
+        x:{
+          type:"linear",
+          min:xMin,
+          max:xMax,
+          ticks:{
+            font:{family:"JetBrains Mono",size:8},
+            color:"#6e7681",
+            maxRotation:0,
+            autoSkip:true,
+            maxTicksLimit:14,
+            callback:v=>{const d=new Date(Math.round(v)*DAY);return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}
+          },
+          grid:{color:"#21262d"}
+        },
+        y:{
+          reverse:true,
+          min:.5,
+          max:sorted.length+.5,
+          afterFit:scale=>{scale.width=100;},
+          ticks:{
+            stepSize:1,
+            autoSkip:false,
+            font:{family:"JetBrains Mono",size:7},
+            color:"#8b949e",
+            callback:()=>""
+          },
+          grid:{color:"#21262d",offset:false}
+        }
+      }
+    },
+    plugins:[countPlugin,gapPlugin,idlePlugin,labelPlugin]
+  });
+  const lead=sorted[0],lag=sorted.at(-1);
+  document.getElementById("d127-tl-meta").textContent=lead&&lag?`Leader ${ap127ShortName(lead.name)} (${lead.done||0}/${curriculum}) · Lag ${ap127ShortName(lag.name)} (${lag.done||0}/${curriculum})`:"-";
+}
+
+let AP127_RACE_SOLO=null;
+function buildAP127RaceChart(all,curriculum,maxDate){
+  const racers=ap127PaceSort(all,maxDate);
+  const today=ap127TodayBKK();
+  const plannedDates=(G.cur127||[]).map(c=>c.planned_date).filter(d=>d&&d<=today).sort();
+  const dateSet=new Set(plannedDates);
+  dateSet.add(today);
+  racers.forEach(s=>(s.flown||[]).forEach(f=>{if(f.date&&f.date<=today)dateSet.add(f.date);}));
+  const labels=[...dateSet].sort();
+  const labelsSet=new Set(labels);
+  const cumSeries=(flightDates)=>{
+    const flightSet=new Set(flightDates);
+    const cnt={};flightDates.forEach(d=>{cnt[d]=(cnt[d]||0)+1;});
+    let run=0;
+    return labels.map(d=>{
+      run+=(cnt[d]||0);
+      return {y:run,r:flightSet.has(d)?3:0};
+    });
+  };
+  const planCnt={};plannedDates.forEach(d=>{planCnt[d]=(planCnt[d]||0)+1;});
+  let planRun=0;const planData=labels.map(d=>{planRun+=(planCnt[d]||0);return planRun;});
+  const datasets=[{
+    label:"Planned Target",
+    data:planData,
+    borderColor:"#cbd5e1",pointRadius:0,tension:.25,borderDash:[6,4],borderWidth:2
+  }];
+  racers.forEach((s,i)=>{
+    const hue=(i*360/Math.max(racers.length,1)).toFixed(0);
+    const col=`hsla(${hue},85%,62%,0.8)`;
+    const nick=ap127ShortName(s.name);
+    const ad=(s.flown||[]).map(f=>f.date).filter(d=>d&&d<=today).sort();
+    const visible=AP127_RACE_SOLO===null||AP127_RACE_SOLO===nick;
+    const pts=cumSeries(ad);
+    datasets.push({
+      label:nick,
+      data:pts.map(p=>p.y),
+      borderColor:col,
+      pointRadius:pts.map(p=>p.r),
+      pointHoverRadius:pts.map(p=>p.r?5:0),
+      pointBackgroundColor:col,
+      pointBorderWidth:0,
+      tension:.18,
+      borderWidth:visible?1.5:0,
+      hidden:!visible
+    });
+  });
+  CHARTS.ap127race=mkC("d127-race",{
+    type:"line",data:{labels,datasets},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{title:(ctx)=>ap127FmtDate(ctx[0]?.label||""),label:(ctx)=>`${ctx.dataset.label}: ${ctx.parsed.y}`}}},
+      scales:{
+        x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxTicksLimit:18},grid:{color:"#21262d"}},
+        y:{beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#8b949e"},grid:{color:"#21262d"}}
+      }
+    }
+  });
+  const togglesDiv=document.getElementById("d127-race-toggles");
+  togglesDiv.innerHTML="";
+  const allBtn=document.createElement("button");
+  allBtn.textContent="ALL";
+  allBtn.style.cssText=`padding:4px 10px;background:${AP127_RACE_SOLO===null?"#4ade80":"#30363d"};color:${AP127_RACE_SOLO===null?"#000":"#8b949e"};border:0;border-radius:3px;cursor:pointer;font-weight:700;font-size:10px;font-family:'JetBrains Mono',monospace`;
+  allBtn.onclick=()=>{AP127_RACE_SOLO=null;buildAP127RaceChart(G.ap127,G.cur127?.length||101,(G.ap127||[]).flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"");};
+  togglesDiv.appendChild(allBtn);
+  racers.forEach(s=>{
+    const nick=ap127ShortName(s.name);
+    const active=AP127_RACE_SOLO===nick;
+    const btn=document.createElement("button");
+    btn.textContent=nick;
+    btn.style.cssText=`padding:4px 8px;background:${active?"#38bdf8":"#30363d"};color:${active?"#000":"#8b949e"};border:0;border-radius:3px;cursor:pointer;font-size:10px;font-family:'JetBrains Mono',monospace`;
+    btn.onclick=()=>{AP127_RACE_SOLO=active?null:nick;buildAP127RaceChart(G.ap127,G.cur127?.length||101,(G.ap127||[]).flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"");};
+    togglesDiv.appendChild(btn);
+  });
+  document.getElementById("d127-race-meta").textContent=`${all.length} students · actual to ${ap127FmtDate(today)} · planned baseline`;
+}
+
+function buildAP127OverallChart(all,curriculum,maxDate){
+  const sorted=ap127PaceSort(all,maxDate);
+  const maxDone=Math.max(...sorted.map(s=>s.done||0),1);
+  CHARTS.ap127overall=mkC("d127-overall",{
+    type:"bar",
+    data:{
+      labels:sorted.map(s=>ap127ShortName(s.name)),
+      datasets:[{
+        label:"Completed Lessons",
+        data:sorted.map(s=>s.done||0),
+        backgroundColor:sorted.map((_,i)=>{
+          const hue=(i*360/Math.max(sorted.length,1)).toFixed(0);
+          return `hsla(${hue},80%,58%,0.74)`;
+        })
+      }]
+    },
+    options:{
+      indexAxis:"y",
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:(ctx)=>`${ctx.parsed.x}/${curriculum}`}}
+      },
+      scales:{
+        x:{
+          min:0,
+          max:maxDone,
+          ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e",stepSize:Math.max(1,Math.ceil(maxDone/8))},
+          grid:{color:"#21262d"}
+        },
+        y:{
+          afterFit:scale=>{scale.width=100;},
+          ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e",autoSkip:false},
+          grid:{color:"#21262d"}
+        }
+      }
+    }
+  });
+}
+let CPV_FILTER='proj';
+let CPV_MODE='lessons';
+function setCPVFilter(f){
+  CPV_FILTER=f;
+  document.querySelectorAll('.cpv-btn[data-f]').forEach(b=>b.classList.toggle('sel',b.dataset.f===f));
+  buildAP127CombinedChart();
+}
+function setCPVMode(m){
+  CPV_MODE=m;
+  document.querySelectorAll('.cpv-mode').forEach(b=>b.classList.toggle('sel',b.dataset.m===m));
+  buildAP127CombinedChart();
+}
+function buildAP127CombinedChart(){
+  const all=G?.ap127||[];if(!all.length)return;
+  const today=ap127TodayBKK();
+  const n=all.length;
+  const curriculum=G.cur127||[];
+  const isHrs=CPV_MODE==='hours';
+  const unit=isHrs?'hrs':'lessons';
+
+  /* ── Lesson→mins map ── */
+  const lessonsMap={};curriculum.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
+
+  /* ── Actual by date ── */
+  const actualByDate={};
+  all.forEach(s=>(s.flown||[]).forEach(f=>{
+    if(!f.date||f.date>today)return;
+    const v=isHrs?(ap127FlightMins(f)||lessonsMap[f.lesson]||0)/60:1;
+    actualByDate[f.date]=(actualByDate[f.date]||0)+v;
+  }));
+  const totalDone=isHrs?all.reduce((a,s)=>a+ap127Hours(s),0):all.reduce((a,s)=>a+(s.done||0),0);
+  const actualDates=Object.keys(actualByDate).sort();
+  const firstDate=actualDates[0]||today;
+
+  /* ── Plan by date (curriculum × n) ── */
+  const planByDate={};
+  curriculum.forEach(c=>{
+    if(!c.planned_date)return;
+    const v=isHrs?(c.planned_mins||0)*n/60:n;
+    planByDate[c.planned_date]=(planByDate[c.planned_date]||0)+v;
+  });
+  const totalPlan=isHrs?curriculum.reduce((a,c)=>a+(c.planned_mins||0),0)*n/60:(curriculum.length||101)*n;
+  const planDates=Object.keys(planByDate).sort();
+  const planEnd=planDates.at(-1)||today;
+
+  /* ── Pace (30d rolling) ── */
+  const daysSinceStart=Math.max(1,Math.round((new Date(today+'T12:00:00Z')-new Date(firstDate+'T12:00:00Z'))/86400000));
+  const thirtyAgo=new Date(new Date(today+'T12:00:00Z').getTime()-30*86400000).toISOString().slice(0,10);
+  const recent30=Object.entries(actualByDate).filter(([d])=>d>=thirtyAgo).reduce((a,[,v])=>a+v,0);
+  const pace=Math.max(recent30>0?recent30/30:totalDone/daysSinceStart,0.001);
+
+  /* ── Projected finish ── */
+  const remaining=Math.max(totalPlan-totalDone,0);
+  const projDaysLeft=remaining/pace;
+  const projEndDate=new Date(new Date(today+'T12:00:00Z').getTime()+projDaysLeft*86400000).toISOString().slice(0,10);
+
+  /* ── Variance vs plan ── */
+  const planByToday=Math.min(planDates.filter(d=>d<=today).reduce((a,d)=>a+(planByDate[d]||0),0),totalPlan);
+  const variance=totalDone-planByToday;
+
+  /* ── End date ── */
+  const endDate=CPV_FILTER==='today'?today:CPV_FILTER==='plan'?planEnd:[planEnd,projEndDate].sort().at(-1);
+
+  /* ── Plan series (step-cumulative point objects) ── */
+  const planSeries=[];let rPlan=0;
+  planDates.filter(d=>d<=endDate).forEach(d=>{
+    rPlan=Math.min(rPlan+(planByDate[d]||0),totalPlan);
+    planSeries.push({x:d,y:+rPlan.toFixed(2)});
+  });
+  if(planSeries.length&&planSeries.at(-1).x<endDate)planSeries.push({x:endDate,y:+rPlan.toFixed(2)});
+
+  /* ── Actual series (step-cumulative point objects, stops at today) ── */
+  const actSeries=[];let rAct=0;
+  actualDates.filter(d=>d<=today&&d<=endDate).forEach(d=>{
+    rAct+=(actualByDate[d]||0);
+    actSeries.push({x:d,y:+rAct.toFixed(2)});
+  });
+  if(actSeries.length&&actSeries.at(-1).x<today&&today<=endDate)actSeries.push({x:today,y:+rAct.toFixed(2)});
+
+  /* ── Projected line (2 points: today → end) ── */
+  const showProj=CPV_FILTER!=='today';
+  const projSeries=showProj?[{x:today,y:+totalDone.toFixed(2)},{x:endDate,y:+(Math.min(totalDone+projDaysLeft*pace,totalPlan)).toFixed(2)}]:[];
+
+  /* ── Reference lines ── */
+  const totalSeries=[{x:firstDate,y:+totalPlan.toFixed(2)},{x:endDate,y:+totalPlan.toFixed(2)}];
+  const todaySeries=[{x:today,y:0},{x:today,y:totalPlan*1.08}];
+
+  /* ── KPIs ── */
+  const fmt=v=>isHrs?v.toFixed(1):String(Math.round(v));
+  const pct=(totalDone/totalPlan*100).toFixed(1);
+  const varDays=Math.round(Math.abs(variance)/pace);
+  const varStr=variance>=0?`+${varDays}d ahead`:`${varDays}d behind`;
+  const varC=variance>=0?'var(--done)':'#ef4444';
+  const kpiEl=document.getElementById('cpv-kpis');
+  if(kpiEl)kpiEl.innerHTML=[
+    {l:'Done / Total',v:`${fmt(totalDone)} / ${fmt(totalPlan)}`,s:`${pct}% complete`,c:'var(--c127)'},
+    {l:'Pace (30d avg)',v:(pace*7).toFixed(1),s:`${unit} / week`,c:'var(--tx)'},
+    {l:'Plan Finish',v:ap127FmtDate(planEnd),s:'per curriculum',c:'#8b949e'},
+    {l:'Projected Finish',v:ap127FmtDate(projEndDate),s:'at current pace',c:'#38bdf8'},
+    {l:'vs Plan Today',v:`${isHrs?Math.abs(variance).toFixed(1):Math.round(Math.abs(variance))} ${unit}`,s:varStr,c:varC},
+  ].map(k=>`<div class="cpv-kpi"><div class="cpv-kl">${k.l}</div><div class="cpv-kv" style="color:${k.c}">${k.v}</div><div class="cpv-ks">${k.s}</div></div>`).join('');
+
+  /* ── Chart ── */
+  CHARTS.ap127combined=mkC('d127-combined',{
+    type:'line',
+    data:{datasets:[
+      {label:'Plan',    data:planSeries,  borderColor:'#cbd5e1',borderDash:[6,4],borderWidth:1.5,pointRadius:0,tension:0,order:3},
+      {label:'Actual',  data:actSeries,   borderColor:'#fb923c',borderWidth:2.5, pointRadius:0,tension:0,order:1},
+      {label:'Projected',data:projSeries, borderColor:'#38bdf8',borderDash:[3,3],borderWidth:1.5,pointRadius:0,tension:0,order:2},
+      {label:'Total',   data:totalSeries, borderColor:'rgba(74,222,128,0.22)',borderDash:[2,5],borderWidth:1,pointRadius:0,order:4},
+      {label:'Today',   data:todaySeries, borderColor:'rgba(245,158,11,0.6)',borderDash:[4,4],borderWidth:1.5,pointRadius:0,order:0},
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      parsing:{xAxisKey:'x',yAxisKey:'y'},
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:true,labels:{color:'#8b949e',font:{family:'JetBrains Mono',size:9},boxWidth:18,padding:10,filter:item=>item.text!=='Today'&&item.text!=='Total'}},
+        tooltip:{callbacks:{
+          title:ctx=>{const r=ctx[0]?.raw;return r?ap127FmtDate(r.x):'';},
+          label:ctx=>{
+            if(ctx.dataset.label==='Today'||ctx.dataset.label==='Total')return null;
+            const v=ctx.raw?.y;if(v==null)return null;
+            return `${ctx.dataset.label}: ${isHrs?v.toFixed(1)+' hrs':Math.round(v)+' lessons'}`;
+          }
+        }},
+        zoom:{
+          zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'},
+          pan:{enabled:true,mode:'x'},
+        }
+      },
+      scales:{
+        x:{type:'time',time:{unit:'month',displayFormats:{day:'d MMM',week:'d MMM',month:'MMM yy'}},
+          ticks:{font:{family:'JetBrains Mono',size:8},color:'#6e7681',maxTicksLimit:14,source:'auto'},grid:{color:'#21262d'}},
+        y:{beginAtZero:true,
+          ticks:{font:{family:'JetBrains Mono',size:9},color:'#8b949e',callback:v=>isHrs?v.toFixed(0)+'h':v},
+          grid:{color:'#21262d'}}
+      }
+    }
+  });
+}
+// ##AP127JS_END##
+  // ---------- end DashboardR1 logic ----------
+
+  // status indicator + toast targets may be absent in the embedded markup — guard.
+  function setSS(){ /* no-op: freshness shown in the unified top bar */ }
+
+  // expose inline-handler targets used inside the reused markup/row HTML
+  Object.assign(window, { renderAP127Detail, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, openAP127Drawer, closeAP127Drawer, CHARTS });
+
+  function mountProgress(data){ G = data; renderAP127Detail(); }
+  function destroyProgress(){ try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch(e){} }); } catch(e){} }
+
+  const { useRef, useEffect } = React;
+  function CohortView() {
+    const d = window.useData();
+    const ref = useRef(null);
+    useEffect(() => {
+      if (!ref.current) return;
+      ref.current.innerHTML = MARKUP;
+      mountProgress({ ap127: d.students, cur127: d.curriculum, _updated: d.progressMeta && d.progressMeta.updated });
+      return () => destroyProgress();
+    }, [d.students, d.curriculum]);
+    return React.createElement('div', { className: 'ap127-progress', ref, style: { height: '100%', overflow: 'auto', padding: 14 } });
+  }
+  window.CohortView = CohortView;
+})();

@@ -19,8 +19,7 @@
       { id: 'slotfinder', label: 'Slot Finder', icon: '⌕' }, { id: 'autoslotfinder', label: 'Auto Slot Finder', icon: '⚡' },
     ] },
     { label: 'Progress', items: [
-      { id: 'cohort', label: 'Cohort', icon: '▰' }, { id: 'timeline', label: 'Timeline', icon: '◷' },
-      { id: 'charts', label: 'Charts', icon: '◔' }, { id: 'analytics', label: 'Analytics', icon: '◫' },
+      { id: 'cohort', label: 'Progress', icon: '▰' }, { id: 'analytics', label: 'Analytics', icon: '◫' },
     ] },
     { label: 'Integrity', items: [{ id: 'crosscheck', label: 'Cross-Check', icon: '⇄' }] },
   ];
@@ -121,7 +120,7 @@
       weekly: window.WeeklyBoard, roster: window.RosterBoard, calendar: window.CalendarBoard,
       slotfinder: window.SlotFinderBoard, autoslotfinder: window.AutoSlotFinderBoard,
       analytics: window.SummaryBoard,
-      cohort: window.CohortView, timeline: window.TimelineView, charts: window.ChartsView,
+      cohort: window.CohortView,
       crosscheck: window.CrossCheckView,
     };
   }
