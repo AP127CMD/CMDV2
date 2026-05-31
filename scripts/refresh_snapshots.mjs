@@ -42,9 +42,12 @@ function writeIfChanged(file, content) {
   const path = join(ROOT, file);
   let prev = '';
   try { prev = readFileSync(path, 'utf8'); } catch { /* new file */ }
-  // Compare ignoring the "Generated <timestamp>" header line so an unchanged
-  // payload with a fresh timestamp doesn't produce a noisy no-op commit.
-  const strip = s => s.replace(/^\/\/ Generated .*$/m, '');
+  // Compare ignoring volatile check-time stamps (the "// Generated" header and the
+  // injected "_updated" field) so an unchanged payload doesn't produce a noisy
+  // hourly no-op commit — only real data changes are written. Because we skip the
+  // write when stripped content matches, the file keeps its previous _updated,
+  // so that value reflects when the data LAST ACTUALLY CHANGED.
+  const strip = s => s.replace(/^\/\/ Generated .*$/m, '').replace(/"_updated":"[^"]*"/g, '');
   if (strip(prev) === strip(content)) { console.log(`[${file}] unchanged — skip`); return false; }
   writeFileSync(path, content);
   console.log(`[${file}] updated (${content.length} bytes)`);
