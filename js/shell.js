@@ -97,19 +97,50 @@
           h('p', { className: 'muted', style: { fontSize: 11, marginTop: 10 } }, 'Feature checklist for this view is tracked in REVAMP.md §3. Phase 2 = Operations, Phase 3 = Planning, Phase 4 = Progress.'))));
   }
 
+  // Student Lens — the unifying view: one student's Operations schedule linked to
+  // their Progress curriculum (neither original app connected these). See REVAMP.md §5.
   function StudentLensView() {
     const d = window.useData();
     const s = d.studentLens;
     if (!s) return h('div', { style: { padding: 24 } }, h('div', { className: 'empty' }, 'Pick a student from the Student Lens (top bar) to see their unified schedule + progress.'));
+    const fd = ds => { if (!ds) return '—'; try { return new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }); } catch { return ds; } };
+    const hm = m => m ? Math.floor(m / 60) + 'h' + (m % 60 ? String(m % 60).padStart(2, '0') : '') : '—';
+    // This student's Operations flights (match progress name → ops "FIRST L." key)
+    const key = window.AP127Reconcile.ccKeyFromFull(s.name);
+    const opsFlights = d.FLIGHTS.filter(f => window.AP127Reconcile.ccNameNorm(f.student) === key).sort((a, b) => (b.date + (b.start || '')).localeCompare(a.date + (a.start || '')));
+    const flown = (s.flown || []).slice().reverse();
+    const planned = (s.planned || []).slice(0, 12);
+    const SC = { Completed: 'var(--col-done)', Pending: 'var(--col-pending)', Canceled: 'var(--col-cancel)' };
+    const listPanel = (title, sub, children) => h('div', { className: 'panel' }, h('div', { className: 'ph' }, h('span', { className: 'pt' }, title), h('span', { className: 'ps' }, sub)), h('div', { style: { overflow: 'auto', maxHeight: 380 } }, children));
+    const rowsOrEmpty = (arr, fn, empty) => arr.length ? arr.map(fn) : h('div', { className: 'empty' }, empty);
+
     return h('div', { style: { padding: 16, display: 'grid', gap: 14, overflow: 'auto', height: '100%' } },
-      h('div', { className: 'panel' }, h('div', { className: 'ph' }, h('span', { className: 'pt' }, 'Student Lens · ' + s.nick), h('span', { className: 'ps' }, s.name)),
-        h('div', { className: 'pb' },
-          h('div', { className: 'kpis' },
-            h('div', { className: 'kpi acc' }, h('div', { className: 'kl' }, 'Progress'), h('div', { className: 'kv' }, (s.pct || 0).toFixed(0) + '%'), h('div', { className: 'ks' }, `${s.done}/${s.total} lessons`)),
-            h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Next Lesson'), h('div', { className: 'kv', style: { fontSize: 20 } }, s.next_lesson || '—'), h('div', { className: 'ks' }, 'up next')),
-            h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'FI · Type'), h('div', { className: 'kv', style: { fontSize: 18 } }, (d.FI_FULL[s.fi] || s.fi || '—')), h('div', { className: 'ks' }, s.se || '')),
-          ),
-          h('p', { className: 'muted', style: { fontSize: 11, marginTop: 12 } }, 'Phase 5 will link this student\'s scheduled flights (Operations) with their curriculum progress (Charts/Timeline) here. See REVAMP.md §5 “Student Lens”.'))));
+      h('div', { className: 'panel' }, h('div', { className: 'ph' },
+          h('span', { className: 'pt' }, 'Student Lens · ' + s.nick), h('span', { className: 'ps' }, s.name + ' · ' + (s.catc_id || ''))),
+        h('div', { className: 'pb' }, h('div', { className: 'kpis' },
+          h('div', { className: 'kpi acc' }, h('div', { className: 'kl' }, 'Progress'), h('div', { className: 'kv' }, (s.pct || 0).toFixed(0) + '%'), h('div', { className: 'ks' }, `${s.done}/${s.total} lessons`)),
+          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Next Lesson'), h('div', { className: 'kv', style: { fontSize: 20 } }, s.next_lesson || '—'), h('div', { className: 'ks' }, 'up next')),
+          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Instructor'), h('div', { className: 'kv', style: { fontSize: 16 } }, (d.FI_FULL[s.fi] || s.fi || '—')), h('div', { className: 'ks' }, 'assigned FI')),
+          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Aircraft'), h('div', { className: 'kv', style: { fontSize: 18 } }, s.se || '—'), h('div', { className: 'ks' }, 'SE type')),
+          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Ops Flights'), h('div', { className: 'kv' }, opsFlights.length), h('div', { className: 'ks' }, 'in schedule feed')),
+        ))),
+      h('div', { style: { display: 'grid', gridTemplateColumns: d.isMobile ? '1fr' : '1.2fr 1fr 1fr', gap: 14 } },
+        listPanel('Operations Schedule', 'from flight ops', h('table', { className: 'tb' },
+          h('thead', null, h('tr', null, h('th', null, 'Date'), h('th', null, 'Lesson'), h('th', null, 'FI'), h('th', null, 'Status'))),
+          h('tbody', null, rowsOrEmpty(opsFlights.slice(0, 40), (f, i) => h('tr', { key: i, onClick: () => d.setDrawer(f.id), style: { cursor: 'pointer' } },
+            h('td', { className: 'mono' }, fd(f.date), ' ', h('span', { className: 'muted', style: { fontSize: 9 } }, f.start || '')),
+            h('td', { className: 'mono' }, f.lesson || '—'),
+            h('td', { className: 'muted mono', style: { fontSize: 9 } }, f.instructor || ''),
+            h('td', null, h('span', { className: 'pill', style: { background: `color-mix(in oklch,${SC[f.status] || 'var(--ink-3)'} 16%,transparent)`, color: SC[f.status] || 'var(--ink-3)' } }, (f.status || '').slice(0, 4)))),
+            'No operations flights found for this student')))),
+        listPanel('Completed (Progress)', flown.length + ' flown', h('div', { style: { padding: 10 } },
+          rowsOrEmpty(flown.slice(0, 30), (f, i) => h('div', { key: i, style: { display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 11 } },
+            h('span', { className: 'mono muted', style: { width: 56, fontSize: 9 } }, fd(f.date)), h('span', { className: 'mono', style: { flex: 1 } }, f.lesson || '—'), h('span', { className: 'muted', style: { fontSize: 10 } }, hm(f.actual_mins))),
+            'No completed flights'))),
+        listPanel('Upcoming Plan', 'curriculum', h('div', { style: { padding: 10 } },
+          rowsOrEmpty(planned, (p, i) => h('div', { key: i, style: { display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 11 } },
+            h('span', { className: 'mono muted', style: { width: 56, fontSize: 9 } }, fd(p.date)), h('span', { className: 'mono', style: { flex: 1 } }, p.lesson || '—'), h('span', { className: 'muted', style: { fontSize: 10 } }, hm(p.mins || p.planned_mins))),
+            'No planned flights')))));
   }
 
   // Maps view id → component. Resolved at render time (after all view scripts load).
