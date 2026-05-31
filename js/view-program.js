@@ -11,7 +11,7 @@
   // ---- module globals + scheduler config (from NGT_001 index.html) ----
   let G = null, SIM_G = null, EXTRA_BATCHES = [], AB = "ALL";
   const CHARTS = {};
-  let CFG = { cap: 25, n129: 13, ap129start: "2026-06-01", horizon: 800, hourMode: false, weekendCap: 13, holidayCap: 13, _weAuto: true, _holAuto: true };
+  let CFG = { cap: 25, n129: 13, ap129start: "2026-06-01", horizon: 800, hourMode: false, weekendCap: 13, holidayCap: 13, _weAuto: true, _holAuto: true, recents: 3, upcomings: 8, showRest: true, showNextTag: true, cardH: 220 };
   function toast(msg) { try { console.log("[program]", msg); } catch (e) {} }
 
   // ======================= begin verbatim NGT_001 logic =======================
@@ -534,8 +534,78 @@ function resetPerformanceFilters(){
 
   // ======================== end verbatim NGT_001 logic ========================
 
+  // ---- Progress Detail (NGT_001 "Flight Plans"), with REAL scheduled dates ----
+  // Per-batch rank colour (verbatim from NGT_001).
+  function ap127RankClass(rank, total) { if (rank <= 3) return "bad"; if (rank <= Math.ceil(total * .4)) return "mid"; return "ok"; }
+
+  // Map a student+lesson to its ACTUAL scheduled date from the Operations feed
+  // (window.FLIGHT_DATA) — replacing the scheduler's projected date. Built once.
+  // Keyed exactly like the cross-check engine so AP127 names/lessons line up.
+  let OPS_SCHED = null;
+  function opsSchedMap() {
+    if (OPS_SCHED) return OPS_SCHED;
+    OPS_SCHED = new Map();
+    const R = window.AP127Reconcile;
+    const flights = (window.FLIGHT_DATA && window.FLIGHT_DATA.flights) || [];
+    if (!R) return OPS_SCHED;
+    flights.forEach(f => {
+      if (!f.student || !f.lesson || !f.date || f.status === 'Canceled') return;
+      if (!R.isAP127(f.batch)) return;
+      const k = R.ccNameNorm(f.student) + '|' + R.normLesson(f.lesson);
+      const prev = OPS_SCHED.get(k);
+      // earliest non-cancelled scheduled date for that student+lesson
+      if (!prev || f.date < prev) OPS_SCHED.set(k, f.date);
+    });
+    return OPS_SCHED;
+  }
+  function scheduledDateFor(fullName, lesson) {
+    const R = window.AP127Reconcile;
+    if (!R) return null;
+    return opsSchedMap().get(R.ccKeyFromFull(fullName) + '|' + R.normLesson(lesson)) || null;
+  }
+
+  // makeCard — NGT_001 verbatim EXCEPT future-lesson dates: the simulation's
+  // projected date is replaced by the real Operations-scheduled date, or "TBC".
+  function makeCard(s, rankClass = "") {
+    const col = BC[s.batch], bg = BB[s.batch];
+    const nick = s.nick ? `<span style="font-family:'JetBrains Mono',monospace;font-size:8px;padding:1px 3px;border-radius:2px;background:${bg};color:${col};margin-left:3px">${s.nick}</span>` : "";
+    const fRows = (s.flown || []).slice(-CFG.recents).map(f => `<div class="lr"><div class="ld" style="background:var(--done)"></div><div class="ldate" style="color:var(--done)">${fd(f.date)}</div><div class="lname" style="color:var(--done)">${f.lesson}</div><div class="ldur">${f.actual_ft || hm(f.actual_mins)}</div></div>`).join("");
+    let prev = (s.flown || []).at(-1)?.actual_mins || 60;
+    const tbc = `<span style="color:var(--tx3);font-style:italic">TBC</span>`;
+    const pRows = (s.planned || []).slice(0, CFG.upcomings).map(p => {
+      const rest = CFG.showRest && prev >= 120; const lv = p.mins || p.planned_mins || 60; prev = lv;
+      const sd = scheduledDateFor(s.name, p.lesson);
+      const dCell = sd ? `<div class="ldate">${fd(sd)}</div>` : `<div class="ldate">${tbc}</div>`;
+      return `<div class="lr"><div class="ld" style="background:${col};opacity:.5"></div>${dCell}<div class="lname" style="color:${col}">${p.lesson}</div><div class="ldur">${hm(lv)}${rest ? `<span class="lrest">+r</span>` : ""}</div></div>`;
+    }).join("");
+    const sep = (s.flown?.length && s.planned?.length) ? `<div class="lsep">▸ ${s.remaining} remaining · next ${Math.min(CFG.upcomings, s.remaining)} shown · dates from Operations schedule (TBC = not yet scheduled)</div>` : "";
+    const more = (s.planned_total || 0) > CFG.upcomings ? `<div class="moret">+${s.planned_total - CFG.upcomings} more</div>` : "";
+    const fin = s.finish === "COMPLETE" ? "COMPLETED" : fd(s.finish);
+    const nextSched = s.next_lesson && s.next_lesson !== "COMPLETE" ? scheduledDateFor(s.name, s.next_lesson) : null;
+    const ntag = CFG.showNextTag && s.next_lesson ? `<b style="color:${col}">${s.next_lesson}</b>` : "";
+    const ndateTag = s.next_lesson && s.next_lesson !== "COMPLETE" ? `<span style="color:${nextSched ? 'var(--tx2)' : 'var(--tx3)'};margin-left:3px${nextSched ? '' : ';font-style:italic'}">${nextSched ? fd(nextSched) : 'TBC'}</span>` : "";
+    return `<div class="scard${rankClass ? " status-" + rankClass : ""}"><div class="sh"><div><div class="sname">${s.name}${nick}</div><div class="smeta">${s.batch} · ${s.done}/${s.total}</div></div><div><div class="spct" style="color:${col}">${s.pct.toFixed(1)}%</div><div class="spct2">${s.remaining} left</div></div></div><div class="pb"><div class="pf" style="width:${Math.max(s.pct, .3)}%;background:${col}"></div></div><div class="sb2" style="max-height:${CFG.cardH}px">${fRows}${sep}${pRows}${more}</div><div class="sf2"><span style="font-size:10px;color:var(--tx3)">Next:${ntag ? ` ${ntag}${ndateTag}` : ""}</span><span class="ftag" style="background:${bg};color:${col};border:1px solid ${col}33">Finish: ${fin}</span></div></div>`;
+  }
+
+  // renderPlans — verbatim from NGT_001.
+  function renderPlans() {
+    const q = document.getElementById("si").value.toLowerCase(); const srt = document.getElementById("ss-sel").value;
+    let arr = filtSt();
+    if (q) arr = arr.filter(s => s.name.toLowerCase().includes(q) || (s.nick || "").toLowerCase().includes(q));
+    if (srt === "finish") arr = [...arr].sort((a, b) => ((a.finish || "Z") < (b.finish || "Z") ? -1 : 1));
+    else if (srt === "pct") arr = [...arr].sort((a, b) => b.pct - a.pct);
+    else if (srt === "name") arr = [...arr].sort((a, b) => a.name.localeCompare(b.name));
+    const rankMap = new Map();
+    ["AP124", "AP126", "AP127", "AP129"].forEach(b => {
+      const grp = arr.filter(s => s.batch === b).sort((a, z) => z.pct - a.pct);
+      grp.forEach((s, i) => rankMap.set(s.catc_id, ap127RankClass(i + 1, grp.length)));
+    });
+    document.getElementById("sg").innerHTML = arr.map(s => makeCard(s, rankMap.get(s.catc_id) || "")).join("");
+    document.getElementById("pc").textContent = arr.length + " students";
+  }
+
   // Expose inline-handler targets referenced by the embedded markup + generated rows.
-  Object.assign(window, { renderPerformance, resetPerformanceFilters, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol });
+  Object.assign(window, { renderPerformance, resetPerformanceFilters, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans });
 
   // ---- page markups (verbatim from NGT_001 index.html) ----
 const MK_OVERVIEW = `
@@ -555,6 +625,24 @@ const MK_OVERVIEW = `
     <div class="cb"><div class="ch" style="color:var(--c126)">AP126</div><div class="cs" id="inf-126"></div><div style="position:relative;height:130px"><canvas id="c-126"></canvas></div></div>
     <div class="cb"><div class="ch" style="color:var(--c127)">AP127</div><div class="cs" id="inf-127"></div><div style="position:relative;height:130px"><canvas id="c-127"></canvas></div></div>
   </div>
+</div>
+
+`;
+const MK_PLANS = `
+<div id="page-plans" class="page">
+  <div class="pf-filter" style="margin-bottom:12px">
+    <div class="pt">Progress Detail — per-student plan</div>
+    <div class="fr">
+      <input id="si" type="text" placeholder="Search name / callsign..." oninput="renderPlans()">
+      <select id="ss-sel" onchange="renderPlans()">
+        <option value="batch">Batch order</option><option value="finish">Finish date</option>
+        <option value="pct">Progress %</option><option value="name">Name A–Z</option>
+      </select>
+      <span id="pc" class="d127-meta"></span>
+      <span class="d127-meta" style="margin-left:auto">Upcoming dates = Operations schedule · TBC = not yet scheduled</span>
+    </div>
+  </div>
+  <div class="sg" id="sg"></div>
 </div>
 
 `;
@@ -765,4 +853,5 @@ const MK_SIM = `
     renderSimulation();
     if (SIM_G) { renderSimFinish(); buildSimCapacityChart(); }
   });
+  window.ProgressDetailView = makeView(MK_PLANS, () => { renderPlans(); });
 })();

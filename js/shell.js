@@ -23,6 +23,7 @@
     ] },
     { label: 'Training Program', items: [
       { id: 'program', label: 'All Batches', icon: '◴' },
+      { id: 'plans', label: 'Progress Detail', icon: '▤' },
       { id: 'performance', label: "School Perf.", icon: '◷' },
       { id: 'simulation', label: 'Simulation', icon: '◈' },
     ] },
@@ -158,6 +159,7 @@
       analytics: window.SummaryBoard,
       cohort: window.CohortView,
       program: window.ProgramOverviewView,
+      plans: window.ProgressDetailView,
       performance: window.SchoolPerformanceView,
       simulation: window.SimulationView,
       crosscheck: window.CrossCheckView,
