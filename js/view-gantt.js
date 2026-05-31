@@ -1,5 +1,5 @@
 // Gantt timeline — rows = instructor / tail / batch
-const { useMemo: useM_g } = React;
+const { useMemo: useM_g, useState: useS_g, useEffect: useE_g, useRef: useR_g, useLayoutEffect: useLE_g } = React;
 
 const HOUR_START     = 6;
 const HOUR_END_MIN   = 18; // minimum end — extends dynamically if flights run later
@@ -49,6 +49,23 @@ function GanttBoard() {
     return Math.max(HOUR_END_MIN, Math.ceil(maxMin / 60));
   }, [flights]);
   const hourSpan = hourEnd - HOUR_START;
+
+  // Responsive timeline: measure the viewport and shrink px/hour so the whole day
+  // (head → end of every row) fits without horizontal scroll on narrow screens.
+  // Only when even the floor won't fit does it fall back to scrolling.
+  const scrollRef = useR_g(null);
+  const [viewW, setViewW] = useS_g(0);
+  useLE_g(() => {
+    const el = scrollRef.current; if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(es => { setViewW(es[0].contentRect.width); });
+    ro.observe(el); setViewW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const PX_FLOOR = isMobile ? 12 : 20;          // min px/hour before we allow scrolling
+  const avail = viewW - TRACK_LEFT - TRACK_RIGHT;
+  const pxPerHour = (viewW > 0 && hourSpan > 0)
+    ? Math.max(PX_FLOOR, Math.min(90, avail / hourSpan))   // fit to width, clamped
+    : PX_PER_HOUR;
 
   const rows = useM_g(()=>{
     const map = {};
@@ -127,9 +144,10 @@ function GanttBoard() {
             pinned to the top and the label column stays pinned to the left while
             you swipe/scroll. (One scroll container is required for position:sticky
             to track the same scroll on both axes.) */}
-        <div style={{ flex:1, minHeight:0, overflow:'auto' }}>
-          {/* minWidth ensures horizontal scroll activates for extended-hour days */}
-          <div style={{ minWidth: TRACK_LEFT + TRACK_RIGHT + hourSpan * PX_PER_HOUR }}>
+        <div ref={scrollRef} style={{ flex:1, minHeight:0, overflow:'auto' }}>
+          {/* Width fits the viewport (pxPerHour shrinks on narrow screens so head→end
+              stay visible); only an extremely cramped viewport triggers scroll. */}
+          <div style={{ minWidth: Math.round(TRACK_LEFT + TRACK_RIGHT + hourSpan * pxPerHour) }}>
             {/* Hour ruler — sticky to the top of the viewport */}
             <div style={{ display:'grid', gridTemplateColumns:`${TRACK_LEFT}px 1fr ${TRACK_RIGHT}px`, borderBottom:'1px solid var(--line)', background:'var(--bg-2)', position:'sticky', top:0, zIndex:4 }}>
               <div className="mono uc" style={{ padding:'9px 14px', fontSize:9, color:'var(--ink-3)',
@@ -188,7 +206,7 @@ function GanttBoard() {
                 opacity:rowAlpha, transition:'opacity .15s',
               }}>
                 <div style={{ padding: isMobile?'4px 6px':'8px 10px', display:'flex', alignItems:'center', borderRight:'1px solid var(--line)', overflow:'hidden',
-                  ...(isMobile ? { position:'sticky', left:0, zIndex:2, background:'var(--bg-2)' } : {}) }}>
+                  position:'sticky', left:0, zIndex:2, background:'var(--bg-2)' }}>
                   <div style={{ minWidth:0 }}>
                     <div style={{ fontSize:isMobile?10:12, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
                       color: rowOnMaint ? 'var(--col-cancel)' : 'var(--ink)' }}>{r.key}</div>

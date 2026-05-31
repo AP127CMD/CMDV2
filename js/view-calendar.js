@@ -25,6 +25,13 @@ function CalendarBoard() {
   const [showLeave,    setShowLeave]   = useS_cal(true);
   const [density,      setDensity]     = useS_cal('normal'); // 'compact' | 'normal'
   const [selectedDate, setSelectedDate] = useS_cal(null);
+  const [statusF,      setStatusF]     = useS_cal('all');    // all|Completed|Pending|Canceled
+  const [batchF,       setBatchF]      = useS_cal('all');    // all|AP124|AP126|AP127|AP129
+  // Unified flight filter applied to all counts/lists in this view.
+  const passF = f => (statusF === 'all' || f.status === statusF)
+    && (batchF === 'all' || f.batch === batchF)
+    && (!ap127Only || f.batch === HIGHLIGHT_BATCH);
+  const CAL_BATCHES = useM_cal(() => [...new Set(FLIGHTS.map(f => f.batch).filter(b => b && /^AP-?\d/i.test(b)))].sort(), []);
 
   const calYear  = parseInt(calYM.slice(0,4));
   const calMonth = parseInt(calYM.slice(5,7));
@@ -45,7 +52,7 @@ function CalendarBoard() {
     const m = {};
     FLIGHTS.forEach(f => {
       if (!f.date.startsWith(prefix)) return;
-      if (ap127Only && f.batch !== HIGHLIGHT_BATCH) return;
+      if (!passF(f)) return;
       if (!m[f.date]) m[f.date] = { total:0, completed:0, canceled:0, pending:0, ap127:0, schedHours:0, completedHours:0 };
       const s = m[f.date];
       s.total++; s.schedHours += (f.durMin||0)/60; s.completedHours += calFlownMin(f)/60;
@@ -55,7 +62,7 @@ function CalendarBoard() {
       if (f.batch===HIGHLIGHT_BATCH) s.ap127++;
     });
     return m;
-  }, [calYear, calMonth, ap127Only]);
+  }, [calYear, calMonth, ap127Only, statusF, batchF]);
 
   // Leave info per day in month
   const monthLeaves = useM_cal(() => {
@@ -115,7 +122,7 @@ function CalendarBoard() {
   // Day detail panel data — computed for any date in dataset
   const panelData = useM_cal(() => {
     if (!selectedDate) return null;
-    const all = FLIGHTS.filter(f => f.date === selectedDate)
+    const all = FLIGHTS.filter(f => f.date === selectedDate && passF(f))
       .sort((a,b) => (minutesOf(a.start)||0) - (minutesOf(b.start)||0));
     const lv   = leavesOnDate(selectedDate);
     const lvKeys = Object.keys(lv);
@@ -133,7 +140,7 @@ function CalendarBoard() {
     const compRate = (s.completed+s.canceled) > 0 ? Math.round(s.completed/(s.completed+s.canceled)*100) : null;
     const ap127 = all.filter(f => f.batch === HIGHLIGHT_BATCH);
     return { all, ap127, fis, sps, lv, stats: s, compRate };
-  }, [selectedDate]);
+  }, [selectedDate, statusF, batchF, ap127Only]);
 
   // ALL_DATES index for panel prev/next navigation
   const panelPrev = selectedDate ? ALL_DATES[ALL_DATES.indexOf(selectedDate) - 1] || null : null;
@@ -528,6 +535,21 @@ function CalendarBoard() {
             <Chip on={density==='normal'}  onClick={()=>setDensity('normal')}  color="var(--ink-2)">NORMAL</Chip>
           </div>
         )}
+
+        {/* Status filter */}
+        {!isMobile && (
+          <div style={{ display:'flex', gap:4, alignItems:'center', flexShrink:0 }}>
+            <span className="mono uc" style={{ fontSize:8, color:'var(--ink-3)' }}>STATUS</span>
+            {[['all','ALL','var(--ink-2)'],['Completed','DONE','var(--col-done)'],['Pending','PEND','var(--col-pending)'],['Canceled','CXL','var(--col-cancel)']].map(([v,l,c]) =>
+              <Chip key={v} on={statusF===v} onClick={()=>setStatusF(v)} color={c}>{l}</Chip>)}
+          </div>
+        )}
+        {/* Batch filter */}
+        <select value={batchF} onChange={e=>setBatchF(e.target.value)} className="mono uc"
+          style={{ fontSize:9, padding:'3px 6px', borderRadius:4, background:'var(--bg-2)', color: batchF==='all'?'var(--ink-2)':'var(--highlight)', border:`1px solid ${batchF==='all'?'var(--line)':'var(--highlight)'}`, cursor:'pointer', outline:'none' }}>
+          <option value="all">ALL BATCHES</option>
+          {CAL_BATCHES.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
 
         <Chip on={ap127Only} onClick={()=>setAp127Only(v=>!v)} color="var(--highlight)">◆ AP-127</Chip>
         <Chip on={showLeave} onClick={()=>setShowLeave(v=>!v)} color="var(--col-stby)">LEAVE</Chip>

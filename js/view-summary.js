@@ -292,7 +292,7 @@ function SummaryBoard() {
       <div style={{ padding:'10px 10px 20px', display:'flex', flexDirection:'column', gap:12 }}>
 
         {/* Stat tiles */}
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+        <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'repeat(6,1fr)', gap:8 }}>
           <SumTile label="TOTAL" value={totalStats.total} color="var(--ink-2)" sub={`${totalStats.hours.toFixed(0)}h`}/>
           <SumTile label="PENDING"   value={totalStats.pending}   color="var(--col-pending)"/>
           <SumTile label="COMPLETED" value={totalStats.completed} color="var(--col-done)"/>
@@ -382,14 +382,14 @@ function SummaryBoard() {
           <BarModeChip mode="hours"   label="HOURS"/>
         </div>
 
-        {/* Batch breakdown */}
+        {/* Batch breakdown — short, full width */}
         <BreakdownTable title="BATCH BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={batchStats} nameKey="batch" barMode={barMode}/>
 
-        {/* Instructor breakdown */}
-        <BreakdownTable title="INSTRUCTOR BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={instrStats} nameKey="name" barMode={barMode}/>
-
-        {/* Student breakdown */}
-        <BreakdownTable title="STUDENT BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={studentStats} nameKey="name" barMode={barMode}/>
+        {/* Instructor + Student breakdowns side-by-side (better use of width) */}
+        <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:16, alignItems:'start' }}>
+          <BreakdownTable title="INSTRUCTOR BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={instrStats} nameKey="name" barMode={barMode}/>
+          <BreakdownTable title="STUDENT BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={studentStats} nameKey="name" barMode={barMode}/>
+        </div>
 
       </div>{/* end inner flex column */}
       </div>{/* end scroll container */}

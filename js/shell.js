@@ -28,6 +28,7 @@
       { id: 'simulation', label: 'Simulation', icon: '◈' },
     ] },
     { label: 'Integrity', items: [{ id: 'crosscheck', label: 'Cross-Check', icon: '⇄' }] },
+    { label: 'Help', items: [{ id: 'tutorial', label: 'User Guide', icon: '?' }] },
   ];
   const ALL_VIEWS = GROUPS.flatMap(g => g.items);
   const LABEL = Object.fromEntries(ALL_VIEWS.map(v => [v.id, v.label]));
@@ -175,6 +176,7 @@
       performance: window.SchoolPerformanceView,
       simulation: window.SimulationView,
       crosscheck: window.CrossCheckView,
+      tutorial: window.TutorialView,
     };
   }
 
