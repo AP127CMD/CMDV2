@@ -71,14 +71,23 @@ legacy support: overview/ crosscheck/ ops/ progress/  # iframed only by legacy.h
 
 ## Refreshing the bundled snapshots
 
-```bash
-# progress
-printf 'window.PROGRESS_DATA = ' > progress-data.js
-curl -s https://ap127-data-api.anusorn-tanmetha.workers.dev >> progress-data.js
-printf ';\n' >> progress-data.js
+**Automated (default).** `.github/workflows/refresh-data.yml` runs hourly (and on manual
+dispatch). It executes `scripts/refresh_snapshots.mjs`, which mirrors two upstreams:
 
-# operations — copy the latest from the Command Center repo
-cp ../AP127_Command_Center/flight-data.js flight-data.js && cp flight-data.js ops/flight-data.js
+- `flight-data.js` ← Command Center's published copy
+  (`raw.githubusercontent.com/nuguitar/AP127_Command_Center/main/flight-data.js`).
+  CC owns the Playwright scrape; V2 just tracks its output, so the ops data can't drift.
+- `progress-data.js` ← the `ap127-data-api` Cloudflare Worker (the same endpoint the app
+  fetches live), re-wrapped as `window.PROGRESS_DATA`.
+
+It commits only on change; Pages (deploy-from-branch) auto-rebuilds on push. The data
+includes carry **no `?v=` token**, so a refresh reaches clients within the Pages ~10-min
+cache. On failure it opens a `refresh-failure` issue. Run it by hand from the **Actions** tab.
+
+**Manual / local** (same effect as the workflow):
+
+```bash
+node scripts/refresh_snapshots.mjs   # no dependencies (Node 18+ global fetch)
 ```
 
 Progress is also fetched live in the browser on every load, so it stays current without

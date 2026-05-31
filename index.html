@@ -25,10 +25,12 @@
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 
-<!-- data: cross-check engine + bundled snapshots (progress also fetched live) -->
+<!-- data: cross-check engine + bundled snapshots (progress also fetched live).
+     Snapshots carry NO ?v= pin so the hourly refresh workflow propagates to
+     clients via the Pages ~10-min cache (code assets stay version-pinned). -->
 <script src="assets/reconcile.js?v=p6"></script>
-<script src="flight-data.js?v=p6"></script>
-<script src="progress-data.js?v=p6"></script>
+<script src="flight-data.js"></script>
+<script src="progress-data.js"></script>
 
 <!-- shared context + atoms (augmented Command Center app-shared) -->
 <script type="text/babel" src="js/shared.js?v=p6"></script>
