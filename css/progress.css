@@ -1,5 +1,5 @@
 /* AP127 V2 — Progress page styles (reused from DashboardR1, scoped under .ap127-progress so it keeps its own dark palette regardless of app theme). */
-.ap127-progress{--bg:#0d1117;--s1:#161b22;--s2:#1c2128;--s3:#21262d;--bd:#30363d;--bd2:#21262d;--tx:#e6edf3;--tx2:#8b949e;--tx3:#6e7681;--c127:#fb923c;--c127b:rgba(251,146,60,.12);--acc:#f59e0b;--done:#22c55e;background:var(--bg);color:var(--tx);font-family:'Nunito',sans-serif;font-size:13px;}
+.ap127-progress{--bg:#0d1117;--s1:#161b22;--s2:#1c2128;--s3:#21262d;--bd:#30363d;--bd2:#21262d;--tx:#e6edf3;--tx2:#8b949e;--tx3:#6e7681;--c127:#e88aff;--c127b:rgba(232,138,255,.12);--acc:#f59e0b;--done:#22c55e;background:var(--bg);color:var(--tx);font-family:'Nunito',sans-serif;font-size:13px;}
 .toast{position:fixed;bottom:18px;right:18px;z-index:999;background:var(--s2);border:1px solid var(--bd);border-radius:7px;padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:11px;max-width:320px;transform:translateY(60px);opacity:0;transition:all .3s;pointer-events:none;}
 .toast.show{transform:translateY(0);opacity:1;}
 .toast.ok{border-left:3px solid var(--done);color:var(--done);}
@@ -8,7 +8,12 @@
 /* ##AP127CSS_START## */
 /* AP127 DETAIL */
 .d127-wrap{display:grid;gap:10px;}
-.d127-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.d127-title{border-bottom:1px solid var(--bd);padding-bottom:8px;}
+.d127-title h1{font-family:'Rajdhani','Nunito',sans-serif;font-size:26px;font-weight:700;letter-spacing:.5px;color:var(--tx);margin:0;line-height:1.1;}
+.d127-title h1 b{color:var(--c127);}
+.d127-title h1 span{font-size:14px;font-weight:600;color:var(--tx3);letter-spacing:1px;}
+.d127-subtitle{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);margin-top:3px;}
+.d127-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;}
 .d127-kpi{background:var(--s1);border:1px solid var(--bd);border-radius:7px;padding:10px 12px;}
 .d127-kl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:1px;}
 .d127-kv{font-family:'Rajdhani',sans-serif;font-size:25px;line-height:1.1;margin-top:3px;}

@@ -9,12 +9,17 @@
   const MARKUP = `
 <div class="d127-wrap">
   <div class="d127-wrap">
+    <div class="d127-title">
+      <h1>AP<b>127</b> PROGRESS<span> · SQUADRON DETAIL</span></h1>
+      <div class="d127-subtitle" id="d127-subtitle">Progress reconciled against the live Operations record · discrepancies tracked in Cross-Check</div>
+    </div>
     <div class="d127-kpis">
-      <div class="d127-kpi"><div class="d127-kl">Students</div><div class="d127-kv" id="d127-k-stu">-</div><div class="d127-ks">Person</div></div>
-      <div class="d127-kpi"><div class="d127-kl">Curriculum</div><div class="d127-kv" id="d127-k-cur">-</div><div class="d127-ks">Lessons</div></div>
-      <div class="d127-kpi"><div class="d127-kl">Progress</div><div class="d127-kv" id="d127-k-prg">-</div><div class="d127-ks">Done vs Total</div></div>
-      <div class="d127-kpi"><div class="d127-kl">Total Hours</div><div class="d127-kv" id="d127-k-hrs">-</div><div class="d127-ks">Actual / Total</div></div>
-      <div class="d127-kpi"><div class="d127-kl">Ahead / Behind</div><div class="d127-person" id="d127-k-ahead"><small>Ahead</small>-</div><div class="d127-person" id="d127-k-behind"><small>Behind</small>-</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Cohort Progress</div><div class="d127-kv" id="d127-k-prg">-</div><div class="d127-ks" id="d127-k-prg-s">Done vs Total</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Students</div><div class="d127-kv" id="d127-k-stu">-</div><div class="d127-ks" id="d127-k-stu-s">on the AP127 curriculum</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Pace · at/above vs below</div><div class="d127-kv" id="d127-k-track">-</div><div class="d127-ks" id="d127-k-track-s">vs cohort average</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Total Hours</div><div class="d127-kv" id="d127-k-hrs">-</div><div class="d127-ks">Actual / Curriculum</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Ops-Synced</div><div class="d127-kv" id="d127-k-sync">-</div><div class="d127-ks" id="d127-k-sync-s">from Operations feed</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Lead / Lag</div><div class="d127-person" id="d127-k-ahead"><small>Ahead</small>-</div><div class="d127-person" id="d127-k-behind"><small>Behind</small>-</div></div>
     </div>
     <div class="d127-controls">
       <input id="d127-q" placeholder="Search name..." oninput="renderAP127Detail()">
@@ -166,8 +171,8 @@ function ap127LessonPhase(code){if(!code)return AP127_PHASE_OTHER;const c=String
 function ap127IdleLineColor(d){if(d<=2)return"#e6edf3";if(d<=5)return"#fbbf24";return"#ff6b6b";}
 function ap127RelDays(asOf,date){const d=ap127DateDiff(asOf,date);return d===null?"":d<=0?"today":d===1?"1d":`${d}d`;}
 function ap127ShortName(n){const p=n.trim().split(/\s+/);return p.length<2?n:p[0]+" "+p[p.length-1][0]+".";}
-function ap127FmtDate(ds){if(!ds)return"-";try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}catch{return ds;}}
-function ap127ShortDate(ds){if(!ds)return"-";try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}catch{return ds;}}
+function ap127FmtDate(ds){if(!ds)return"-";if(ds==="TBC")return"TBC";try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}catch{return ds;}}
+function ap127ShortDate(ds){if(!ds)return"-";if(ds==="TBC")return"TBC";try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}catch{return ds;}}
 function ap127FlightMins(f){return f.actual_mins||f.mins||0;}
 function ap127Hours(s){const cur=G?.cur127||[];const lessonsMap={};cur.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});return ((s.flown||[]).reduce((a,f)=>a+(lessonsMap[f.lesson]||ap127FlightMins(f)),0))/60;}
 function ap127CurriculumHours(){return ((G?.cur127||[]).reduce((a,c)=>a+(c.planned_mins||c.mins||0),0))/60;}
@@ -231,13 +236,28 @@ function renderAP127Detail(){
   const lagNames=sortedLag.slice(0,3).map(s=>ap127ShortName(s.name)).join(", ");
   const prg=(total&&curriculum)?(doneAll/(total*curriculum)*100):0;
   const planMap={};(G.cur127||[]).forEach(c=>{if(c.lesson&&c.planned_date)planMap[c.lesson]=c.planned_date;});
-  document.getElementById("d127-k-stu").textContent=total||"-";
-  document.getElementById("d127-k-cur").textContent=curriculum||"-";
-  document.getElementById("d127-k-prg").textContent=prg.toFixed(1)+"%";
-  document.getElementById("d127-k-hrs").textContent=totalHours?`${ap127FmtNum(hrsAll)} / ${ap127FmtNum(totalHours,0)}`:ap127FmtNum(hrsAll);
-  document.getElementById("d127-k-ahead").innerHTML=`<small>Ahead</small>${aheadNames||"-"}`;
-  document.getElementById("d127-k-behind").innerHTML=`<small>Behind</small>${lagNames||"-"}`;
-  document.getElementById("d127-meta").textContent=`${doneAll} lessons done · Avg ${avgDone.toFixed(1)}`;
+  const today0=ap127TodayBKK();
+  const expDone=(G.cur127||[]).filter(c=>c.planned_date&&c.planned_date<=today0).length;
+  // "On track" measured against the cohort's own average pace (the curriculum plan
+  // is aggressive — everyone trails it — so a vs-cohort split is the useful read).
+  let onTrack=0; all.forEach(s=>{ if((s.done||0)>=avgDone) onTrack++; });
+  const behindN=total-onTrack;
+  const opsSync=G._opsSync||0;
+  const opsAtTxt=G._opsAt?(()=>{try{return new Date(G._opsAt).toLocaleDateString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});}catch{return"";}})():"";
+  const setT=(id,t)=>{const e=document.getElementById(id);if(e)e.textContent=t;};
+  const setH=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h;};
+  setT("d127-k-stu",total||"-");
+  setT("d127-k-stu-s",(curriculum||0)+"-lesson curriculum");
+  setT("d127-k-prg",prg.toFixed(1)+"%");
+  setT("d127-k-prg-s",`${doneAll} of ${total*curriculum} lessons flown`);
+  setT("d127-k-track",`${onTrack} / ${behindN}`);
+  setT("d127-k-track-s",`≥ cohort avg ${avgDone.toFixed(0)} · plan wants ${expDone} by today`);
+  setT("d127-k-hrs",totalHours?`${ap127FmtNum(hrsAll)} / ${ap127FmtNum(totalHours,0)}`:ap127FmtNum(hrsAll));
+  setT("d127-k-sync",opsSync);
+  setT("d127-k-sync-s",opsSync?`student${opsSync>1?"s":""} ahead of Progress${opsAtTxt?" · "+opsAtTxt:""}`:"matches Progress record");
+  setH("d127-k-ahead",`<small>Ahead</small>${aheadNames||"-"}`);
+  setH("d127-k-behind",`<small>Behind</small>${lagNames||"-"}`);
+  setT("d127-meta",`${doneAll} lessons done · Avg ${avgDone.toFixed(1)} · ${onTrack}/${total} on track`);
 
   const today=ap127TodayBKK();
   const q=(document.getElementById("d127-q")?.value||"").toLowerCase().trim();
@@ -766,7 +786,7 @@ function buildAP127CombinedChart(){
     type:'line',
     data:{datasets:[
       {label:'Plan',    data:planSeries,  borderColor:'#cbd5e1',borderDash:[6,4],borderWidth:1.5,pointRadius:0,tension:0,order:3},
-      {label:'Actual',  data:actSeries,   borderColor:'#fb923c',borderWidth:2.5, pointRadius:0,tension:0,order:1},
+      {label:'Actual',  data:actSeries,   borderColor:'#e88aff',borderWidth:2.5, pointRadius:0,tension:0,order:1},
       {label:'Projected',data:projSeries, borderColor:'#38bdf8',borderDash:[3,3],borderWidth:1.5,pointRadius:0,tension:0,order:2},
       {label:'Total',   data:totalSeries, borderColor:'rgba(74,222,128,0.22)',borderDash:[2,5],borderWidth:1,pointRadius:0,order:4},
       {label:'Today',   data:todaySeries, borderColor:'rgba(245,158,11,0.6)',borderDash:[4,4],borderWidth:1.5,pointRadius:0,order:0},
@@ -812,6 +832,43 @@ function buildAP127CombinedChart(){
   function mountProgress(data){ G = data; renderAP127Detail(); }
   function destroyProgress(){ try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch(e){} }); } catch(e){} }
 
+  // Reconcile each student's Progress record against the Operations feed, which is
+  // normally more up to date: merge ops-Completed curriculum lessons into `flown`
+  // (recompute done/pct/next_lesson) and replace simulation-projected planned dates
+  // with the real scheduled date — or "TBC". Discrepancies stay visible in Cross-Check.
+  function opsAugment(students, curriculum) {
+    const R = window.AP127Reconcile;
+    const flights = (window.FLIGHT_DATA && window.FLIGHT_DATA.flights) || [];
+    if (!R || !Array.isArray(students)) return { students, syncCount: 0, opsAt: null };
+    const comp = {}, sched = {};                       // keyed by ops name → lesson → flight/date
+    flights.forEach(f => {
+      if (!f.student || !f.lesson || !R.isAP127(f.batch)) return;
+      const k = R.ccNameNorm(f.student), nl = R.normLesson(f.lesson);
+      if (f.status === 'Completed' && f.date) { (comp[k] = comp[k] || {})[nl] = f; }
+      else if (f.status !== 'Canceled' && f.date) { const m = (sched[k] = sched[k] || {}); if (!m[nl] || f.date < m[nl]) m[nl] = f.date; }
+    });
+    const curNorm = new Set((curriculum || []).map(c => R.normLesson(c.lesson)));
+    let syncCount = 0;
+    const out = students.map(s => {
+      const key = R.ccKeyFromFull(s.name);
+      const flownNorm = new Set((s.flown || []).map(f => R.normLesson(f.lesson)));
+      const extra = [];
+      Object.keys(comp[key] || {}).forEach(nl => {
+        if (!flownNorm.has(nl) && curNorm.has(nl)) { const f = comp[key][nl]; extra.push({ lesson: f.lesson, actual_mins: f.durMin || f.actual_mins || 0, actual_ft: f.duration || '', date: f.date, _ops: true }); }
+      });
+      const flown = (extra.length ? [...(s.flown || []), ...extra] : (s.flown || [])).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      if (extra.length) syncCount++;
+      const total = s.total || (curriculum || []).length;
+      const done = flown.length;
+      const flownSet = new Set(flown.map(f => R.normLesson(f.lesson)));
+      const nx = (curriculum || []).find(c => !flownSet.has(R.normLesson(c.lesson)));
+      const m = sched[key] || {};
+      const planned = (s.planned || []).map(p => ({ ...p, date: m[R.normLesson(p.lesson)] || 'TBC' }));
+      return { ...s, flown, done, total, remaining: Math.max(0, total - done), pct: total ? +(done / total * 100).toFixed(1) : 0, next_lesson: nx ? nx.lesson : 'COMPLETE', planned };
+    });
+    return { students: out, syncCount, opsAt: (window.FLIGHT_DATA && window.FLIGHT_DATA.fetchedAt) || null };
+  }
+
   const { useRef, useEffect } = React;
   function CohortView() {
     const d = window.useData();
@@ -819,7 +876,8 @@ function buildAP127CombinedChart(){
     useEffect(() => {
       if (!ref.current) return;
       ref.current.innerHTML = MARKUP;
-      mountProgress({ ap127: d.students, cur127: d.curriculum, _updated: d.progressMeta && d.progressMeta.updated });
+      const aug = opsAugment(d.students, d.curriculum);
+      mountProgress({ ap127: aug.students, cur127: d.curriculum, _updated: d.progressMeta && d.progressMeta.updated, _opsSync: aug.syncCount, _opsAt: aug.opsAt });
       return () => destroyProgress();
     }, [d.students, d.curriculum]);
     return React.createElement('div', { className: 'ap127-progress', ref, style: { height: '100%', overflow: 'auto', padding: 14 } });
