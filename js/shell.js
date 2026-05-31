@@ -19,7 +19,12 @@
       { id: 'slotfinder', label: 'Slot Finder', icon: '⌕' }, { id: 'autoslotfinder', label: 'Auto Slot Finder', icon: '⚡' },
     ] },
     { label: 'Progress', items: [
-      { id: 'cohort', label: 'Progress', icon: '▰' }, { id: 'analytics', label: 'Analytics', icon: '◫' },
+      { id: 'cohort', label: 'AP127 Detail', icon: '▰' }, { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
+    ] },
+    { label: 'Training Program', items: [
+      { id: 'program', label: 'All Batches', icon: '◴' },
+      { id: 'performance', label: "School Perf.", icon: '◷' },
+      { id: 'simulation', label: 'Simulation', icon: '◈' },
     ] },
     { label: 'Integrity', items: [{ id: 'crosscheck', label: 'Cross-Check', icon: '⇄' }] },
   ];
@@ -152,6 +157,9 @@
       slotfinder: window.SlotFinderBoard, autoslotfinder: window.AutoSlotFinderBoard,
       analytics: window.SummaryBoard,
       cohort: window.CohortView,
+      program: window.ProgramOverviewView,
+      performance: window.SchoolPerformanceView,
+      simulation: window.SimulationView,
       crosscheck: window.CrossCheckView,
     };
   }

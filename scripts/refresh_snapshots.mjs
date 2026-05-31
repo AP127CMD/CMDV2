@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FLIGHT_SRC = 'https://raw.githubusercontent.com/nuguitar/AP127_Command_Center/main/flight-data.js';
 const PROGRESS_SRC = 'https://ap127-data-api.anusorn-tanmetha.workers.dev';
+const NGT_SRC = 'https://raw.githubusercontent.com/nuguitar/AP127_NGT_001/main/cache.json';
 const RETRIES = 3, RETRY_DELAY_MS = 15_000;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -73,5 +74,21 @@ const progressJs =
   `// Generated ${nowIso}\n` +
   `window.PROGRESS_DATA = ${JSON.stringify(progress)};\n`;
 writeIfChanged('progress-data.js', progressJs);
+
+// ── 3. Training program: mirror NGT_001 cache.json (all 4 batches) as window.NGT_CACHE ──
+// powers the multi-batch Overview / School's Performance / Simulation views.
+const ngtRaw = await fetchText(NGT_SRC, 'ngt-data');
+let ngt;
+try { ngt = JSON.parse(ngtRaw); } catch (e) { throw new Error(`[ngt-data] not valid JSON: ${e.message}`); }
+if (!Array.isArray(ngt.ap127) || ngt.ap127.length === 0) throw new Error('[ngt-data] missing/empty ap127[] — refusing to write');
+['ap124', 'ap126', 'ap129', 'monthly', 'cur127'].forEach(k => { if (!ngt[k]) console.warn(`[ngt-data] note: ${k} absent in cache.json`); });
+const ngtJs =
+  `// Snapshot of AP127_NGT_001 cache.json (all 4 batches + monthly + curricula) — mirror of\n` +
+  `// ${NGT_SRC}. Refreshed hourly. Powers the Training Program views.\n` +
+  `// Generated ${nowIso}\n` +
+  `window.NGT_CACHE = ${JSON.stringify(ngt)};\n`;
+// writeIfChanged strips both the header and any "_updated" before diffing, so a new
+// upstream rebuild timestamp alone won't trigger a commit — only real data changes do.
+writeIfChanged('ngt-data.js', ngtJs);
 
 console.log('Done.');
