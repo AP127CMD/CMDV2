@@ -54,31 +54,38 @@ index.html              # THE unified single-page app (was app.html) — boots <
 app.html                # redirect → index.html (kept for old bookmarks)
 legacy.html             # the original v1 iframe shell (Home/Ops/Progress/Cross-Check)
 flight-data.js          # operations snapshot  (window.FLIGHT_DATA)
-progress-data.js        # progress snapshot     (window.PROGRESS_DATA) — live fetch w/ fallback
+progress-data.js        # AP127 progress snapshot (window.PROGRESS_DATA) — live fetch w/ fallback
+ngt-data.js             # NGT_001 cache.json mirror (window.NGT_CACHE) — all 4 batches + monthly + curricula
 css/
   theme.css             # design tokens + 3 themes (cockpit / light / warm)
-  progress.css          # scoped dark palette for the ported Progress dashboard
+  progress.css          # scoped dark palette for the AP127 Detail dashboard (.ap127-progress)
+  program.css           # NGT_001 styles scoped under .ngt-prog (Training Program views)
 js/
   shared.js             # unified context (AppProvider/useData), atoms, drawer
-  view-*.js             # one file per view (ops reused from CC; cohort from DashboardR1)
+  view-*.js             # one file per view (ops reused from CC; cohort = AP127 Detail from DashboardR1)
   view-overview.js      # role-aware Overview (home)
   view-crosscheck.js    # native Cross-Check over the shared reconciliation
+  view-program.js       # full NGT_001 parity: All-Batches Overview / School Perf. / Simulation
   shell.js              # sidebar + top bar + routing + Student Lens + boots AP127App
 assets/
   reconcile.js          # shared cross-check engine (pure, no DOM)
+scripts/refresh_snapshots.mjs   # mirrors all 3 upstreams (CC flight-data, progress worker, NGT cache.json)
 legacy support: overview/ crosscheck/ ops/ progress/  # iframed only by legacy.html
 ```
 
 ## Refreshing the bundled snapshots
 
 **Automated (default).** `.github/workflows/refresh-data.yml` runs hourly (and on manual
-dispatch). It executes `scripts/refresh_snapshots.mjs`, which mirrors two upstreams:
+dispatch). It executes `scripts/refresh_snapshots.mjs`, which mirrors three upstreams:
 
 - `flight-data.js` ← Command Center's published copy
   (`raw.githubusercontent.com/nuguitar/AP127_Command_Center/main/flight-data.js`).
   CC owns the Playwright scrape; V2 just tracks its output, so the ops data can't drift.
 - `progress-data.js` ← the `ap127-data-api` Cloudflare Worker (the same endpoint the app
   fetches live), re-wrapped as `window.PROGRESS_DATA`.
+- `ngt-data.js` ← AP127_NGT_001's published `cache.json`
+  (`raw.githubusercontent.com/nuguitar/AP127_NGT_001/main/cache.json`) — all four batches
+  + monthly + curricula, re-wrapped as `window.NGT_CACHE` for the Training Program views.
 
 It commits only on change; Pages (deploy-from-branch) auto-rebuilds on push. The data
 includes carry **no `?v=` token**, so a refresh reaches clients within the Pages ~10-min
