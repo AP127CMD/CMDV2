@@ -45,6 +45,9 @@
     const lensTo = s => { setStudentLens(s); go('student'); };
 
     return h('div', { style: { padding: 16, display: 'grid', gap: 14, overflow: 'auto', height: '100%' } },
+      h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', paddingBottom: 10 } },
+        h('h1', { className: 'head', style: { fontSize: 26, fontWeight: 700, letterSpacing: 0.5, margin: 0 } }, 'AP', h('b', { style: { color: 'var(--highlight)' } }, '127'), ' COMMAND CENTER'),
+        h('span', { className: 'mono uc', style: { fontSize: 10, color: 'var(--ink-3)' } }, 'Operations × Progress · ' + (model.studs.length) + ' students · focus ' + model.focus)),
       h('div', { className: 'kpis' },
         kpi('acc', 'On The Line', model.dayFlights.length, `${model.done} done · ${model.pend} pending · ${model.canc} cxl`, () => { setDate(model.focus); go('today'); }),
         kpi('', 'Cohort Progress', model.cohortPct + '%', `${model.studs.length} students avg`, () => go('cohort')),
@@ -69,11 +72,11 @@
           h('div', { className: 'ph' }, h('span', { className: 'pt' }, 'Alerts'), h('span', { className: 'ps' }, 'needs attention')),
           h('div', { className: 'pb', style: { display: 'grid', gap: 8 } }, (() => {
             const a = [];
-            if (t.conflict) a.push(['bad', '⚠', `${t.conflict} data conflict${t.conflict > 1 ? 's' : ''}`, 'Present in one system, missing in the other — open Cross-Check.', () => go('crosscheck')]);
-            if (t.review) a.push(['rev', '≈', `${t.review} entries to review`, 'Flight time or date differs between Operations and Progress.']);
+            // Integrity items (conflicts / reviews) intentionally NOT shown here — they
+            // surface as the amber dot on the Cross-Check nav item. See REVAMP.md.
             if (idleStu.length) a.push(['rev', '⏸', `${idleStu.length} student${idleStu.length > 1 ? 's' : ''} idle ≥ 7 days`, idleStu.slice(0, 5).map(s => `${s.nick} (${s.idle}d)`).join(', ')]);
             if (model.canc) a.push(['info', '✕', `${model.canc} cancellation${model.canc > 1 ? 's' : ''} on focus day`, 'Review the board for rescheduling.']);
-            if (!a.length) a.push(['ok', '✓', 'All clear', 'No conflicts, no idle students, data in sync.']);
+            if (!a.length) a.push(['ok', '✓', 'All clear', 'No idle students, no cancellations on the focus day.']);
             return a.map((x, i) => h('div', { key: i, onClick: x[4], style: { display: 'flex', gap: 9, alignItems: 'flex-start', padding: '9px 11px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--line)', borderLeft: `3px solid var(--col-${x[0] === 'bad' ? 'cancel' : x[0] === 'rev' ? 'pending' : x[0] === 'info' ? 'stby' : 'done'})`, fontSize: 12, cursor: x[4] ? 'pointer' : 'default' } },
               h('span', { style: { fontSize: 15 } }, x[1]), h('div', null, h('b', null, x[2]), h('div', { className: 'muted', style: { marginTop: 2 } }, x[3]))));
           })()),

@@ -22,8 +22,8 @@ const AP127_SE=["DA40-TDI","DA40-CS","DA40-CS","DA40-CS","DA40-TDI","DA40-TDI","
 const HOL=new Set(["2026-05-01","2026-05-04","2026-05-13","2026-06-01","2026-06-03","2026-07-28","2026-07-29","2026-07-30","2026-08-12","2026-10-13","2026-10-23","2026-12-07","2026-12-10","2026-12-31"]);
 const AP127_FI_FULL={"W-CHAI":"WUTTHICHAI L.","P-YUTH":"PHAHOLYUTH P.","P-YA":"PARINYA B.","S-TI":"SANTI SUK.","N-TORN":"NAPATTORN S.","I-POL":"ITTIPOL P.","SN-TI":"SANTI PO.","A-WAT":"THAWATANAN P.","W-NU":"WISANU T.","K-POL":"KOONPHOL U.","C-CHAI":"CHAROENCHAI U.","E-PHOB":"EKKAPHOP R.","S-WAN":"SOWAN C.","K-CHAI":"KITTICHAI C."};
 // ##AP127NICKS_END##
-const BC={AP124:"#c084fc",AP126:"#38bdf8",AP127:"#fb923c",AP129:"#4ade80"};
-const BB={AP124:"rgba(192,132,252,.12)",AP126:"rgba(56,189,248,.12)",AP127:"rgba(251,146,60,.12)",AP129:"rgba(74,222,128,.12)"};
+const BC={AP124:"#4ba3f7",AP126:"#7acf7e",AP127:"#e88aff",AP129:"#e9bd63"};
+const BB={AP124:"rgba(75,163,247,.12)",AP126:"rgba(122,207,126,.12)",AP127:"rgba(232,138,255,.12)",AP129:"rgba(233,189,99,.12)"};
 
 // Register global plugin for "NOW" vertical line on simulation capacity chart
 /* ===== NOW-line chart plugin ===== */
@@ -156,7 +156,7 @@ function buildLoad(){
   const M=Object.keys(G.monthly||{}).sort();
   const lbl=M.map(m=>{const[y,mo]=m.split("-");return["","J","F","M","A","M","J","J","A","S","O","N","D"][+mo]+"'"+y.slice(2);});
   const v=k=>M.map(m=>(G.monthly[m]||{})[k]||0);
-  CHARTS.load=mkC("c-load",{type:"bar",data:{labels:lbl,datasets:[{label:"AP124",data:v("124"),backgroundColor:"rgba(192,132,252,.75)",stack:"s"},{label:"AP126",data:v("126"),backgroundColor:"rgba(56,189,248,.75)",stack:"s"},{label:"AP127",data:v("127"),backgroundColor:"rgba(251,146,60,.75)",stack:"s"},{label:"AP129",data:v("129"),backgroundColor:"rgba(74,222,128,.75)",stack:"s"},{label:"Cap",data:Array(lbl.length).fill(CFG.cap),type:"line",borderColor:"#f59e0b",borderWidth:1.5,borderDash:[5,3],pointRadius:0,fill:false}]},options:copts({stacked:true,grid:{color:"#21262d"}},{stacked:true,max:Math.max(CFG.cap+3,28),grid:{color:"#21262d"}})});
+  CHARTS.load=mkC("c-load",{type:"bar",data:{labels:lbl,datasets:[{label:"AP124",data:v("124"),backgroundColor:"rgba(75,163,247,.75)",stack:"s"},{label:"AP126",data:v("126"),backgroundColor:"rgba(122,207,126,.75)",stack:"s"},{label:"AP127",data:v("127"),backgroundColor:"rgba(232,138,255,.75)",stack:"s"},{label:"AP129",data:v("129"),backgroundColor:"rgba(233,189,99,.75)",stack:"s"},{label:"Cap",data:Array(lbl.length).fill(CFG.cap),type:"line",borderColor:"#f59e0b",borderWidth:1.5,borderDash:[5,3],pointRadius:0,fill:false}]},options:copts({stacked:true,grid:{color:"#21262d"}},{stacked:true,max:Math.max(CFG.cap+3,28),grid:{color:"#21262d"}})});
 }
 function buildProg(){
   const st=allSt();
@@ -327,10 +327,10 @@ function buildSimCapacityChart(){
   const extras=SIM_G.extra_batches||[];
   const totals=M.map(m=>(merged[m]||{}).t||0);
   const datasets=[
-    {label:"AP124",data:v("124"),backgroundColor:"rgba(192,132,252,.75)",stack:"s"},
-    {label:"AP126",data:v("126"),backgroundColor:"rgba(56,189,248,.75)",stack:"s"},
-    {label:"AP127",data:v("127"),backgroundColor:"rgba(251,146,60,.75)",stack:"s"},
-    {label:"AP129",data:v("129"),backgroundColor:"rgba(74,222,128,.75)",stack:"s"},
+    {label:"AP124",data:v("124"),backgroundColor:"rgba(75,163,247,.75)",stack:"s"},
+    {label:"AP126",data:v("126"),backgroundColor:"rgba(122,207,126,.75)",stack:"s"},
+    {label:"AP127",data:v("127"),backgroundColor:"rgba(232,138,255,.75)",stack:"s"},
+    {label:"AP129",data:v("129"),backgroundColor:"rgba(233,189,99,.75)",stack:"s"},
     ...extras.map(b=>({label:b.name,data:v(b.name),backgroundColor:b.color+"bb",stack:"s"})),
     {label:"Cap",data:Array(lbl.length).fill(cap),type:"line",borderColor:"#f59e0b",borderWidth:1.5,borderDash:[5,3],pointRadius:0,fill:false}
   ];
@@ -477,7 +477,7 @@ function renderPerformance(){
       labels:dates,
       datasets:[
         {label:"Flights",data:dates.map(d=>dm[d].n),backgroundColor:"rgba(245,158,11,.68)",yAxisID:"y"},
-        {label:"Hours",data:dates.map(d=>+dm[d].h.toFixed(2)),type:"line",borderColor:"#38bdf8",pointRadius:0,borderWidth:1.8,yAxisID:"y1"}
+        {label:"Hours",data:dates.map(d=>+dm[d].h.toFixed(2)),type:"line",borderColor:"#7acf7e",pointRadius:0,borderWidth:1.8,yAxisID:"y1"}
       ]
     },
     options:{
@@ -500,10 +500,10 @@ function renderPerformance(){
     data:{
       labels:months,
       datasets:[
-        {label:"AP124",data:months.map(m=>+mm[m].AP124.toFixed(1)),backgroundColor:"rgba(192,132,252,.72)",stack:"h"},
-        {label:"AP126",data:months.map(m=>+mm[m].AP126.toFixed(1)),backgroundColor:"rgba(56,189,248,.72)",stack:"h"},
-        {label:"AP127",data:months.map(m=>+mm[m].AP127.toFixed(1)),backgroundColor:"rgba(251,146,60,.72)",stack:"h"},
-        {label:"AP129",data:months.map(m=>+mm[m].AP129.toFixed(1)),backgroundColor:"rgba(74,222,128,.72)",stack:"h"}
+        {label:"AP124",data:months.map(m=>+mm[m].AP124.toFixed(1)),backgroundColor:"rgba(75,163,247,.72)",stack:"h"},
+        {label:"AP126",data:months.map(m=>+mm[m].AP126.toFixed(1)),backgroundColor:"rgba(122,207,126,.72)",stack:"h"},
+        {label:"AP127",data:months.map(m=>+mm[m].AP127.toFixed(1)),backgroundColor:"rgba(232,138,255,.72)",stack:"h"},
+        {label:"AP129",data:months.map(m=>+mm[m].AP129.toFixed(1)),backgroundColor:"rgba(233,189,99,.72)",stack:"h"}
       ]
     },
     options:{

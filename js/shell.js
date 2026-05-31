@@ -9,7 +9,7 @@
 
   // Nav model — groups → views. `ready` flips true as each view is ported.
   const GROUPS = [
-    { items: [{ id: 'overview', label: 'Overview', icon: '◎', ready: true }] },
+    { items: [{ id: 'overview', label: 'Home', icon: '◎', ready: true }] },
     { label: 'Operations', items: [
       { id: 'today', label: 'Today', icon: '✈' }, { id: 'board', label: 'Board', icon: '▤' },
       { id: 'gantt', label: 'Gantt', icon: '▭' }, { id: 'weekly', label: 'Weekly', icon: '▦' },
@@ -61,9 +61,10 @@
 
   function TopBar({ view, mobile, onMenu }) {
     const d = window.useData();
-    const conf = d.reconciliation.totals.conflict;
+    const t = d.reconciliation.totals;
+    const conf = t.conflict, integrity = (t.conflict || 0) + (t.review || 0);
     return h('header', { style: { flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, height: 48, padding: '0 12px', background: 'var(--bg-2)', borderBottom: '1px solid var(--line)' } },
-      mobile && h('button', { onClick: onMenu, style: { background: 'none', border: 'none', color: 'var(--ink)', fontSize: 20, cursor: 'pointer' } }, '☰'),
+      h('button', { onClick: onMenu, title: mobile ? 'Menu' : 'Collapse / expand sidebar', style: { background: 'none', border: 'none', color: 'var(--ink-2)', fontSize: 19, cursor: 'pointer', lineHeight: 1, padding: '2px 4px' } }, '☰'),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
         h('span', { style: { width: 9, height: 9, borderRadius: 999, background: 'var(--col-done)', boxShadow: '0 0 8px var(--col-done)', animation: 'pulse 2.4s ease-in-out infinite' } }),
         h('span', { className: 'head', style: { fontWeight: 700, fontSize: 18, letterSpacing: 1 } }, 'AP', h('b', { style: { color: 'var(--highlight)' } }, '127')),
@@ -73,23 +74,34 @@
         h(StudentLens),
         !mobile && h(FreshnessDot, { kind: 'PROG', fresh: d.freshness.progress }),
         !mobile && h(FreshnessDot, { kind: 'OPS', fresh: d.freshness.ops }),
-        h('button', { className: 'chip', onClick: () => d.go('crosscheck'), title: 'Data conflicts', style: { display: 'flex', alignItems: 'center', gap: 6 } },
-          '⇄', h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: 700, color: '#fff', background: conf ? 'var(--col-cancel)' : 'var(--col-done)', borderRadius: 999, padding: '1px 6px', minWidth: 16, textAlign: 'center' } }, conf)),
+        h('button', { className: 'chip', onClick: () => d.go('crosscheck'), title: `Cross-Check · ${t.conflict || 0} conflict · ${t.review || 0} to review`, style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          '⇄', h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: 700, color: '#fff', background: conf ? 'var(--col-cancel)' : integrity ? 'var(--col-pending)' : 'var(--col-done)', borderRadius: 999, padding: '1px 6px', minWidth: 16, textAlign: 'center' } }, integrity || 0)),
         ['cockpit', 'light', 'warm'].map(th => h('button', { key: th, onClick: () => d.setTweak('theme', th), title: th + ' theme', className: 'chip' + (d.tweaks.theme === th ? ' sel' : ''), style: { padding: '4px 7px' } }, th[0].toUpperCase())),
         h('button', { className: 'chip', title: 'Reload from server', onClick: () => window.location.reload(true) }, '⟳')));
   }
 
-  function Sidebar({ view, mobile, onClose }) {
+  function Sidebar({ view, mobile, collapsed, onClose }) {
     const d = window.useData();
-    const Item = v => h('button', { key: v.id, onClick: () => { d.go(v.id); if (onClose) onClose(); }, title: v.ready === false ? 'Coming in revamp Phase 2+' : '', className: 'mono uc',
-      style: { display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', textAlign: 'left', border: `1px solid ${view === v.id ? 'var(--highlight)' : 'transparent'}`,
-        background: view === v.id ? 'color-mix(in oklch,var(--highlight) 14%,var(--surface))' : 'transparent', color: view === v.id ? 'var(--highlight)' : 'var(--ink-3)', fontWeight: view === v.id ? 600 : 400, fontSize: 10, opacity: v.ready === false ? 0.55 : 1, width: '100%' } },
-      h('span', { style: { width: 14 } }, v.icon), v.label, v.ready === false && h('span', { style: { marginLeft: 'auto', fontSize: 7, color: 'var(--ink-3)' } }, 'SOON'));
-    return h('div', { style: { width: 224, flexShrink: 0, background: 'var(--bg-2)', borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', height: mobile ? '100vh' : '100%', position: mobile ? 'fixed' : 'relative', top: 0, left: 0, zIndex: mobile ? 200 : 'auto', boxShadow: mobile ? '6px 0 24px oklch(0 0 0 / 0.45)' : 'none', overflowY: 'auto' } },
+    const t = (d.reconciliation && d.reconciliation.totals) || {};
+    const integrityFlag = ((t.conflict || 0) + (t.review || 0)) > 0;   // amber dot on Cross-Check
+    const rail = collapsed && !mobile;                                  // icon-only rail
+    const Item = v => {
+      const active = view === v.id;
+      const flag = v.id === 'crosscheck' && integrityFlag;
+      return h('button', { key: v.id, onClick: () => { d.go(v.id); if (onClose) onClose(); }, title: rail ? v.label : '', className: 'mono uc',
+        style: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: rail ? 'center' : 'flex-start', gap: 10, padding: rail ? '9px 0' : '8px 12px', borderRadius: 6, cursor: 'pointer', textAlign: 'left', border: `1px solid ${active ? 'var(--highlight)' : 'transparent'}`,
+          background: active ? 'color-mix(in oklch,var(--highlight) 14%,var(--surface))' : 'transparent', color: active ? 'var(--highlight)' : 'var(--ink-3)', fontWeight: active ? 600 : 400, fontSize: 10.5, width: '100%' } },
+        h('span', { style: { width: rail ? 'auto' : 19, fontSize: 17, lineHeight: 1, textAlign: 'center', position: 'relative' } }, v.icon,
+          flag && rail && h('span', { style: { position: 'absolute', top: -3, right: -4, width: 7, height: 7, borderRadius: 999, background: 'var(--col-pending)', boxShadow: '0 0 6px var(--col-pending)' } })),
+        !rail && v.label,
+        !rail && flag && h('span', { title: `${t.conflict || 0} conflict · ${t.review || 0} review`, style: { marginLeft: 'auto', width: 8, height: 8, borderRadius: 999, background: 'var(--col-pending)', boxShadow: '0 0 6px var(--col-pending)' } }));
+    };
+    return h('div', { style: { width: rail ? 58 : 224, flexShrink: 0, background: 'var(--bg-2)', borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', height: mobile ? '100vh' : '100%', position: mobile ? 'fixed' : 'relative', top: 0, left: 0, zIndex: mobile ? 200 : 'auto', boxShadow: mobile ? '6px 0 24px oklch(0 0 0 / 0.45)' : 'none', overflowY: 'auto', transition: 'width .15s ease' } },
       mobile && h('div', { style: { padding: '12px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, h('span', { className: 'head', style: { fontWeight: 700 } }, 'AP127 V2'), h('button', { onClick: onClose, style: { background: 'none', border: 'none', color: 'var(--ink-3)', fontSize: 18, cursor: 'pointer' } }, '✕')),
-      h('nav', { style: { padding: 8, display: 'flex', flexDirection: 'column', gap: 2 } },
+      h('nav', { style: { padding: rail ? '8px 6px' : 8, display: 'flex', flexDirection: 'column', gap: 2 } },
         GROUPS.map((g, gi) => h('div', { key: gi, style: { marginTop: g.label ? 10 : 0 } },
-          g.label && h('div', { className: 'mono uc', style: { fontSize: 8, color: 'var(--ink-3)', padding: '2px 12px 4px', letterSpacing: '0.1em' } }, g.label),
+          g.label && !rail && h('div', { className: 'mono uc', style: { fontSize: 8, color: 'var(--ink-3)', padding: '2px 12px 4px', letterSpacing: '0.1em' } }, g.label),
+          g.label && rail && gi > 0 && h('div', { style: { height: 1, background: 'var(--line)', margin: '6px 6px' } }),
           g.items.map(Item)))));
   }
 
@@ -170,12 +182,16 @@
     const d = window.useData();
     const [view, setView] = useState(() => (location.hash || '').replace('#/', '').replace('#', '') || localStorage.getItem('ap127v2-view') || 'overview');
     const [menu, setMenu] = useState(false);
+    const [collapsed, setCollapsed] = useState(() => localStorage.getItem('ap127v2-collapsed') === '1');
     const mobile = d.isMobile;
     useEffect(() => {
       const onGo = e => { setView(e.detail); setMenu(false); };
       window.addEventListener('ap127-go', onGo); return () => window.removeEventListener('ap127-go', onGo);
     }, []);
     useEffect(() => { localStorage.setItem('ap127v2-view', view); try { history.replaceState(null, '', '#/' + view); } catch (e) {} }, [view]);
+    useEffect(() => { localStorage.setItem('ap127v2-collapsed', collapsed ? '1' : '0'); }, [collapsed]);
+    // Burger: mobile opens the drawer; desktop toggles the icon-rail collapse.
+    const onBurger = () => mobile ? setMenu(m => !m) : setCollapsed(c => !c);
 
     const reg = registry();
     const Body = (view === 'overview' || view === 'home') ? window.OverviewView
@@ -184,10 +200,10 @@
       : null;
 
     return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
-      h(TopBar, { view, mobile, onMenu: () => setMenu(m => !m) }),
+      h(TopBar, { view, mobile, onMenu: onBurger }),
       window.Drawer && h(window.Drawer),
       h('div', { style: { flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' } },
-        !mobile && h(Sidebar, { view }),
+        !mobile && h(Sidebar, { view, collapsed }),
         mobile && menu && h('div', null, h('div', { onClick: () => setMenu(false), style: { position: 'fixed', inset: 0, background: 'oklch(0 0 0 / 0.5)', zIndex: 199 } }), h(Sidebar, { view, mobile: true, onClose: () => setMenu(false) })),
         h('div', { style: { flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden' } }, Body ? h(Body, { view }) : h(Placeholder, { view }))));
   }
