@@ -113,29 +113,55 @@
           h('p', { className: 'muted', style: { fontSize: 11, marginTop: 12 } }, 'Phase 5 will link this student\'s scheduled flights (Operations) with their curriculum progress (Charts/Timeline) here. See REVAMP.md §5 “Student Lens”.'))));
   }
 
-  function App() {
+  // Maps view id → component. Resolved at render time (after all view scripts load).
+  // Ops views come from the reused Command Center files (window.*Board).
+  function registry() {
+    return {
+      today: window.DailyBoard, board: window.OpsBoard, gantt: window.GanttBoard,
+      weekly: window.WeeklyBoard, roster: window.RosterBoard, calendar: window.CalendarBoard,
+      slotfinder: window.SlotFinderBoard, autoslotfinder: window.AutoSlotFinderBoard,
+      analytics: window.SummaryBoard,
+      cohort: window.CohortView, timeline: window.TimelineView, charts: window.ChartsView,
+      crosscheck: window.CrossCheckView,
+    };
+  }
+
+  function Shell() {
+    const d = window.useData();
     const [view, setView] = useState(() => (location.hash || '').replace('#/', '').replace('#', '') || localStorage.getItem('ap127v2-view') || 'overview');
-    const [w, setW] = useState(window.innerWidth), [ht, setHt] = useState(window.innerHeight);
     const [menu, setMenu] = useState(false);
-    const mobile = w < 768 || (w < 1100 && ht < 560);
-    useEffect(() => { const f = () => { setW(window.innerWidth); setHt(window.innerHeight); }; window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+    const mobile = d.isMobile;
     useEffect(() => {
       const onGo = e => { setView(e.detail); setMenu(false); };
       window.addEventListener('ap127-go', onGo); return () => window.removeEventListener('ap127-go', onGo);
     }, []);
     useEffect(() => { localStorage.setItem('ap127v2-view', view); try { history.replaceState(null, '', '#/' + view); } catch (e) {} }, [view]);
 
-    const Body = view === 'overview' || view === 'home' ? window.OverviewView
+    const reg = registry();
+    const Body = (view === 'overview' || view === 'home') ? window.OverviewView
       : view === 'student' ? StudentLensView
-      : window.VIEWS_REGISTRY && window.VIEWS_REGISTRY[view] ? window.VIEWS_REGISTRY[view]
+      : reg[view] ? reg[view]
       : null;
 
     return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
       h(TopBar, { view, mobile, onMenu: () => setMenu(m => !m) }),
+      window.Drawer && h(window.Drawer),
       h('div', { style: { flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' } },
         !mobile && h(Sidebar, { view }),
         mobile && menu && h('div', null, h('div', { onClick: () => setMenu(false), style: { position: 'fixed', inset: 0, background: 'oklch(0 0 0 / 0.5)', zIndex: 199 } }), h(Sidebar, { view, mobile: true, onClose: () => setMenu(false) })),
         h('div', { style: { flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden' } }, Body ? h(Body, { view }) : h(Placeholder, { view }))));
+  }
+
+  // Top-level App owns theme/tweaks + viewport, wraps everything in the augmented
+  // AppProvider (from shared.js) so ops views, progress views and the shell share ONE context.
+  function App() {
+    const [w, setW] = useState(window.innerWidth), [ht, setHt] = useState(window.innerHeight);
+    const [tweaks, setTweakState] = useState(() => ({ theme: localStorage.getItem('ap127-theme') || 'cockpit', showSim: false, showStandby: true, groupBy: 'instructor' }));
+    const setTweak = (k, v) => setTweakState(t => ({ ...t, [k]: typeof v === 'function' ? v(t[k]) : v }));
+    useEffect(() => { localStorage.setItem('ap127-theme', tweaks.theme); }, [tweaks.theme]);
+    useEffect(() => { const f = () => { setW(window.innerWidth); setHt(window.innerHeight); }; window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+    const mobile = w < 768 || (w < 1100 && ht < 560);
+    return h(window.AppProvider, { tweaks, setTweak, isMobile: mobile, setView: id => window.dispatchEvent(new CustomEvent('ap127-go', { detail: id })) }, h(Shell));
   }
 
   window.AP127App = App;
