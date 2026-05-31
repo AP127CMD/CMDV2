@@ -1,0 +1,96 @@
+/* ============================================================================
+ * AP127 V2 revamp — unified design system (theme tokens + base + components)
+ * Canonical palette = Command Center's OKLCH tokens (3 themes). All views,
+ * including the ported Progress charts, read these CSS vars so theme switching
+ * is global. See REVAMP.md §8.
+ * ==========================================================================*/
+
+/* ---- Theme tokens (from app-shared THEME_CSS) ---------------------------- */
+:root, body[data-theme="cockpit"] {
+  --bg:oklch(0.16 0.012 245); --bg-2:oklch(0.20 0.013 245); --surface:oklch(0.22 0.014 245);
+  --line:oklch(0.32 0.018 245); --line-soft:oklch(0.27 0.014 245);
+  --ink:oklch(0.96 0.01 245); --ink-2:oklch(0.78 0.012 245); --ink-3:oklch(0.58 0.014 245);
+  --col-pending:oklch(0.83 0.13 75); --col-pending-bg:oklch(0.30 0.06 75 / 0.45);
+  --col-done:oklch(0.80 0.13 145); --col-done-bg:oklch(0.28 0.06 145 / 0.45);
+  --col-cancel:oklch(0.68 0.14 25); --col-cancel-bg:oklch(0.26 0.06 25 / 0.45);
+  --col-sim:oklch(0.72 0.12 280); --col-stby:oklch(0.70 0.13 255);
+  --highlight:oklch(0.78 0.20 316); --highlight-bg:oklch(0.28 0.10 316 / 0.55);
+  --batch-ap124:oklch(0.70 0.15 250); --batch-ap126:oklch(0.78 0.14 145);
+  --batch-ap127:oklch(0.78 0.20 316); --batch-ap128:oklch(0.76 0.15 50); --batch-ap129:oklch(0.82 0.12 84);
+  --shadow:0 6px 24px oklch(0 0 0 / 0.4);
+}
+body[data-theme="light"] {
+  --bg:oklch(0.985 0.005 80); --bg-2:oklch(0.965 0.006 80); --surface:oklch(1 0 0);
+  --line:oklch(0.86 0.008 80); --line-soft:oklch(0.92 0.006 80);
+  --ink:oklch(0.18 0.01 260); --ink-2:oklch(0.40 0.012 260); --ink-3:oklch(0.56 0.012 260);
+  --col-pending:oklch(0.52 0.13 60); --col-pending-bg:oklch(0.94 0.06 75);
+  --col-done:oklch(0.45 0.13 145); --col-done-bg:oklch(0.94 0.06 145);
+  --col-cancel:oklch(0.45 0.14 25); --col-cancel-bg:oklch(0.94 0.05 25);
+  --col-sim:oklch(0.45 0.12 280); --col-stby:oklch(0.45 0.13 255);
+  --highlight:oklch(0.48 0.20 316); --highlight-bg:oklch(0.95 0.06 316);
+  --batch-ap124:oklch(0.45 0.15 250); --batch-ap126:oklch(0.45 0.14 145);
+  --batch-ap127:oklch(0.48 0.20 316); --batch-ap128:oklch(0.50 0.14 50); --batch-ap129:oklch(0.52 0.12 84);
+  --shadow:0 4px 14px oklch(0 0 0 / 0.07);
+}
+body[data-theme="warm"] {
+  --bg:oklch(0.06 0 0); --bg-2:oklch(0.10 0 0); --surface:oklch(0.10 0 0);
+  --line:oklch(0.22 0.01 60); --line-soft:oklch(0.16 0.005 60);
+  --ink:oklch(0.96 0.06 75); --ink-2:oklch(0.78 0.10 75); --ink-3:oklch(0.55 0.08 75);
+  --col-pending:oklch(0.85 0.18 75); --col-pending-bg:oklch(0.18 0.06 75);
+  --col-done:oklch(0.85 0.18 130); --col-done-bg:oklch(0.18 0.06 130);
+  --col-cancel:oklch(0.70 0.18 25); --col-cancel-bg:oklch(0.20 0.06 25);
+  --col-sim:oklch(0.75 0.14 280); --col-stby:oklch(0.70 0.16 255);
+  --highlight:oklch(0.82 0.22 316); --highlight-bg:oklch(0.22 0.08 316);
+  --batch-ap124:oklch(0.72 0.16 250); --batch-ap126:oklch(0.82 0.16 140);
+  --batch-ap127:oklch(0.82 0.22 316); --batch-ap128:oklch(0.80 0.16 50); --batch-ap129:oklch(0.84 0.14 84);
+  --shadow:0 0 0 1px oklch(0.22 0.01 60), 0 8px 30px oklch(0 0 0 / 0.6);
+}
+
+/* ---- Base ---------------------------------------------------------------- */
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body,#root{height:100%;}
+body{background:var(--bg);color:var(--ink);font-family:'Inter',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;}
+#root{display:flex;flex-direction:column;}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-feature-settings:'tnum' 1,'zero' 1;}
+.num{font-variant-numeric:tabular-nums;}
+.uc{text-transform:uppercase;letter-spacing:0.06em;}
+.head{font-family:'Rajdhani',sans-serif;}
+*::-webkit-scrollbar{width:8px;height:8px;}
+*::-webkit-scrollbar-track{background:transparent;}
+*::-webkit-scrollbar-thumb{background:color-mix(in oklch,var(--ink) 18%,transparent);border-radius:999px;border:2px solid transparent;background-clip:padding-box;}
+*::-webkit-scrollbar-thumb:hover{background:color-mix(in oklch,var(--ink) 36%,transparent);background-clip:padding-box;}
+button{font-family:inherit;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+
+/* ---- Shared components (theme-aware) ------------------------------------- */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:9px;overflow:hidden;}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line-soft);gap:8px;flex-wrap:wrap;}
+.pt{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--highlight);text-transform:uppercase;letter-spacing:1px;}
+.ps{font-size:10px;color:var(--ink-3);}
+.pb{padding:12px;}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:12px 14px;position:relative;overflow:hidden;}
+.kpi .kl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1px;}
+.kpi .kv{font-family:'Rajdhani',sans-serif;font-size:30px;line-height:1.05;margin-top:4px;font-weight:700;}
+.kpi .ks{font-size:10px;color:var(--ink-2);margin-top:2px;}
+.kpi.ok .kv{color:var(--col-done);}.kpi.rev .kv{color:var(--col-pending);}.kpi.bad .kv{color:var(--col-cancel);}.kpi.acc .kv{color:var(--highlight);}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:999px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.pill.ok{background:color-mix(in oklch,var(--col-done) 16%,transparent);color:var(--col-done);}
+.pill.rev{background:color-mix(in oklch,var(--col-pending) 16%,transparent);color:var(--col-pending);}
+.pill.bad{background:color-mix(in oklch,var(--col-cancel) 16%,transparent);color:var(--col-cancel);}
+.pill.info{background:color-mix(in oklch,var(--col-stby) 16%,transparent);color:var(--col-stby);}
+.bar{height:6px;border-radius:99px;background:color-mix(in oklch,var(--ink) 12%,transparent);overflow:hidden;}
+.bar>i{display:block;height:100%;background:var(--highlight);}
+.chip{padding:5px 11px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--ink-2);font-family:'JetBrains Mono',monospace;font-size:10px;cursor:pointer;transition:all .12s;}
+.chip:hover{border-color:var(--highlight);color:var(--ink);}
+.chip.sel{border-color:var(--highlight);color:var(--highlight);background:color-mix(in oklch,var(--highlight) 12%,transparent);}
+.link{color:var(--highlight);text-decoration:none;cursor:pointer;}.link:hover{text-decoration:underline;}
+.muted{color:var(--ink-3);}
+.empty{text-align:center;color:var(--ink-3);padding:30px;font-family:'JetBrains Mono',monospace;font-size:11px;}
+table.tb{width:100%;border-collapse:collapse;}
+.tb th,.tb td{padding:7px 8px;border-bottom:1px solid var(--line-soft);text-align:left;font-size:11px;}
+.tb th{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;background:var(--surface);position:sticky;top:0;z-index:2;letter-spacing:.5px;cursor:pointer;user-select:none;}
+.tb th:hover{color:var(--highlight);}
+.tb tr:hover td{background:color-mix(in oklch,var(--highlight) 6%,transparent);}
+.tb .n{font-family:'JetBrains Mono',monospace;text-align:right;}

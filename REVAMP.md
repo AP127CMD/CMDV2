@@ -359,12 +359,29 @@ Use the `ap127v2` preview (port 7423) + screenshots/snapshots; check console for
 
 | Date | Phase | Done | Notes / next |
 |------|-------|------|--------------|
-| 2026-05-31 | v1 | iframe shell (Home/Operations/Progress/Cross-Check), reconcile.js, snapshots, Pages live | Worked but not "one app". |
-| 2026-05-31 | 0 | Full audit of both apps; wrote this REVAMP.md spec | **NEXT: Phase 1 foundation** (theme.css, data.js, shared.js, ui.js, shell.js). |
+| 2026-05-31 | v1 | iframe shell (Home/Operations/Progress/Cross-Check), reconcile.js, snapshots, Pages live | Worked but not "one app". `index.html` = v1, still live. |
+| 2026-05-31 | 0 | Full audit of both apps; wrote this REVAMP.md spec | — |
+| 2026-05-31 | **1 ✅** | Foundation built & verified: `css/theme.css` (3 themes), `js/data.js` (DataProvider: both feeds live+fallback, reconciliation, freshness, global state, `go()` nav), `js/view-overview.js` (native role-aware Overview), `js/shell.js` (grouped sidebar, top bar w/ Student-Lens picker + PROG/OPS freshness + conflict badge + theme + sync, hash routing, mobile drawer, placeholder + StudentLens scaffold), `app.html` boot entry. Verified desktop+mobile, 3 themes, nav, no console errors. | **NEXT: Phase 2** — port Operations views. |
 
-**Current next step:** Begin **Phase 1**. Build `css/theme.css` + `js/data.js` + `js/shared.js` + `js/ui.js` +
-`js/shell.js` and boot an empty-but-navigable shell with the grouped nav, top bar, both feeds loaded, and
-freshness/conflict badge working. Then proceed view-by-view (Phase 2+), ticking §3 as you go.
+**Boot model:** new app = **`app.html`** (loads `css/theme.css` + `js/*`). `index.html` stays the **v1 iframe app**
+so the live Pages site keeps working until the revamp reaches parity (then swap `app.html`→`index.html` in Phase 6).
+Phase 1 modules use `React.createElement` (no JSX) → no Babel needed yet; **add Babel Standalone to `app.html` in Phase 2**
+when porting the JSX-based Operations/Progress views (or convert them to `createElement`).
+
+**Current next step:** Begin **Phase 2 (Operations parity)**. Port `view-today` (from CC `view-daily.js`),
+then board/gantt/weekly/roster/calendar/analytics. For each: lift the CC component, replace its `useApp()` with
+`window.useData()` (same field names — should be near drop-in), register it in `window.VIEWS_REGISTRY[id]`, add
+Babel to `app.html`, and tick its §3A checklist against the original side-by-side. The shell already routes any id
+present in `VIEWS_REGISTRY`; unregistered ids fall back to the Placeholder.
+
+**Integration contract for ported views (IMPORTANT):**
+- A view file does: `(window.VIEWS_REGISTRY = window.VIEWS_REGISTRY || {})['board'] = OpsBoard;`
+- Read state via `const d = window.useData();` — exposes `date,setDate,filters,setFilters,drawer,setDrawer,
+  highlightAP127,setHighlightAP127,hideOthers,setHideOthers,tweaks,setTweak,dayFlights,flightById,FLIGHTS,
+  INSTRUCTORS,RESOURCES,LEAVES,ALL_DATES,DEFAULT_DATE,HIGHLIGHT_BATCH,students,curriculum,reconciliation,
+  freshness,studentLens,setStudentLens,go,localToday,bkkToday,NICKS,FIS,SES,FI_FULL,HOLIDAYS`.
+- CC's shared atoms (StatusPill, Tag, FilterBar, Drawer, DateCalendarTrigger, ViewIcon, etc.) are **not yet ported** —
+  port the ones a view needs into `js/shared.js` (or inline) as you go. Map any hard-coded hex in Progress views to CSS vars.
 
 **Decisions still open (ask the user if blocking):**
 - Keep v1 iframe pages in `ARCHIVE_v1/` or delete? (Default: move to `ARCHIVE_v1/` so live site keeps working until revamp reaches parity.)
