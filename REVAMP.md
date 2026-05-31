@@ -397,6 +397,19 @@ gaps in §3A/§3B found in real use. Verify on the live Pages URL after push.
 
 ---
 
+### UX round (2026-05-31, code `?v=p17`)
+Batch colours unified to the TODAY palette everywhere (AP124 #4ba3f7 / AP126 #7acf7e /
+AP127 #e88aff / AP128 #fc9252 / AP129 #e9bd63; AP127 detail accent → magenta). Sidebar
+collapses to an icon rail via the top-bar burger; bigger nav icons. Overview→**Home** with
+big "AP127 COMMAND CENTER" title; Home Alerts drop integrity items (now an amber dot on the
+Cross-Check nav item + ⇄ chip). **AP127 Detail**: progress reconciled from the Operations
+feed (`opsAugment`), future dates = real scheduled date or TBC, big title, 6-tile summary.
+**Progress Detail**: batch filter. **School Perf**: separate Daily-Flights and Daily-Hours
+charts, stacked by batch. **Gantt**: responsive px/hour (fits viewport, sticky row label).
+**Calendar**: status + batch filters. **Ops Analytics**: 6-col tiles + side-by-side
+instructor/student breakdowns. New **User Guide** view (Help group) documenting every view +
+the logic. All 17 routes verified error-free.
+
 ## 13. GOTCHAS / NOTES
 - No-build React: load order matters (CDNs → data → shared → ui → views → shell boot). Use `type="text/babel"` + per-file hook aliasing.
 - Babel Standalone is slow on huge files; auto-slot-finder is 1842 lines — consider splitting when porting.
