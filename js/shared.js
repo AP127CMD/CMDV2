@@ -9,15 +9,96 @@ const LEAVES      = window.FLIGHT_DATA.leaves;
 const HIGHLIGHT_BATCH = 'AP-127';
 
 // ─── Progress feed (AP127 V2 revamp) ──────────────────────────────────────
-// Reference arrays index-aligned to PROGRESS_DATA.ap127 (see REVAMP.md §4B).
-const AP127_NICKS = ["A-VIT","A-SORN","A-RUT","B-SET","J-YU","K-PONG","K-YA","K-KORN","K-SEE","KRIT","M-PHAN","N-PON","N-KALP","N-PHAT","P-THAN","P-KORN","P-KUL","P-DET","S-SIT","S-KORN","S-WITCH","S-WAN","T-KORN","T-WAJ","V-PHON","W-PHOL","W-POL","W-PONG"];
-const AP127_FIS   = ["W-CHAI","P-YUTH","P-YA","S-TI","N-TORN","I-POL","SN-TI","S-TI","A-WAT","W-NU","K-POL","C-CHAI","P-YUTH","SN-TI","E-PHOB","K-POL","S-WAN","N-TORN","E-PHOB","I-POL","K-CHAI","K-CHAI","P-YA","S-WAN","C-CHAI","W-NU","W-CHAI","A-WAT"];
-const AP127_SES   = ["DA40-TDI","DA40-CS","DA40-CS","DA40-CS","DA40-TDI","DA40-TDI","DA40-CS","DA40-CS","DA40-TDI","DA40-TDI","DA40-CS","DA40-CS","DA40-CS","DA40-CS","DA40-TDI","DA40-CS","DA40-CS","DA40-TDI","DA40-TDI","DA40-TDI","DA40-CS","DA40-CS","DA40-CS","DA40-CS","DA40-CS","DA40-TDI","DA40-TDI","DA40-TDI"];
+// The canonical AP127 roster (28 students). Each row pairs a full name with its
+// call-sign / instructor / aircraft. We key these by NAME (not array position) so
+// a student missing or reordered upstream can NEVER shift everyone else's call-sign
+// — the bug that silently mislabelled the cohort when one record dropped out.
+// [ fullName, callsign, FI, aircraft ]
+const AP127_ROSTER = [
+  ["Akaravit Khwanngam",          "A-VIT",  "W-CHAI", "DA40-TDI"],
+  ["Anusorn Tanmetha",            "A-SORN", "P-YUTH", "DA40-CS"],
+  ["Awirut Sakcharoen",           "A-RUT",  "P-YA",   "DA40-CS"],
+  ["Bulaset Chainontharat",       "B-SET",  "S-TI",   "DA40-CS"],
+  ["Jirayu Amornsatitpan",        "J-YU",   "N-TORN", "DA40-TDI"],
+  ["Khobpong Werawong",           "K-PONG", "I-POL",  "DA40-TDI"],
+  ["Kitthanya Thiaphairat",       "K-YA",   "SN-TI",  "DA40-CS"],
+  ["Korn Suwannaraks",            "K-KORN", "S-TI",   "DA40-CS"],
+  ["Kraisee Luecha",              "K-SEE",  "A-WAT",  "DA40-TDI"],
+  ["Krit Laohamethanee",          "KRIT",   "W-NU",   "DA40-TDI"],
+  ["Maethaphan Ruengprapaikijseree","M-PHAN","K-POL", "DA40-CS"],
+  ["Napon Sawaengpak",            "N-PON",  "C-CHAI", "DA40-CS"],
+  ["Natpakalp Kongvanichsakul",   "N-KALP", "P-YUTH", "DA40-CS"],
+  ["Nuttaphat Kianmatee",         "N-PHAT", "SN-TI",  "DA40-CS"],
+  ["Panithan Veeratanaporn",      "P-THAN", "E-PHOB", "DA40-TDI"],
+  ["Pichakorn Jirapinyo",         "P-KORN", "K-POL",  "DA40-CS"],
+  ["Pornskul Dulya",              "P-KUL",  "S-WAN",  "DA40-CS"],
+  ["Puwadet Hempattawee",         "P-DET",  "N-TORN", "DA40-TDI"],
+  ["Setasit Pittayathikhun",      "S-SIT",  "E-PHOB", "DA40-TDI"],
+  ["Siwakorn Pholphukrat",        "S-KORN", "I-POL",  "DA40-TDI"],
+  ["Sornsorawitch Chanpradubfa",  "S-WITCH","K-CHAI", "DA40-CS"],
+  ["Supawan Adchariyapluk",       "S-WAN",  "K-CHAI", "DA40-CS"],
+  ["Takorn Chuntanapap",          "T-KORN", "P-YA",   "DA40-CS"],
+  ["Teerawaj Chitwicheankul",     "T-WAJ",  "S-WAN",  "DA40-CS"],
+  ["Vasaphon Sinsab",             "V-PHON", "C-CHAI", "DA40-CS"],
+  ["Watcharaphol Vongnoi",        "W-PHOL", "W-NU",   "DA40-TDI"],
+  ["Watcharapol Auttakit",        "W-POL",  "W-CHAI", "DA40-TDI"],
+  ["Watcharapong Chuaidu",        "W-PONG", "A-WAT",  "DA40-TDI"],
+];
+const AP127_NICKS = AP127_ROSTER.map(r => r[1]);
+const AP127_FIS   = AP127_ROSTER.map(r => r[2]);
+const AP127_SES   = AP127_ROSTER.map(r => r[3]);
 const AP127_FI_FULL = {"W-CHAI":"WUTTHICHAI L.","P-YUTH":"PHAHOLYUTH P.","P-YA":"PARINYA B.","S-TI":"SANTI SUK.","N-TORN":"NAPATTORN S.","I-POL":"ITTIPOL P.","SN-TI":"SANTI PO.","A-WAT":"THAWATANAN P.","W-NU":"WISANU T.","K-POL":"KOONPHOL U.","C-CHAI":"CHAROENCHAI U.","E-PHOB":"EKKAPHOP R.","S-WAN":"SOWAN C.","K-CHAI":"KITTICHAI C."};
 const AP127_HOLIDAYS = new Set(["2026-05-01","2026-05-04","2026-05-13","2026-06-01","2026-06-03","2026-07-28","2026-07-29","2026-07-30","2026-08-12","2026-10-13","2026-10-23","2026-12-07","2026-12-10","2026-12-31"]);
 const PROGRESS_WORKER_URL = 'https://ap127-data-api.anusorn-tanmetha.workers.dev';
 const bkkToday = () => { const n = new Date(); return new Date(n.getTime() + (n.getTimezoneOffset() + 420) * 60000).toISOString().slice(0, 10); };
-const injectNicks = students => { (students || []).forEach((s, i) => { s.nick = s.nick || AP127_NICKS[i] || ''; s.fi = s.fi || AP127_FIS[i] || ''; s.se = s.se || AP127_SES[i] || ''; }); return students; };
+
+// "Akaravit Khwanngam" → "AKARAVIT K." (same rule as reconcile.ccKeyFromFull); used
+// to look the roster up by name regardless of order or who is present.
+const _ccKey = name => { const p = String(name || '').trim().split(/\s+/); if (!p[0]) return ''; return p.length < 2 ? p[0].toUpperCase() : (p[0] + ' ' + p[1][0]).toUpperCase() + '.'; };
+const AP127_ROSTER_BY_KEY = {};
+AP127_ROSTER.forEach(([name, nick, fi, se]) => { AP127_ROSTER_BY_KEY[_ccKey(name)] = { name, nick, fi, se }; });
+
+// Assign call-sign/FI/aircraft by NAME (authoritative roster), never by position.
+const injectNicks = students => {
+  (students || []).forEach(s => {
+    const r = AP127_ROSTER_BY_KEY[_ccKey(s.name)];
+    if (r) { s.nick = r.nick; s.fi = r.fi; s.se = r.se; }
+    else { s.nick = s.nick || ''; s.fi = s.fi || ''; s.se = s.se || ''; }   // unknown student — leave blank, don't guess
+  });
+  return students;
+};
+
+// Resilience against an upstream drop: if a student flies in Operations (FLIGHT_DATA)
+// but is absent from the Progress/cache roster, reconstruct their record so the count
+// is complete and correct. Batch-agnostic — backfills whatever batch Ops covers; for
+// AP127 the roster also supplies the proper full name. Marks records `_backfilled`.
+function completeRosterFromOps(students, flights, curLen) {
+  students = Array.isArray(students) ? students : [];
+  const R = window.AP127Reconcile;
+  if (!R || !Array.isArray(flights) || !flights.length) { injectNicks(students); return students; }
+  const present = new Set(students.map(s => R.ccKeyFromFull(s.name)));
+  const opsByKey = {};
+  flights.forEach(f => {
+    if (!f.student || !f.lesson || !R.isAP127(f.batch) || f.student === 'All Students') return;
+    (opsByKey[R.ccNameNorm(f.student)] = opsByKey[R.ccNameNorm(f.student)] || []).push(f);
+  });
+  const total = curLen || (students[0] && students[0].total) || (window.NGT_CACHE && (window.NGT_CACHE.cur127 || []).length) || 96;
+  Object.keys(opsByKey).forEach(key => {
+    if (present.has(key)) return;                          // already in Progress — fine
+    const rosterEntry = AP127_ROSTER_BY_KEY[key];          // proper full name if AP127
+    const flown = [], seen = new Set();
+    opsByKey[key].filter(f => f.status === 'Completed' && f.date)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+      .forEach(f => { const nl = R.normLesson(f.lesson); if (seen.has(nl)) return; seen.add(nl); flown.push({ lesson: f.lesson, actual_mins: f.durMin || 0, actual_ft: f.duration || '', date: f.date }); });
+    const done = flown.length;
+    students.push({ catc_id: '', name: rosterEntry ? rosterEntry.name : (opsByKey[key][0].student || key), batch: 'AP127',
+      done, total, remaining: Math.max(0, total - done), pct: total ? +(done / total * 100).toFixed(1) : 0,
+      flown, planned: [], next_lesson: '', _backfilled: true });
+  });
+  students.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  injectNicks(students);
+  return students;
+}
 
 // ─── Maintenance & leave helpers ─────────────────────────────────────────
 // Set of tail registrations currently in maintenance
@@ -192,14 +273,14 @@ function AppProvider({ children, tweaks, setTweak, isMobile=false, setView=null 
   useEffect(() => { document.body.dataset.theme = tweaks.theme || 'cockpit'; }, [tweaks.theme]);
 
   // ── Progress feed: bundled snapshot synchronously, then live worker refresh ──
-  const [progress, setProgress] = useState(() => { const p = window.PROGRESS_DATA || { ap127: [], cur127: [] }; injectNicks(p.ap127); return p; });
+  const [progress, setProgress] = useState(() => { const p = window.PROGRESS_DATA || { ap127: [], cur127: [] }; p.ap127 = completeRosterFromOps(p.ap127, (window.FLIGHT_DATA || {}).flights, (p.cur127 || []).length); return p; });
   const [progressSource, setProgressSource] = useState('snapshot');
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const r = await fetch(PROGRESS_WORKER_URL, { cache: 'no-store' });
-        if (r.ok) { const d = await r.json(); if (alive && d.ap127 && d.ap127.length) { injectNicks(d.ap127); setProgress(d); setProgressSource('live'); } }
+        if (r.ok) { const d = await r.json(); if (alive && d.ap127 && d.ap127.length) { d.ap127 = completeRosterFromOps(d.ap127, (window.FLIGHT_DATA || {}).flights, (d.cur127 || []).length); setProgress(d); setProgressSource('live'); } }
       } catch (e) { /* keep snapshot */ }
     })();
     return () => { alive = false; };
@@ -949,7 +1030,7 @@ Object.assign(window, {
   DateCalendarPopup, DateCalendarTrigger, RefreshButton, FilterBar, InlineSettings, Drawer,
   ViewIcon, FocusControls, LastUpdate,
   // AP127 V2 revamp: unified context alias + progress refs
-  DataProvider: AppProvider, useData: useApp, bkkToday, injectNicks,
+  DataProvider: AppProvider, useData: useApp, bkkToday, injectNicks, completeRosterFromOps, AP127_ROSTER_BY_KEY,
   AP127_NICKS, AP127_FIS, AP127_SES, AP127_FI_FULL, AP127_HOLIDAYS,
 });
 
