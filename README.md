@@ -1,31 +1,42 @@
-# AP127 V2 — Command & Progress
+# AP127 V2 — Command Center
 
-A single dashboard that **combines** the two AP127 tools into one place for students
-and their leaders to monitor everything, timely and effortlessly:
+A single **native** dashboard (one React SPA, no iframes) that combines the AP127 tools
+into one place for students and leaders to monitor everything, timely and effortlessly:
 
 | Source | What it brought |
 |--------|-----------------|
-| [AP127_Command_Center](https://github.com/nuguitar/AP127_Command_Center) | Operations — live schedule scraped from the Flight Operations Portal: Day Glance, Board, Gantt, Weekly, Analytics, Roster, Auto Slot Finder, Calendar |
-| [AP127_DashboardR1](https://github.com/nuguitar/AP127_DashboardR1) | Progress — curriculum-aligned student progress: ranking, pace bands, combined / race / timeline charts |
+| [AP127_Command_Center](https://github.com/nuguitar/AP127_Command_Center) | Operations — live schedule from the Flight Operations Portal: Today, Board, Gantt, Weekly, Roster, Calendar, Ops Analytics, Slot Finder, Auto Slot Finder |
+| [AP127_DashboardR1](https://github.com/nuguitar/AP127_DashboardR1) | AP127 Detail — curriculum-aligned squadron progress: ranking, pace bands, combined / race / timeline charts |
+| [AP127_NGT_001](https://github.com/nuguitar/AP127_NGT_001) | Training Program — all four batches (AP124/126/127/129): All-Batches overview, School Performance, and the client-side scheduler Simulation |
 
-…plus two **new** unifying views built for V2:
+…plus the **unifying** views built for V2:
 
-- **Home / Overview** — at-a-glance landing: today on the line, cohort progress, pace
+- **Home** — "AP127 COMMAND CENTER" landing: today on the line, cohort progress, pace
   leaders, students behind plan, and a live alerts feed.
 - **Cross-Check** — reconciles the two *independent* data sources and flags **conflicts**
   (a lesson present in one system but missing in the other) and **review** items
   (matched lesson where flight time or date disagrees beyond tolerance).
+- **Student Lens** (top bar) — one student's Operations schedule ⇄ Progress lessons ⇄ plan.
+- **User Guide** — explains every view and the logic behind it.
 
-## Tabs
+## Navigation
 
 ```
-HOME ◎   OPERATIONS ✈   PROGRESS ▰   CROSS-CHECK ⇄
+HOME ◎
+OPERATIONS    Today ✈ · Board ▤ · Gantt ▭ · Weekly ▦ · Roster ▥ · Calendar ▦
+PLANNING      Slot Finder ⌕ · Auto Slot Finder ⚡
+PROGRESS      AP127 Detail ▰ · Ops Analytics ◫
+TRAINING PGM  All Batches ◴ · Progress Detail ▤ · School Perf. ◷ · Simulation ◈
+INTEGRITY     Cross-Check ⇄   (amber dot when review/conflict items exist)
+HELP          User Guide ?
 ```
 
-Each sub-app runs in its own iframe, so all original features work unchanged and there
-are no CSS/JS collisions. The shell adds a shared header with a unified data-freshness
-indicator (PROG + OPS) and a live conflict badge on the Cross-Check tab. The Home tab's
-tiles and links jump between tabs.
+It's one shared React context — no iframes, no CSS/JS collisions. The top bar carries the
+Student-Lens picker, unified PROG/OPS freshness dots, the Cross-Check ⇄ chip, a theme
+switch (cockpit / light / warm), and a burger that collapses the sidebar to an icon rail.
+Batch colours are consistent across every view (AP124 blue · AP126 green · AP127 magenta ·
+AP128 orange · AP129 yellow). `legacy.html` preserves the original v1 iframe shell;
+`app.html` redirects to `index.html`.
 
 ## Data
 
@@ -33,8 +44,14 @@ Two independent feeds, each with a live fetch + a bundled snapshot fallback:
 
 | File | Holds | Live source |
 |------|-------|-------------|
-| `flight-data.js` | `window.FLIGHT_DATA` — all flights (scheduled + actuals) | Command Center GitHub Action snapshot |
-| `progress-data.js` | `window.PROGRESS_DATA` — `ap127[]` students + `cur127[]` curriculum | `ap127-data-api` Cloudflare worker (fetched live; snapshot is the fallback) |
+| `flight-data.js` | `window.FLIGHT_DATA` — all flights (scheduled + actuals) | mirror of Command Center's published `flight-data.js` |
+| `progress-data.js` | `window.PROGRESS_DATA` — AP127 `ap127[]` students + `cur127[]` curriculum | `ap127-data-api` Cloudflare worker (fetched live; snapshot is the fallback) |
+| `ngt-data.js` | `window.NGT_CACHE` — all 4 batches + `monthly` + curricula | mirror of NGT_001's `cache.json` (Training Program views) |
+
+All three are refreshed hourly by `.github/workflows/refresh-data.yml` (commits only on real
+change). Call-sign / instructor / aircraft are assigned to AP127 students **by name** via the
+`AP127_ROSTER` in `js/shared.js` — never by array position — so a student missing or reordered
+upstream can never shift everyone else's labels.
 
 ### Cross-check logic (`assets/reconcile.js`)
 
