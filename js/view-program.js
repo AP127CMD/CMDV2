@@ -820,18 +820,7 @@ const MK_SIM = `
 <!-- ##AP127PAGE_START## -->
 `;
 
-  function initG() {
-    if (!G && window.NGT_CACHE) {
-      G = window.NGT_CACHE;
-      // Backfill any AP127 student missing from the cache but flying in Operations
-      // (same fix as the Progress feed), so all batch views show the full roster.
-      if (window.completeRosterFromOps && !G._rosterFixed) {
-        try { G.ap127 = window.completeRosterFromOps(G.ap127, (window.FLIGHT_DATA || {}).flights, (G.cur127 || []).length); } catch (e) { console.warn('[program] roster backfill failed', e); }
-        G._rosterFixed = true;
-      }
-    }
-    return G;
-  }
+  function initG() { if (!G && window.NGT_CACHE) G = window.NGT_CACHE; return G; }
   function destroy() { try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch (e) {} }); } catch (e) {} }
 
   const { useRef, useEffect } = React;

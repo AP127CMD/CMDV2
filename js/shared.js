@@ -58,7 +58,11 @@ const _ccKey = name => { const p = String(name || '').trim().split(/\s+/); if (!
 const AP127_ROSTER_BY_KEY = {};
 AP127_ROSTER.forEach(([name, nick, fi, se]) => { AP127_ROSTER_BY_KEY[_ccKey(name)] = { name, nick, fi, se }; });
 
-// Assign call-sign/FI/aircraft by NAME (authoritative roster), never by position.
+// Assign call-sign/FI/aircraft by NAME (authoritative roster), never by array position.
+// This is the only behaviour change vs the original: it produces identical labels when
+// the roster is complete, but a student dropped/reordered upstream can no longer shift
+// everyone else's call-sign. We deliberately do NOT fabricate missing students — the
+// progress count mirrors the source data (which self-heals on the next refresh).
 const injectNicks = students => {
   (students || []).forEach(s => {
     const r = AP127_ROSTER_BY_KEY[_ccKey(s.name)];
@@ -67,38 +71,6 @@ const injectNicks = students => {
   });
   return students;
 };
-
-// Resilience against an upstream drop: if a student flies in Operations (FLIGHT_DATA)
-// but is absent from the Progress/cache roster, reconstruct their record so the count
-// is complete and correct. Batch-agnostic — backfills whatever batch Ops covers; for
-// AP127 the roster also supplies the proper full name. Marks records `_backfilled`.
-function completeRosterFromOps(students, flights, curLen) {
-  students = Array.isArray(students) ? students : [];
-  const R = window.AP127Reconcile;
-  if (!R || !Array.isArray(flights) || !flights.length) { injectNicks(students); return students; }
-  const present = new Set(students.map(s => R.ccKeyFromFull(s.name)));
-  const opsByKey = {};
-  flights.forEach(f => {
-    if (!f.student || !f.lesson || !R.isAP127(f.batch) || f.student === 'All Students') return;
-    (opsByKey[R.ccNameNorm(f.student)] = opsByKey[R.ccNameNorm(f.student)] || []).push(f);
-  });
-  const total = curLen || (students[0] && students[0].total) || (window.NGT_CACHE && (window.NGT_CACHE.cur127 || []).length) || 96;
-  Object.keys(opsByKey).forEach(key => {
-    if (present.has(key)) return;                          // already in Progress — fine
-    const rosterEntry = AP127_ROSTER_BY_KEY[key];          // proper full name if AP127
-    const flown = [], seen = new Set();
-    opsByKey[key].filter(f => f.status === 'Completed' && f.date)
-      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-      .forEach(f => { const nl = R.normLesson(f.lesson); if (seen.has(nl)) return; seen.add(nl); flown.push({ lesson: f.lesson, actual_mins: f.durMin || 0, actual_ft: f.duration || '', date: f.date }); });
-    const done = flown.length;
-    students.push({ catc_id: '', name: rosterEntry ? rosterEntry.name : (opsByKey[key][0].student || key), batch: 'AP127',
-      done, total, remaining: Math.max(0, total - done), pct: total ? +(done / total * 100).toFixed(1) : 0,
-      flown, planned: [], next_lesson: '', _backfilled: true });
-  });
-  students.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  injectNicks(students);
-  return students;
-}
 
 // ─── Maintenance & leave helpers ─────────────────────────────────────────
 // Set of tail registrations currently in maintenance
@@ -273,14 +245,14 @@ function AppProvider({ children, tweaks, setTweak, isMobile=false, setView=null 
   useEffect(() => { document.body.dataset.theme = tweaks.theme || 'cockpit'; }, [tweaks.theme]);
 
   // ── Progress feed: bundled snapshot synchronously, then live worker refresh ──
-  const [progress, setProgress] = useState(() => { const p = window.PROGRESS_DATA || { ap127: [], cur127: [] }; p.ap127 = completeRosterFromOps(p.ap127, (window.FLIGHT_DATA || {}).flights, (p.cur127 || []).length); return p; });
+  const [progress, setProgress] = useState(() => { const p = window.PROGRESS_DATA || { ap127: [], cur127: [] }; injectNicks(p.ap127); return p; });
   const [progressSource, setProgressSource] = useState('snapshot');
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const r = await fetch(PROGRESS_WORKER_URL, { cache: 'no-store' });
-        if (r.ok) { const d = await r.json(); if (alive && d.ap127 && d.ap127.length) { d.ap127 = completeRosterFromOps(d.ap127, (window.FLIGHT_DATA || {}).flights, (d.cur127 || []).length); setProgress(d); setProgressSource('live'); } }
+        if (r.ok) { const d = await r.json(); if (alive && d.ap127 && d.ap127.length) { injectNicks(d.ap127); setProgress(d); setProgressSource('live'); } }
       } catch (e) { /* keep snapshot */ }
     })();
     return () => { alive = false; };
@@ -1030,7 +1002,7 @@ Object.assign(window, {
   DateCalendarPopup, DateCalendarTrigger, RefreshButton, FilterBar, InlineSettings, Drawer,
   ViewIcon, FocusControls, LastUpdate,
   // AP127 V2 revamp: unified context alias + progress refs
-  DataProvider: AppProvider, useData: useApp, bkkToday, injectNicks, completeRosterFromOps, AP127_ROSTER_BY_KEY,
+  DataProvider: AppProvider, useData: useApp, bkkToday, injectNicks, AP127_ROSTER_BY_KEY,
   AP127_NICKS, AP127_FIS, AP127_SES, AP127_FI_FULL, AP127_HOLIDAYS,
 });
 
