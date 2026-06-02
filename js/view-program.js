@@ -227,6 +227,7 @@ function renderSimulation(){
   const weEl=document.getElementById("sim-wecap"),holEl=document.getElementById("sim-holcap");
   if(weEl){weEl.value=CFG.weekendCap;document.getElementById("sim-wecap-v").textContent=CFG.weekendCap;}
   if(holEl){holEl.value=CFG.holidayCap;document.getElementById("sim-holcap-v").textContent=CFG.holidayCap;}
+  const rrEl=document.getElementById("sim-rest-reg");if(rrEl)rrEl.checked=CFG.restReg;
   renderSimExtraList();
   renderPriorityChips();
   if(!SIM_G)runSimulation();
@@ -247,7 +248,7 @@ function renderSimFinish(){
   const today=new Date().toISOString().slice(0,10);
   function fcard(name,col,students,startDate){
     const fins=students.map(s=>s.finish).filter(f=>f&&f!=="COMPLETE"&&f!=="N/A").sort();
-    const last=fins.at(-1)||null,first=fins[0]||null;
+    const last=fins.at(-1)||null;
     const done=students.reduce((a,s)=>a+(s.done||0),0);
     const tot=students.reduce((a,s)=>a+(s.total||0),0);
     const remaining=tot-done;
