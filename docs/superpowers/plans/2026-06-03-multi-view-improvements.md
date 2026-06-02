@@ -1,6 +1,6 @@
 # Multi-View Improvements Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> ✅ **COMPLETED 2026-06-03** — All 10 tasks implemented and pushed. Cache-bust token: `p20`.
 
 **Goal:** Implement 12 targeted improvements across School Perf, Cross-Check, Simulation, Roster, Gantt, and nav cleanup.
 
