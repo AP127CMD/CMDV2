@@ -691,6 +691,8 @@ const MK_PERF = `
         <option value="30">Recent 30 Operating Days</option>
         <option value="45">Recent 45 Operating Days</option>
       </select>
+      <button id="pf-inc-we"  class="bt" onclick="this.classList.toggle('active');renderPerformance()">WE</button>
+      <button id="pf-inc-hol" class="bt" onclick="this.classList.toggle('active');renderPerformance()">HOL</button>
       <button class="btn-s" onclick="resetPerformanceFilters()">Reset Filter</button>
       <span id="pf-filter-note" class="d127-meta">Historical view</span>
     </div>
@@ -708,13 +710,33 @@ const MK_PERF = `
     <div class="sc c127"><div class="sl">Best Weekday</div><div class="sv" style="color:var(--c127)" id="pf-best-wd">-</div><div class="ss2" id="pf-best-wd-sub">-</div></div>
     <div class="sc c129"><div class="sl">Top Batch Share</div><div class="sv" style="color:var(--c129)" id="pf-top-batch">-</div><div class="ss2" id="pf-top-batch-sub">-</div></div>
   </div>
-  <div class="cr c2">
-    <div class="cb"><div class="ch">Daily Flights by Batch</div><div class="cs">Stacked bars · flights/day, coloured by batch</div><div style="position:relative;height:250px"><canvas id="c-perf-daily-f"></canvas></div></div>
-    <div class="cb"><div class="ch">Daily Hours by Batch</div><div class="cs">Stacked bars · flight-hours/day, coloured by batch</div><div style="position:relative;height:250px"><canvas id="c-perf-daily-h"></canvas></div></div>
+  <div style="font-size:9px;color:var(--c127);font-family:'JetBrains Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;padding:0 1px">AP127 Only</div>
+  <div class="ss">
+    <div class="sc c127"><div class="sl">AP127 Flights</div><div class="sv" style="color:var(--c127)" id="pf-127-flights">-</div><div class="ss2">in selected range</div></div>
+    <div class="sc c127"><div class="sl">AP127 Hours</div><div class="sv" style="color:var(--c127)" id="pf-127-hours">-</div><div class="ss2">actual flown time</div></div>
+    <div class="sc c127"><div class="sl">AP127 Ops Days</div><div class="sv" style="color:var(--c127)" id="pf-127-days">-</div><div class="ss2">days with AP127 flights</div></div>
+    <div class="sc c127"><div class="sl">AP127 Avg / Day</div><div class="sv" style="color:var(--c127)" id="pf-127-avg">-</div><div class="ss2">per AP127 ops day</div></div>
+    <div class="sc c127"><div class="sl">AP127 Peak Day</div><div class="sv" style="color:var(--c127)" id="pf-127-peak">-</div><div class="ss2" id="pf-127-peak-sub">-</div></div>
   </div>
-  <div class="cr c2">
-    <div class="cb"><div class="ch">Monthly Actual Hours by Batch</div><div class="cs">Historical stacked hours contribution</div><div style="position:relative;height:250px"><canvas id="c-perf-monthly"></canvas></div></div>
-    <div class="cb"><div class="ch" id="pf-recent-title">Recent Operating Days</div><div class="cs">Quick intensity scan</div><div class="pr-list" id="pf-recent"></div></div>
+  <div class="cb">
+    <div class="ch">Daily Flights by Batch</div>
+    <div class="cs">Stacked bars · flights/day, coloured by batch</div>
+    <div class="chart-resize-wrap" id="wrap-perf-daily-f"><canvas id="c-perf-daily-f"></canvas></div>
+  </div>
+  <div class="cb">
+    <div class="ch">Daily Hours by Batch</div>
+    <div class="cs">Stacked bars · flight-hours/day, coloured by batch</div>
+    <div class="chart-resize-wrap" id="wrap-perf-daily-h"><canvas id="c-perf-daily-h"></canvas></div>
+  </div>
+  <div class="cb">
+    <div class="ch">Monthly Actual Hours by Batch</div>
+    <div class="cs">Historical stacked hours contribution</div>
+    <div class="chart-resize-wrap" id="wrap-perf-monthly"><canvas id="c-perf-monthly"></canvas></div>
+  </div>
+  <div class="cb">
+    <div class="ch" id="pf-recent-title">Recent Operating Days</div>
+    <div class="cs">Daily intensity — flights + hours per day</div>
+    <div class="pf-day-grid" id="pf-recent"></div>
   </div>
 </div>
 
