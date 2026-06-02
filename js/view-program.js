@@ -543,8 +543,16 @@ function renderPerformance(){
   observeChartResize('perfMonthly','wrap-perf-monthly');
 
   const recent=dates.filter(d=>dm[d].n>0).slice(-recentN).reverse();
-  const maxRecent=Math.max(...recent.map(d=>dm[d].n),1);
-  document.getElementById("pf-recent").innerHTML=recent.length?recent.map(d=>`<div class="pr-row"><div class="pr-date">${ap127FmtDate(d)}</div><div class="pr-bar"><div class="pr-fill" style="width:${(dm[d].n/maxRecent)*100}%"></div></div><div class="pr-meta">${dm[d].n} / ${dm[d].h.toFixed(1)}h</div></div>`).join(""):`<div class="d127-ad">No operating days in selected range.</div>`;
+  const BPAL_HEX={AP124:'#4ba3f7',AP126:'#7acf7e',AP127:'#e88aff',AP129:'#e9bd63'};
+  const BPAL_KEYS=['AP124','AP126','AP127','AP129'];
+  document.getElementById("pf-recent").innerHTML=recent.length?recent.map(d=>{
+    const tot=dm[d].n;
+    const segs=BPAL_KEYS.map(b=>{
+      const pct=(dm[d].bn[b]||0)/tot*100;
+      return pct>0?`<div style="flex:${pct.toFixed(1)};background:${BPAL_HEX[b]};height:100%"></div>`:'';
+    }).join('');
+    return`<div class="pf-day-card"><div class="pf-day-card-date">${ap127ShortDate(d)}</div><div class="pf-day-card-bar">${segs}</div><div class="pf-day-card-n">${tot}</div><div class="pf-day-card-h">${dm[d].h.toFixed(1)}h</div></div>`;
+  }).join(''):`<div style="color:var(--tx3);font-size:10px;padding:10px">No data in range.</div>`;
 }
 
 function resetPerformanceFilters(){
