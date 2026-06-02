@@ -6,6 +6,7 @@ const HOUR_END_MIN   = 18; // minimum end — extends dynamically if flights run
 
 // Helper: detect non-flight activities (meetings, briefings, ground school)
 const isMeetingFlt = f => /meeting|briefing|debrief|ground.school/i.test(f.lesson || '') || /meeting|recurrent/i.test(f.batch || '');
+const isSoloFlt = f => /\bsolo\b/i.test(f.lesson || '');
 
 // Set of all instructor names across full dataset (computed once)
 const ALL_GANTT_FI_NAMES = new Set(FLIGHTS.map(f => f.instructor).filter(Boolean));
@@ -228,7 +229,8 @@ function GanttBoard() {
                     const width     = ((f.durMin||60)/totalSpan)*100;
                     const isFiSP    = !!f._asFiStudent;
                     const isMtg     = isMeetingFlt(f);
-                    const color     = isFiSP ? 'var(--col-stby)' : isMtg ? 'var(--ink-3)' : STATUS_COLOR(f);
+                    const isSolo    = !isFiSP && isSoloFlt(f);
+                    const color     = isFiSP ? 'var(--col-stby)' : isSolo ? 'var(--col-solo)' : isMtg ? 'var(--ink-3)' : STATUS_COLOR(f);
                     const done      = f.status==='Completed';
                     const dim       = f.status==='Canceled';
                     const stby      = f.isStandby;
@@ -251,16 +253,19 @@ function GanttBoard() {
                         <div className="mono num" style={{ fontSize:9,display:'flex',justifyContent:'space-between',gap:4 }}>
                           <span>{f.start}</span>
                           {isFiSP && <span style={{color:'var(--col-stby)',fontSize:7,fontWeight:600}}>AS SP</span>}
-                          {!isFiSP && done && <span style={{color:'var(--col-done)'}}>✓</span>}
-                          {!isFiSP && stby && <span style={{color:'var(--col-stby)',fontSize:8}}>STBY</span>}
-                          {isMtg && !isFiSP && <span style={{color:'var(--ink-3)',fontSize:7}}>MTG</span>}
+                          {!isFiSP && isSolo && <span style={{color:'var(--col-solo)',fontSize:7,fontWeight:600}}>MONITOR</span>}
+                          {!isFiSP && !isSolo && done && <span style={{color:'var(--col-done)'}}>✓</span>}
+                          {!isFiSP && !isSolo && stby && <span style={{color:'var(--col-stby)',fontSize:8}}>STBY</span>}
+                          {!isFiSP && !isSolo && isMtg && <span style={{color:'var(--ink-3)',fontSize:7}}>MTG</span>}
                         </div>
                         <div style={{ fontSize:isMobile?9:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.2 }}>
                           {isFiSP
                             ? `▾ ${f.lesson}`
-                            : isMtg
-                              ? (f.lesson || f.batch || '—')
-                              : f.student}
+                            : isSolo
+                              ? (f.lesson || '—')
+                              : isMtg
+                                ? (f.lesson || f.batch || '—')
+                                : f.student}
                         </div>
                         {!isMobile && (
                           <div className="mono uc" style={{ fontSize:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',gap:4,alignItems:'center' }}>
@@ -309,6 +314,10 @@ function GanttBoard() {
           <span style={{ display:'flex',gap:5,alignItems:'center' }}>
             <span style={{ width:12,height:7,background:'color-mix(in oklch,var(--ink-3) 15%,var(--surface))',border:'1px solid var(--ink-3)',borderRadius:2 }}/>
             MTG/OTHER
+          </span>
+          <span style={{ display:'flex',gap:5,alignItems:'center' }}>
+            <span style={{ width:12,height:7,background:`color-mix(in oklch,var(--col-solo) 18%,var(--surface))`,border:'1px solid var(--col-solo)',borderRadius:2 }}/>
+            MONITOR/SOLO
           </span>
           <span style={{flex:1}}/>
           <span>CLICK A BAR FOR DETAILS</span>
