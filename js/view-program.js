@@ -148,6 +148,16 @@ function allSt(){const a=[];["ap124","ap126","ap127","ap129"].forEach(k=>(G[k]||
 function filtSt(){return AB==="ALL"?allSt():allSt().filter(s=>s.batch===AB);}
 function lastFin(k){const d=(G[k]||[]).map(s=>s.finish).filter(f=>f&&f!=="COMPLETE"&&f!=="N/A").sort();return d.at(-1)||null;}
 
+/* ===== observeChartResize ===== */
+function observeChartResize(chartKey,wrapperId){
+  if(typeof ResizeObserver==='undefined')return;
+  const el=document.getElementById(wrapperId);
+  if(!el||!CHARTS[chartKey])return;
+  const ro=new ResizeObserver(()=>{CHARTS[chartKey]&&CHARTS[chartKey].resize();});
+  ro.observe(el);
+  if(!CHARTS._ro)CHARTS._ro=[];
+  CHARTS._ro.push(ro);
+}
 /* ===== renderStats ===== */
 function renderStats(){
   const cnt={AP124:(G.ap124||[]).length,AP126:(G.ap126||[]).length,AP127:(G.ap127||[]).length,AP129:(G.ap129||[]).length};
@@ -501,8 +511,10 @@ function renderPerformance(){
       y:{stacked:true,beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},grid:{color:"#21262d"},title:{display:true,text:unit==="h"?"hours / day":"flights / day",color:"#8b949e",font:{size:9,family:"JetBrains Mono"}}}}});
   // Daily FLIGHTS — stacked by batch.
   CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f"}))},options:dailyOpts("n")});
+  observeChartResize('perfDailyF','wrap-perf-daily-f');
   // Daily HOURS — stacked by batch.
   CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h"}))},options:dailyOpts("h")});
+  observeChartResize('perfDailyH','wrap-perf-daily-h');
 
   const mm={};
   rec.forEach(r=>{const m=r.date.slice(0,7);if(!mm[m])mm[m]={AP124:0,AP126:0,AP127:0,AP129:0};mm[m][r.batch]+=r.mins/60;});
@@ -528,6 +540,7 @@ function renderPerformance(){
       }
     }
   });
+  observeChartResize('perfMonthly','wrap-perf-monthly');
 
   const recent=dates.filter(d=>dm[d].n>0).slice(-recentN).reverse();
   const maxRecent=Math.max(...recent.map(d=>dm[d].n),1);
@@ -909,7 +922,10 @@ const MK_SIM = `
 `;
 
   function initG() { if (!G && window.NGT_CACHE) G = window.NGT_CACHE; return G; }
-  function destroy() { try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch (e) {} }); } catch (e) {} }
+  function destroy() {
+    try { Object.values(CHARTS).forEach(c => { try { c && c.destroy?.(); } catch (e) {} }); } catch (e) {}
+    try { (CHARTS._ro||[]).forEach(ro=>ro.disconnect()); CHARTS._ro=[]; } catch(e){}
+  }
 
   const { useRef, useEffect } = React;
   function makeView(markup, render) {
