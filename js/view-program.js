@@ -398,7 +398,6 @@ function collectHistoricalFlights(){
   });
   return rec.sort((a,b)=>a.date.localeCompare(b.date));
 }
-const PERF_BASE_START="2025-11-01";
 function perfIsBusinessDay(ds){
   const d=new Date(ds+"T12:00:00Z");
   const dw=d.getUTCDay();
@@ -418,13 +417,23 @@ function perfBusinessDates(start,end){
 function perfDefaultEnd(recAll){
   return recAll.length?recAll.at(-1).date:new Date().toISOString().slice(0,10);
 }
+function getThreeMonthsAgo(){
+  const today=ap127TodayBKK();
+  const d=new Date(today+'T12:00:00Z');
+  d.setUTCMonth(d.getUTCMonth()-3);
+  return d.toISOString().slice(0,10);
+}
 function renderPerformance(){
-  const recAll=collectHistoricalFlights().filter(r=>r.date>=PERF_BASE_START);
+  const today=ap127TodayBKK();
+  const threeMonthsAgo=getThreeMonthsAgo();
+  const recAll=collectHistoricalFlights().filter(r=>r.date<=today);
   const fromRaw=document.getElementById("pf-from")?.value||"";
   const toRaw=document.getElementById("pf-to")?.value||"";
-  const from=(fromRaw&&fromRaw>PERF_BASE_START)?fromRaw:PERF_BASE_START;
-  const to=toRaw||perfDefaultEnd(recAll);
-  if(fromRaw&&fromRaw<PERF_BASE_START){const el=document.getElementById("pf-from");if(el)el.value=PERF_BASE_START;}
+  const from=fromRaw||threeMonthsAgo;
+  const to=(toRaw&&toRaw<=today)?toRaw:today;
+  const toEl=document.getElementById("pf-to");if(toEl){toEl.max=today;if(!toRaw)toEl.value=to;}
+  const incWE=document.getElementById('pf-inc-we')?.classList.contains('active')||false;
+  const incHol=document.getElementById('pf-inc-hol')?.classList.contains('active')||false;
   if(from>to){toast("Performance date range is invalid","wa");return;}
   const batch=document.getElementById("pf-batch")?.value||"ALL";
   const recentN=+(document.getElementById("pf-recent-n")?.value||20);
@@ -432,6 +441,11 @@ function renderPerformance(){
   const bizDates=perfBusinessDates(from,to);
   const opsSet=new Set(bizDates);
   rec.forEach(r=>opsSet.add(r.date));
+  if(incWE){
+    let cur=new Date(from+'T12:00:00Z');const end=new Date(to+'T12:00:00Z');
+    while(cur<=end){const dw=cur.getUTCDay();if(dw===0||dw===6)opsSet.add(cur.toISOString().slice(0,10));cur.setUTCDate(cur.getUTCDate()+1);}
+  }
+  if(incHol){HOL.forEach(ds=>{if(ds>=from&&ds<=to)opsSet.add(ds);});}
   const allDates=[...opsSet].sort();
   const extraNonBiz=allDates.filter(d=>!bizDates.includes(d)).length;
   const filterNote=document.getElementById("pf-filter-note");
@@ -521,12 +535,19 @@ function renderPerformance(){
 }
 
 function resetPerformanceFilters(){
-  const all=collectHistoricalFlights().filter(r=>r.date>=PERF_BASE_START);
-  const a=document.getElementById("pf-from"),b=document.getElementById("pf-to"),c=document.getElementById("pf-batch"),d=document.getElementById("pf-recent-n");
-  if(a)a.value=PERF_BASE_START;
-  if(b)b.value=perfDefaultEnd(all);
+  const today=ap127TodayBKK();
+  const a=document.getElementById("pf-from"),b=document.getElementById("pf-to"),
+        c=document.getElementById("pf-batch"),d=document.getElementById("pf-recent-n");
+  if(a)a.value=getThreeMonthsAgo();
+  if(b){b.value=today;b.max=today;}
   if(c)c.value="ALL";
   if(d)d.value="20";
+  document.getElementById('pf-inc-we')?.classList.remove('active');
+  document.getElementById('pf-inc-hol')?.classList.remove('active');
+  ['pf-127-flights','pf-127-hours','pf-127-days','pf-127-avg','pf-127-peak'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.textContent='-';
+  });
+  const sub=document.getElementById('pf-127-peak-sub');if(sub)sub.textContent='-';
   renderPerformance();
 }
 
