@@ -11,7 +11,7 @@
   // ---- module globals + scheduler config (from NGT_001 index.html) ----
   let G = null, SIM_G = null, EXTRA_BATCHES = [], AB = "ALL";
   const CHARTS = {};
-  let CFG = { cap: 25, n129: 13, ap129start: "2026-06-01", horizon: 800, hourMode: false, weekendCap: 13, holidayCap: 13, _weAuto: true, _holAuto: true, recents: 3, upcomings: 8, showRest: true, showNextTag: true, cardH: 220 };
+  let CFG = { cap: 25, n129: 13, ap129start: "2026-06-01", horizon: 800, hourMode: false, weekendCap: 13, holidayCap: 13, _weAuto: true, _holAuto: true, recents: 3, upcomings: 8, showRest: true, showNextTag: true, cardH: 220, restReg: false, priority: null };
   function toast(msg) { try { console.log("[program]", msg); } catch (e) {} }
 
   // ======================= begin verbatim NGT_001 logic =======================
@@ -61,6 +61,12 @@ function getOpDays(s,n,weekendCap,holidayCap,weekdayCap){
   return a;
 }
 
+function priorityOrder(p){
+  if(p==='ap126')       return['AP126','AP124','AP127'];
+  if(p==='ap126_ap127') return['AP126','AP127','AP124'];
+  if(p==='ap127')       return['AP127','AP124','AP126'];
+  return['AP124','AP126','AP127'];
+}
 function runScheduler(batchData,curricula,extraBatches=[],startDate="",hourMode=false,weekendCap=0,holidayCap=0){
   const{cap,n129,ap129start,horizon}=CFG;
   const ops=getOpDays(startDate||"2026-05-05",horizon,weekendCap,holidayCap,cap);
@@ -97,12 +103,12 @@ function runScheduler(batchData,curricula,extraBatches=[],startDate="",hourMode=
   const wExtra=extraBatches.map(b=>{const i=wds.findIndex(d=>d>=(b.start||"9999"));return i<0?wds.length:i;});
   function elig(b,cur,wi,overN){
     const tot=cur.length,wl=Math.max(horizon-wi,1),n=overN!==undefined?overN:(b==="AP129"?n129:(batchData[b]||[]).length),out=[];
-    for(let i=0;i<n;i++){if(iM[b][i]>=tot)continue;const gap=lmM[b][i]>=120?2:1;if((wi-lwM[b][i])<gap)continue;out.push([(tot-iM[b][i])/wl,i]);}
+    for(let i=0;i<n;i++){if(iM[b][i]>=tot)continue;const gap=(CFG.restReg&&lmM[b][i]>=120)?2:1;if((wi-lwM[b][i])<gap)continue;out.push([(tot-iM[b][i])/wl,i]);}
     return out.sort((a,z)=>z[0]-a[0]);
   }
   wds.forEach((ds,wi)=>{
     let slots=ops[wi].cap;
-    ["AP124","AP126","AP127"].forEach(b=>{
+    priorityOrder(CFG.priority).forEach(b=>{
       if(slots<=0)return;const cur=curricula[b]||[];
       for(const[,i]of elig(b,cur,wi)){if(slots<=0)break;const ix=iM[b][i];if(ix>=cur.length)continue;const p=cur[ix];const cost=hourMode?p.planned_mins/60:1;if(slots<cost)continue;schM[b][i].push([ds,p.lesson,p.planned_mins]);lwM[b][i]=wi;lmM[b][i]=p.planned_mins;iM[b][i]=ix+1;slots-=cost;}
     });
@@ -222,6 +228,7 @@ function renderSimulation(){
   if(weEl){weEl.value=CFG.weekendCap;document.getElementById("sim-wecap-v").textContent=CFG.weekendCap;}
   if(holEl){holEl.value=CFG.holidayCap;document.getElementById("sim-holcap-v").textContent=CFG.holidayCap;}
   renderSimExtraList();
+  renderPriorityChips();
   if(!SIM_G)runSimulation();
 }
 function propagateCapToWeHol(capVal){
@@ -258,7 +265,7 @@ function renderSimFinish(){
       <div class="sim-fcard-bar"><div class="sim-fcard-barf" style="width:${pct.toFixed(1)}%;background:${col}"></div></div>
       <div class="sim-fcard-stats">
         <div class="sim-fcard-stat"><div class="sim-fcard-stat-v" style="color:${col}">${pct.toFixed(0)}%</div><div class="sim-fcard-stat-l">Done</div></div>
-        <div class="sim-fcard-stat"><div class="sim-fcard-stat-v">${first?fm(first):"—"}</div><div class="sim-fcard-stat-l">First finishes</div></div>
+        <div class="sim-fcard-stat"><div class="sim-fcard-stat-v">${last?fm(last):"—"}</div><div class="sim-fcard-stat-l">Last SP finish</div></div>
         <div class="sim-fcard-stat"><div class="sim-fcard-stat-v" style="color:${col}">${moTxt}</div><div class="sim-fcard-stat-l">Months to go</div></div>
         <div class="sim-fcard-stat"><div class="sim-fcard-stat-v">${remaining.toLocaleString()}</div><div class="sim-fcard-stat-l">Lessons left</div></div>
       </div>
@@ -595,8 +602,29 @@ function resetPerformanceFilters(){
   }
   function setPlansBatch(b) { AB = b || "ALL"; renderPlans(); }
 
+  function onRestRegChange(checked){ CFG.restReg=checked; }
+  function onPriorityChange(val){
+    CFG.priority=(CFG.priority===val)?null:val;
+    renderPriorityChips();
+  }
+  function renderPriorityChips(){
+    ['ap126','ap126_ap127','ap127'].forEach(v=>{
+      const el=document.getElementById('sim-pri-'+v);
+      if(!el)return;
+      const active=CFG.priority===v;
+      el.style.border=`1px solid ${active?'var(--c127)':'var(--bd)'}`;
+      el.style.background=active?'color-mix(in oklch,var(--c127) 14%,var(--s1))':'transparent';
+      el.style.color=active?'var(--c127)':'var(--tx3)';
+      el.style.fontWeight=active?'600':'400';
+    });
+    const info=document.getElementById('sim-priority-info');
+    if(!info)return;
+    const labels={'ap126':'AP126 → AP124 → AP127','ap126_ap127':'AP126 → AP127 → AP124','ap127':'AP127 → AP124 → AP126'};
+    info.textContent=CFG.priority?labels[CFG.priority]:'AP124 → AP126 → AP127 (default)';
+  }
+
   // Expose inline-handler targets referenced by the embedded markup + generated rows.
-  Object.assign(window, { renderPerformance, resetPerformanceFilters, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch });
+  Object.assign(window, { renderPerformance, resetPerformanceFilters, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch, onRestRegChange, onPriorityChange, renderPriorityChips });
 
   // ---- page markups (verbatim from NGT_001 index.html) ----
 const MK_OVERVIEW = `
@@ -749,6 +777,22 @@ const MK_SIM = `
             <span style="font-size:10px;color:var(--tx3)" id="holcap-unit">/day</span>
           </div>
         </div>
+        <div class="sim-ctrl-item">
+          <div class="sim-ctrl-lbl">Resting Regulation</div>
+          <div class="sim-ctrl-desc">After a flight ≥ 2 hrs, student skips 1 extra workday before next flight</div>
+          <div class="sim-ctrl-val" style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:10px;color:var(--tx3)">Off</span>
+            <label class="tsw"><input type="checkbox" id="sim-rest-reg" onchange="onRestRegChange(this.checked)"><span class="tsw-track"></span></label>
+            <span style="font-size:10px;color:var(--tx3)">On</span>
+          </div>
+        </div>
+      </div>
+      <div class="sim-ctrl-title" style="margin-top:4px">Priority Regulation</div>
+      <div style="font-size:10px;color:var(--tx3);margin-bottom:10px;line-height:1.5">Override default batch priority. Select one option, or none for default order.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+        <button id="sim-pri-ap126" class="bt" onclick="onPriorityChange('ap126')">AP126 first</button>
+        <button id="sim-pri-ap126_ap127" class="bt" onclick="onPriorityChange('ap126_ap127')">AP126 + AP127 first</button>
+        <button id="sim-pri-ap127" class="bt" onclick="onPriorityChange('ap127')">AP127 first</button>
       </div>
       <div class="sim-ctrl-title" style="margin-top:4px">Additional Batches</div>
       <div style="font-size:10px;color:var(--tx3);margin-bottom:10px;line-height:1.5">All additional batches use the AP127 curriculum (101 lessons). Priority after AP129.</div>
@@ -769,7 +813,7 @@ const MK_SIM = `
         </div>
         <div class="sim-info-item">
           <div class="sim-info-lbl">Priority order</div>
-          <div class="sim-info-val"><span style="color:var(--c124)">AP124</span> → <span style="color:var(--c126)">AP126</span> → <span style="color:var(--c127)">AP127</span> → <span style="color:var(--c129)">AP129</span> → Extra batches (in added order)</div>
+          <div class="sim-info-val" id="sim-priority-info">AP124 → AP126 → AP127 (default)</div>
         </div>
         <div class="sim-info-item">
           <div class="sim-info-lbl">Daily cap</div>
