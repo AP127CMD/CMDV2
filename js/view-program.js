@@ -553,6 +553,22 @@ function renderPerformance(){
     }).join('');
     return`<div class="pf-day-card"><div class="pf-day-card-date">${ap127ShortDate(d)}</div><div class="pf-day-card-bar">${segs}</div><div class="pf-day-card-n">${tot}</div><div class="pf-day-card-h">${dm[d].h.toFixed(1)}h</div></div>`;
   }).join(''):`<div style="color:var(--tx3);font-size:10px;padding:10px">No data in range.</div>`;
+
+  // AP127-only stats
+  const rec127=rec.filter(r=>r.batch==='AP127');
+  const total127=rec127.length;
+  const hours127=rec127.reduce((a,r)=>a+r.mins,0)/60;
+  const dates127=[...new Set(rec127.map(r=>r.date))];
+  const avg127=dates127.length?(total127/dates127.length):0;
+  const peak127Entry=dates127.length?dates127.reduce((best,d)=>((dm[d]?.bn?.AP127||0)>(dm[best]?.bn?.AP127||0)?d:best),dates127[0]):null;
+  const f127=id=>{const el=document.getElementById(id);return el||{textContent:''};};
+  f127('pf-127-flights').textContent=total127||'-';
+  f127('pf-127-hours').textContent=total127?hours127.toFixed(1):'-';
+  f127('pf-127-days').textContent=dates127.length||'-';
+  f127('pf-127-avg').textContent=total127?avg127.toFixed(2):'-';
+  f127('pf-127-peak').textContent=peak127Entry?ap127FmtDate(peak127Entry):'-';
+  const peakSub=document.getElementById('pf-127-peak-sub');
+  if(peakSub)peakSub.textContent=peak127Entry?`${dm[peak127Entry]?.bn?.AP127||0} flights`:'';
 }
 
 function resetPerformanceFilters(){
