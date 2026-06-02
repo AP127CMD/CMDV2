@@ -16,13 +16,12 @@
       { id: 'roster', label: 'Roster', icon: '▥' }, { id: 'calendar', label: 'Calendar', icon: '▦' },
     ] },
     { label: 'Planning', items: [
-      { id: 'slotfinder', label: 'Slot Finder', icon: '⌕' }, { id: 'autoslotfinder', label: 'Auto Slot Finder', icon: '⚡' },
+      { id: 'autoslotfinder', label: 'Auto Slot Finder', icon: '⚡' },
     ] },
     { label: 'Progress', items: [
       { id: 'cohort', label: 'AP127 Detail', icon: '▰' }, { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
     ] },
     { label: 'Training Program', items: [
-      { id: 'program', label: 'All Batches', icon: '◴' },
       { id: 'plans', label: 'Progress Detail', icon: '▤' },
       { id: 'performance', label: "School Perf.", icon: '◷' },
       { id: 'simulation', label: 'Simulation', icon: '◈' },
@@ -168,10 +167,9 @@
     return {
       today: window.DailyBoard, board: window.OpsBoard, gantt: window.GanttBoard,
       weekly: window.WeeklyBoard, roster: window.RosterBoard, calendar: window.CalendarBoard,
-      slotfinder: window.SlotFinderBoard, autoslotfinder: window.AutoSlotFinderBoard,
+      autoslotfinder: window.AutoSlotFinderBoard,
       analytics: window.SummaryBoard,
       cohort: window.CohortView,
-      program: window.ProgramOverviewView,
       plans: window.ProgressDetailView,
       performance: window.SchoolPerformanceView,
       simulation: window.SimulationView,

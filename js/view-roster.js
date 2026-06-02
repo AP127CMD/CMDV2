@@ -34,7 +34,7 @@ function RosterBoard() {
         ? (f.instructor || '—')
         : groupBy === 'batch'
           ? (f.batch      || '—')
-          : (f.student    || '—');
+          : ((f.student || '—').replace(/\s*\(Unplanned\)\s*/i, '').trim() || '—');
       keySet.add(key);
 
       if (!m[key])           m[key]           = {};

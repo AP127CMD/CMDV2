@@ -123,7 +123,7 @@
         const exact = matches.find(m => m.date === pf.date);
         const m = exact || matches.slice().sort((a, b) =>
           Math.abs(dateDiff(a.date, pf.date)) - Math.abs(dateDiff(b.date, pf.date)))[0];
-        const ccMin = hmToMin(m.airborne) != null ? hmToMin(m.airborne) : hmToMin(m.duration);
+        const ccMin = hmToMin(m.duration) != null ? hmToMin(m.duration) : hmToMin(m.airborne);
         const pMin = pf.actual_mins;
         const issues = [];
         const dd = dateDiff(m.date, pf.date);
