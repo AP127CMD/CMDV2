@@ -163,6 +163,7 @@ const THEME_CSS = `
     --col-cancel-bg:  oklch(0.26 0.06  25 / 0.45);
     --col-sim:        oklch(0.72 0.12 280);
     --col-stby:       oklch(0.70 0.13 255);
+    --col-solo:       oklch(0.78 0.15 65);
     --highlight:      oklch(0.78 0.20 316);
     --highlight-bg:   oklch(0.28 0.10 316 / 0.55);
     --batch-ap124:    oklch(0.70 0.15 250);
@@ -189,6 +190,7 @@ const THEME_CSS = `
     --col-cancel-bg:  oklch(0.94 0.05  25);
     --col-sim:        oklch(0.45 0.12 280);
     --col-stby:       oklch(0.45 0.13 255);
+    --col-solo:       oklch(0.52 0.14 65);
     --highlight:      oklch(0.48 0.20 316);
     --highlight-bg:   oklch(0.95 0.06 316);
     --batch-ap124:    oklch(0.45 0.15 250);
@@ -215,6 +217,7 @@ const THEME_CSS = `
     --col-cancel-bg:  oklch(0.20 0.06  25);
     --col-sim:        oklch(0.75 0.14 280);
     --col-stby:       oklch(0.70 0.16 255);
+    --col-solo:       oklch(0.82 0.18 65);
     --highlight:      oklch(0.82 0.22 316);
     --highlight-bg:   oklch(0.22 0.08 316);
     --batch-ap124:    oklch(0.72 0.16 250);

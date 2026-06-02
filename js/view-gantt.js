@@ -316,7 +316,7 @@ function GanttBoard() {
             MTG/OTHER
           </span>
           <span style={{ display:'flex',gap:5,alignItems:'center' }}>
-            <span style={{ width:12,height:7,background:`color-mix(in oklch,var(--col-solo) 18%,var(--surface))`,border:'1px solid var(--col-solo)',borderRadius:2 }}/>
+            <span style={{ width:12,height:7,background:`color-mix(in oklch,var(--col-solo) 20%,var(--surface))`,border:'1px solid var(--col-solo)',borderRadius:2 }}/>
             MONITOR/SOLO
           </span>
           <span style={{flex:1}}/>
