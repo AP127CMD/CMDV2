@@ -430,6 +430,7 @@ function perfDefaultEnd(recAll){
 function getThreeMonthsAgo(){
   const today=ap127TodayBKK();
   const d=new Date(today+'T12:00:00Z');
+  d.setUTCDate(1);
   d.setUTCMonth(d.getUTCMonth()-3);
   return d.toISOString().slice(0,10);
 }
