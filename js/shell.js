@@ -113,8 +113,6 @@
       const days = Math.max(1, Math.round((new Date(today) - new Date(firstDate)) / 86400000));
       const pace = done / days;
       const remaining = Math.max(total - done, 0);
-      const projEnd = pace > 0 ? new Date(new Date(today).getTime() + (remaining / pace) * 86400000).toISOString().slice(0, 10) : null;
-      const proj = projEnd ? [{ x: today, y: done }, { x: projEnd, y: total }] : [];
       let chart;
       try {
         chart = new window.Chart(ctx, {
@@ -122,7 +120,6 @@
           data: { datasets: [
             { label: 'Plan', data: plan, borderColor: '#cbd5e1', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, tension: 0 },
             { label: 'Actual', data: actual, borderColor: '#e88aff', borderWidth: 2.5, pointRadius: 2, tension: 0 },
-            { label: 'Projected', data: proj, borderColor: '#38bdf8', borderDash: [3, 3], borderWidth: 1.5, pointRadius: 0, tension: 0 },
           ] },
           options: {
             responsive: true, maintainAspectRatio: false, parsing: { xAxisKey: 'x', yAxisKey: 'y' },
