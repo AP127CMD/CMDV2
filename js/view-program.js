@@ -41,7 +41,8 @@ Chart.register({id:"catcNowLine",afterDraw(chart){
   ctx.fillText("NOW",x+3,top+10);
   ctx.restore();
 }});
-/* chartjs-plugin-datalabels loaded via CDN but NOT registered — tooltips only, no bar labels */
+/* Register chartjs-plugin-datalabels for School Perf monthly + recent charts */
+try { if(window.ChartDataLabels) Chart.register(window.ChartDataLabels); } catch(e){}
 /* ===== EXTRA_COLORS + escHtml ===== */
 const EXTRA_COLORS=['#a78bfa','#f472b6','#34d399','#60a5fa','#fbbf24','#f87171'];
 function escHtml(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
@@ -494,16 +495,20 @@ function renderPerformance(){
       return yr===thisYear?`${day} ${mo}`:`${day} ${mo} '${String(yr).slice(2)}`;
     }catch{return null;}
   };
-  const xTickFmt=(value)=>{
+  // ISO week key so week-boundary detection works even when Monday is a holiday/weekend
+  const isoWeek=(ds)=>{const d=new Date(ds+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=d.getUTCFullYear();return`${y}-${Math.ceil((((d-new Date(Date.UTC(y,0,1)))/86400000)+1)/7)}`;};
+  const xTickFmt=(value,index)=>{
     if(!value||!value.slice)return null;
-    if(rangeDays>90)return value.slice(8)==='01'?xAxisLabel(value):null;
-    if(rangeDays>14)return new Date(value+'T00:00:00').getDay()===1?xAxisLabel(value):null;
+    const prev=index>0?dates[index-1]:null;
+    if(rangeDays>90)return(!prev||prev.slice(0,7)!==value.slice(0,7))?xAxisLabel(value):null;
+    if(rangeDays>14)return(!prev||isoWeek(value)!==isoWeek(prev))?xAxisLabel(value):null;
     return xAxisLabel(value);
   };
   const xGridColor=(ctx)=>{
     const d=dates[ctx.index];if(!d)return'#21262d';
-    if(rangeDays>90)return d.slice(8)==='01'?'#40464d':'#1a1f26';
-    if(rangeDays>14)return new Date(d+'T00:00:00').getDay()===1?'#40464d':'#1a1f26';
+    const prev=ctx.index>0?dates[ctx.index-1]:null;
+    if(rangeDays>90)return(!prev||prev.slice(0,7)!==d.slice(0,7))?'#40464d':'#1a1f26';
+    if(rangeDays>14)return(!prev||isoWeek(d)!==isoWeek(prev))?'#40464d':'#1a1f26';
     return'#21262d';
   };
   const days=dates.length,avg=totalFlights/days;
@@ -544,10 +549,10 @@ function renderPerformance(){
     }
   });
   // Daily FLIGHTS — stacked by batch.
-  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f"}))},options:dailyOpts("n")});
+  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f",borderWidth:0}))},options:dailyOpts("n")});
   observeChartResize('perfDailyF','wrap-perf-daily-f');
   // Daily HOURS — stacked by batch.
-  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h"}))},options:dailyOpts("h")});
+  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h",borderWidth:0}))},options:dailyOpts("h")});
   observeChartResize('perfDailyH','wrap-perf-daily-h');
 
   const mm={};
