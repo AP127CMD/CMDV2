@@ -8,9 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="css/theme.css?v=p26"/>
-<link rel="stylesheet" href="css/progress.css?v=p26"/>
-<link rel="stylesheet" href="css/program.css?v=p26"/>
+<link rel="stylesheet" href="css/theme.css?v=p27"/>
+<link rel="stylesheet" href="css/progress.css?v=p27"/>
+<link rel="stylesheet" href="css/program.css?v=p27"/>
 </head>
 <body data-theme="cockpit">
 <div id="root"></div>
@@ -30,39 +30,39 @@
 <!-- data: cross-check engine + bundled snapshots (progress also fetched live).
      Snapshots carry NO ?v= pin so the hourly refresh workflow propagates to
      clients via the Pages ~10-min cache (code assets stay version-pinned). -->
-<script src="assets/reconcile.js?v=p26"></script>
+<script src="assets/reconcile.js?v=p27"></script>
 <script src="flight-data.js"></script>
 <script src="progress-data.js"></script>
 <script src="ngt-data.js"></script>
 
 <!-- shared context + atoms (augmented Command Center app-shared) -->
-<script type="text/babel" src="js/shared.js?v=p26"></script>
+<script type="text/babel" src="js/shared.js?v=p27"></script>
 
 <!-- Operations views (reused from Command Center) -->
-<script type="text/babel" src="js/view-daily.js?v=p26"></script>
-<script type="text/babel" src="js/view-board.js?v=p26"></script>
-<script type="text/babel" src="js/view-gantt.js?v=p26"></script>
-<script type="text/babel" src="js/view-weekly.js?v=p26"></script>
-<script type="text/babel" src="js/view-summary.js?v=p26"></script>
-<script type="text/babel" src="js/view-roster.js?v=p26"></script>
-<script type="text/babel" src="js/view-autoslotfinder.js?v=p26"></script>
-<script type="text/babel" src="js/view-calendar.js?v=p26"></script>
+<script type="text/babel" src="js/view-daily.js?v=p27"></script>
+<script type="text/babel" src="js/view-board.js?v=p27"></script>
+<script type="text/babel" src="js/view-gantt.js?v=p27"></script>
+<script type="text/babel" src="js/view-weekly.js?v=p27"></script>
+<script type="text/babel" src="js/view-summary.js?v=p27"></script>
+<script type="text/babel" src="js/view-roster.js?v=p27"></script>
+<script type="text/babel" src="js/view-autoslotfinder.js?v=p27"></script>
+<script type="text/babel" src="js/view-calendar.js?v=p27"></script>
 
 <!-- Progress (AP127 Detail, ported from DashboardR1 into React — full dashboard) -->
-<script type="text/babel" src="js/view-cohort.js?v=p26"></script>
+<script type="text/babel" src="js/view-cohort.js?v=p27"></script>
 
 <!-- Training Program (full NGT_001 parity: Overview, Performance, Simulation).
      Pure JS (no JSX) embedding NGT_001's scheduler/render logic verbatim — loaded
      as a plain script so it skips Babel and is defined before the shell renders. -->
-<script src="js/view-program.js?v=p26"></script>
+<script src="js/view-program.js?v=p27"></script>
 
 <!-- Tutorial / user guide (pure JS, plain script) -->
-<script src="js/view-tutorial.js?v=p26"></script>
+<script src="js/view-tutorial.js?v=p27"></script>
 
 <!-- Integrity + Home + Shell -->
-<script type="text/babel" src="js/view-crosscheck.js?v=p26"></script>
-<script type="text/babel" src="js/view-overview.js?v=p26"></script>
-<script type="text/babel" src="js/shell.js?v=p26"></script>
+<script type="text/babel" src="js/view-crosscheck.js?v=p27"></script>
+<script type="text/babel" src="js/view-overview.js?v=p27"></script>
+<script type="text/babel" src="js/shell.js?v=p27"></script>
 
 <!-- boot -->
 <script type="text/babel" data-presets="env,react">
