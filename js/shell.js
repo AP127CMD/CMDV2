@@ -20,6 +20,7 @@
     ] },
     { label: 'Progress', items: [
       { id: 'cohort', label: 'AP127 Detail', icon: '▰' }, { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
+      { id: 'student', label: 'Student Lens', icon: '👤' },
     ] },
     { label: 'Training Program', items: [
       { id: 'plans', label: 'Progress Detail', icon: '▤' },
@@ -41,24 +42,6 @@
       h('span', { className: 'uc' }, kind), h('b', { style: { color: 'var(--ink-2)', fontWeight: 500 } }, label));
   }
 
-  function StudentLens() {
-    const d = window.useData();
-    const [open, setOpen] = useState(false);
-    const [q, setQ] = useState('');
-    const cur = d.studentLens;
-    const matches = q ? d.students.filter(s => (s.name + ' ' + s.nick).toLowerCase().includes(q.toLowerCase())).slice(0, 8) : d.students.slice(0, 8);
-    return h('div', { style: { position: 'relative' } },
-      h('button', { className: 'chip' + (cur ? ' sel' : ''), onClick: () => setOpen(o => !o), title: 'Focus a single student across all views' },
-        cur ? `👤 ${cur.nick} ✕` : '👤 Student Lens ▾'),
-      cur && h('span', { onClick: () => d.setStudentLens(null), style: { display: 'none' } }),
-      open && h('div', { style: { position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 80, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: 8, width: 240, boxShadow: 'var(--shadow)' } },
-        h('input', { autoFocus: true, value: q, onChange: e => setQ(e.target.value), placeholder: 'search student…', style: { width: '100%', background: 'var(--bg-2)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 5, padding: '5px 8px', fontSize: 11, outline: 'none', marginBottom: 6 } }),
-        cur && h('div', { className: 'chip', style: { marginBottom: 6, textAlign: 'center' }, onClick: () => { d.setStudentLens(null); setOpen(false); } }, 'Clear lens'),
-        matches.map((s, i) => h('div', { key: i, onClick: () => { d.setStudentLens(s); setOpen(false); d.go('student'); }, className: 'mono', style: { padding: '6px 8px', borderRadius: 5, cursor: 'pointer', fontSize: 11, display: 'flex', justifyContent: 'space-between' } },
-          h('span', { style: { color: 'var(--highlight)' } }, s.nick), h('span', { className: 'muted' }, s.name.split(' ')[0]))),
-        !matches.length && h('div', { className: 'empty' }, 'no match')));
-  }
-
   function TopBar({ view, mobile, onMenu }) {
     const d = window.useData();
     const t = d.reconciliation.totals;
@@ -71,7 +54,6 @@
         !mobile && h('span', { className: 'mono', style: { fontSize: 9, color: 'var(--ink-3)', border: '1px solid var(--line)', borderRadius: 4, padding: '1px 5px' } }, 'V2')),
       !mobile && h('span', { className: 'mono uc', style: { fontSize: 11, color: 'var(--highlight)', fontWeight: 600 } }, LABEL[view] || view),
       h('div', { style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 } },
-        h(StudentLens),
         !mobile && h(FreshnessDot, { kind: 'PROG', fresh: d.freshness.progress }),
         !mobile && h(FreshnessDot, { kind: 'OPS', fresh: d.freshness.ops }),
         h('button', { className: 'chip', onClick: () => d.go('crosscheck'), title: `Cross-Check · ${t.conflict || 0} conflict · ${t.review || 0} to review`, style: { display: 'flex', alignItems: 'center', gap: 6 } },
@@ -119,8 +101,36 @@
   // their Progress curriculum (neither original app connected these). See REVAMP.md §5.
   function StudentLensView() {
     const d = window.useData();
+    const { useState: useSlQ } = React;
+    const [q, setQ] = useSlQ('');
     const s = d.studentLens;
-    if (!s) return h('div', { style: { padding: 24 } }, h('div', { className: 'empty' }, 'Pick a student from the Student Lens (top bar) to see their unified schedule + progress.'));
+
+    // No student selected — show inline picker
+    if (!s) {
+      const matches = q
+        ? d.students.filter(st => (st.name + ' ' + (st.nick || '')).toLowerCase().includes(q.toLowerCase()))
+        : d.students;
+      return h('div', { style: { padding: 20, overflow: 'auto', height: '100%' } },
+        h('div', { className: 'panel', style: { maxWidth: 520, margin: '0 auto' } },
+          h('div', { className: 'ph' },
+            h('span', { className: 'pt' }, '👤 Student Lens'),
+            h('span', { className: 'ps' }, 'Pick a student to view unified schedule + progress')),
+          h('div', { className: 'pb' },
+            h('input', { autoFocus: true, value: q, onChange: e => setQ(e.target.value),
+              placeholder: 'Search by name or callsign…',
+              style: { width: '100%', background: 'var(--bg-2)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 6, padding: '8px 12px', fontSize: 13, outline: 'none', marginBottom: 8 } }),
+            h('div', { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+              matches.map((st, i) => h('button', { key: i, onClick: () => d.setStudentLens(st),
+                style: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 5, cursor: 'pointer', textAlign: 'left', background: 'transparent', border: '1px solid var(--line-soft)', color: 'inherit', width: '100%', transition: 'background .1s' },
+                onMouseEnter: e => { e.currentTarget.style.background = 'color-mix(in oklch,var(--highlight) 8%,transparent)'; },
+                onMouseLeave: e => { e.currentTarget.style.background = 'transparent'; },
+              },
+                h('span', { className: 'mono', style: { color: 'var(--highlight)', fontWeight: 700, fontSize: 12, minWidth: 64 } }, st.nick || '—'),
+                h('span', { style: { flex: 1, fontSize: 13, color: 'var(--ink)' } }, st.name),
+                h('span', { className: 'muted mono', style: { fontSize: 10 } }, `${st.done || 0}/${st.total || 101} · ${(st.pct || 0).toFixed(0)}%`))),
+              !matches.length && h('div', { className: 'empty' }, 'No matches')))));
+    }
+
     const fd = ds => { if (!ds) return '—'; try { return new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }); } catch { return ds; } };
     const hm = m => m ? Math.floor(m / 60) + 'h' + (m % 60 ? String(m % 60).padStart(2, '0') : '') : '—';
     // This student's Operations flights (match progress name → ops "FIRST L." key)
@@ -134,7 +144,10 @@
 
     return h('div', { style: { padding: 16, display: 'grid', gap: 14, overflow: 'auto', height: '100%' } },
       h('div', { className: 'panel' }, h('div', { className: 'ph' },
-          h('span', { className: 'pt' }, 'Student Lens · ' + s.nick), h('span', { className: 'ps' }, s.name + ' · ' + (s.catc_id || ''))),
+          h('span', { className: 'pt' }, 'Student Lens · ' + s.nick),
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            h('span', { className: 'ps' }, s.name + ' · ' + (s.catc_id || '')),
+            h('button', { className: 'chip', onClick: () => d.setStudentLens(null), title: 'Pick a different student' }, '↺ Change'))),
         h('div', { className: 'pb' }, h('div', { className: 'kpis' },
           h('div', { className: 'kpi acc' }, h('div', { className: 'kl' }, 'Progress'), h('div', { className: 'kv' }, (s.pct || 0).toFixed(0) + '%'), h('div', { className: 'ks' }, `${s.done}/${s.total} lessons`)),
           h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Next Lesson'), h('div', { className: 'kv', style: { fontSize: 20 } }, s.next_lesson || '—'), h('div', { className: 'ks' }, 'up next')),
