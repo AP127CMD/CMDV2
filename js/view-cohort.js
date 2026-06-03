@@ -244,9 +244,10 @@ function renderAP127Pace(){
   const cur=G.cur127||[];
   const today=ap127TodayBKK();
 
-  // Plan end date & curriculum hrs per student
+  // Plan end date & curriculum per student
   const planEndDate=cur.map(c=>c.planned_date).filter(Boolean).sort().at(-1)||"";
   const currHrs=ap127CurriculumHours();
+  const currLes=cur.length||(all[0]?.total||0);// lessons per student
 
   // Block-time map
   const lessonsMap={};cur.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
@@ -257,69 +258,69 @@ function renderAP127Pace(){
   const batchStart=allFlownDates[0]||today;
   const daysFromStart=Math.max(ap127DateDiff(today,batchStart),1);
 
-  // Total hrs done (all time, all students)
+  // All-time totals
   const totalHrsDone=all.reduce((a,s)=>a+(s.flown||[]).reduce((b,f)=>b+fHrs(f),0),0);
+  const totalLesDone=all.reduce((a,s)=>a+(s.done||0),0);
 
   // ── Selected actual range ──
   const rangeEl=document.getElementById("d127-pace-range");
   const rangeVal=rangeEl?parseInt(rangeEl.value||"30"):30;
   const rangeDays=rangeVal===0?daysFromStart:rangeVal;
   const rangeStart=rangeVal===0?batchStart:(()=>{
-    const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-rangeVal+1);return d.toISOString().slice(0,10);
+    const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-rangeVal);return d.toISOString().slice(0,10);
   })();
-  const rangeLabel=rangeVal===0?`all time (${ap127ShortDate(batchStart)} → today)`:`last ${rangeDays}d (${ap127ShortDate(rangeStart)} → today)`;
+  const rangeLabel=rangeVal===0?`all time · ${ap127ShortDate(batchStart)} → today`:`last ${rangeDays}d · ${ap127ShortDate(rangeStart)} → today`;
 
-  // Actual hrs in selected range
-  let actHrs=0,actFlights=0;
+  // Actual hrs & lessons in range
+  let actHrs=0,actLes=0;
   all.forEach(s=>{
     const wf=(s.flown||[]).filter(f=>f.date&&f.date>=rangeStart&&f.date<=today);
-    actFlights+=wf.length;
+    actLes+=wf.length;
     actHrs+=wf.reduce((a,f)=>a+fHrs(f),0);
   });
 
-  // Actual pace — per day
-  const actDayBatch=actHrs/rangeDays;         // total 28 SP
-  const actDaySP=actDayBatch/n;               // per 1 SP
-  const actWkBatch=actDayBatch*7;
-  const actWkSP=actDaySP*7;
-  const actMoBatch=actDayBatch*30;
-  const actMoSP=actDaySP*30;
+  // Actual pace — batch (28SP) then per SP
+  const aHrDayB=actHrs/rangeDays;     const aHrDaySP=aHrDayB/n;
+  const aHrWkB=aHrDayB*7;             const aHrWkSP=aHrDaySP*7;
+  const aHrMoB=aHrDayB*30;            const aHrMoSP=aHrDaySP*30;
+  const aLesDayB=actLes/rangeDays;    const aLesDaySP=aLesDayB/n;
+  const aLesWkB=aLesDayB*7;           const aLesWkSP=aLesDaySP*7;
+  const aLesMoB=aLesDayB*30;          const aLesMoSP=aLesDaySP*30;
 
-  // Need pace — remaining hrs / remaining days
-  const remHrsBatch=Math.max((currHrs*n)-totalHrsDone,0);
-  const remHrsSP=remHrsBatch/n;
+  // Need pace — remaining / days left
+  const remHrsB=Math.max((currHrs*n)-totalHrsDone,0);
+  const remLesB=Math.max((currLes*n)-totalLesDone,0);
   const daysRem=planEndDate?Math.max(ap127DateDiff(planEndDate,today),0):null;
-  let ndDayBatch=null,ndDaySP=null,ndWkBatch=null,ndWkSP=null,ndMoBatch=null,ndMoSP=null;
+  let nHrDayB=null,nHrDaySP=null,nHrWkB=null,nHrWkSP=null,nHrMoB=null,nHrMoSP=null;
+  let nLesDayB=null,nLesDaySP=null,nLesWkB=null,nLesWkSP=null,nLesMoB=null,nLesMoSP=null;
   if(daysRem!==null&&daysRem>0){
-    ndDayBatch=remHrsBatch/daysRem;ndDaySP=ndDayBatch/n;
-    ndWkBatch=ndDayBatch*7;ndWkSP=ndDaySP*7;
-    ndMoBatch=ndDayBatch*30;ndMoSP=ndDaySP*30;
+    nHrDayB=remHrsB/daysRem;   nHrDaySP=nHrDayB/n;
+    nHrWkB=nHrDayB*7;          nHrWkSP=nHrDaySP*7;
+    nHrMoB=nHrDayB*30;         nHrMoSP=nHrDaySP*30;
+    nLesDayB=remLesB/daysRem;  nLesDaySP=nLesDayB/n;
+    nLesWkB=nLesDayB*7;        nLesWkSP=nLesDaySP*7;
+    nLesMoB=nLesDayB*30;       nLesMoSP=nLesDaySP*30;
   }
 
   // Gap per SP (actual − need) — positive = ahead
-  const gDay=ndDaySP!==null?actDaySP-ndDaySP:null;
-  const gWk=ndWkSP!==null?actWkSP-ndWkSP:null;
-  const gMo=ndMoSP!==null?actMoSP-ndMoSP:null;
+  const gHrWk=nHrWkSP!==null?aHrWkSP-nHrWkSP:null;
+  const gLesWk=nLesWkSP!==null?aLesWkSP-nLesWkSP:null;
 
-  // ── ETC analysis (using all-time pace per SP) ──
+  // ── ETC (all-time pace) ──
   const avgHrsDone=totalHrsDone/n;
   const avgRemHrs=Math.max(currHrs-avgHrsDone,0);
   const allTimeDaySP=avgHrsDone/daysFromStart;
   let etcDate=null;
   if(allTimeDaySP>0&&avgRemHrs>0){
-    const etcDays=avgRemHrs/allTimeDaySP;
-    etcDate=new Date(new Date(today+"T00:00:00").getTime()+etcDays*86400000).toISOString().slice(0,10);
+    etcDate=new Date(new Date(today+"T00:00:00").getTime()+(avgRemHrs/allTimeDaySP)*86400000).toISOString().slice(0,10);
   }else if(avgRemHrs<=0){etcDate=today;}
-
   let onTime=0,atRisk=0;const etcDelays=[];
   all.forEach(s=>{
     const sHrs=(s.flown||[]).reduce((a,f)=>a+fHrs(f),0);
-    const sRem=Math.max(currHrs-sHrs,0);
-    const sPace=sHrs/daysFromStart;
+    const sRem=Math.max(currHrs-sHrs,0);const sPace=sHrs/daysFromStart;
     let sEtc;
     if(sPace>0&&sRem>0){sEtc=new Date(new Date(today+"T00:00:00").getTime()+(sRem/sPace)*86400000).toISOString().slice(0,10);}
-    else if(sRem<=0){sEtc=today;}
-    else{sEtc="9999-12-31";}
+    else if(sRem<=0){sEtc=today;}else{sEtc="9999-12-31";}
     if(planEndDate&&sEtc>planEndDate){atRisk++;etcDelays.push(ap127DateDiff(sEtc,planEndDate));}
     else onTime++;
   });
@@ -327,41 +328,50 @@ function renderAP127Pace(){
 
   // ── Format helpers ──
   const fH=h=>h===null?"—":h>=100?h.toFixed(0)+"h":h>=10?h.toFixed(1)+"h":h.toFixed(2)+"h";
-  const fG=g=>g===null?"—":(g>=0?"+":"")+fH(Math.abs(g)===0?0:g);
+  const fL=l=>l===null?"—":l>=100?l.toFixed(0)+" les":l>=10?l.toFixed(1)+" les":l.toFixed(2)+" les";
+  const fGH=g=>g===null?"—":(g>=0?"+":"")+fH(Math.abs(g));
+  const fGL=g=>g===null?"—":(g>=0?"+":"")+fL(Math.abs(g));
   const gc=g=>g===null?"var(--tx3)":g>=0?"var(--done)":"#ef4444";
   const setH=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h;};
 
-  // ── Pace table ──
-  const tRow=(cls,lbl,sub,d,w,m,c)=>`<tr class="${cls}"><td class="d127-pt-lbl"><b>${lbl}</b><small>${sub}</small></td><td style="color:${c}">${fH(d)}</td><td style="color:${c}">${fH(w)}</td><td style="color:${c}">${fH(m)}</td></tr>`;
-  const gRow=(d,w,m)=>`<tr class="d127-pt-gap"><td class="d127-pt-lbl"><b>Gap · 1 SP</b><small>actual − need</small></td><td style="color:${gc(d)};font-weight:700">${fG(d)}</td><td style="color:${gc(w)};font-weight:700">${fG(w)}</td><td style="color:${gc(m)};font-weight:700">${fG(m)}</td></tr>`;
-  const needSub=planEndDate?`to finish by ${ap127ShortDate(planEndDate)} · ${daysRem}d left`:"no plan end date";
-  setH("d127-pace-table",`<table class="d127-pace-tbl">
+  // Cell: hr + lesson dual-unit
+  const cell=(hr,les,c,bold)=>`<td><span style="color:${c};${bold?"font-weight:700":""}">${fH(hr)}</span><br><span class="d127-pt-les">${fL(les)}</span></td>`;
+  const safeG=(a,b)=>(a!==null&&b!==null)?a-b:null;
+  const gCell=(hr,les)=>`<td><span style="color:${gc(hr)};font-weight:700">${fGH(hr)}</span><br><span class="d127-pt-les" style="color:${gc(les)}">${fGL(les)}</span></td>`;
+  const lbl=(main,sub)=>`<td class="d127-pt-lbl"><b>${main}</b><small>${sub}</small></td>`;
+
+  // ── Table rows: group 28SP together, then 1SP together ──
+  const needSub=planEndDate?`plan end ${ap127ShortDate(planEndDate)} · ${daysRem}d left`:"no plan end date";
+  const tableHTML=`<table class="d127-pace-tbl">
 <thead><tr><th></th><th>Per Day</th><th>Per Week</th><th>Per Month</th></tr></thead>
 <tbody>
-${tRow("d127-pt-act","Actual · 28 SP",`${actFlights} flights · ${rangeLabel}`,actDayBatch,actWkBatch,actMoBatch,"var(--tx)")}
-${tRow("","Actual · 1 SP","per student",actDaySP,actWkSP,actMoSP,"var(--tx2)")}
+<tr class="d127-pt-sec"><td colspan="4">28 SP — Batch Total</td></tr>
+<tr class="d127-pt-act">${lbl("Actual",rangeLabel)}${cell(aHrDayB,aLesDayB,"var(--tx)",true)}${cell(aHrWkB,aLesWkB,"var(--tx)",true)}${cell(aHrMoB,aLesMoB,"var(--tx)",true)}</tr>
+<tr class="d127-pt-need">${lbl("Need",needSub)}${cell(nHrDayB,nLesDayB,"var(--acc)",false)}${cell(nHrWkB,nLesWkB,"var(--acc)",false)}${cell(nHrMoB,nLesMoB,"var(--acc)",false)}</tr>
 <tr class="d127-pt-div"><td colspan="4"></td></tr>
-${tRow("d127-pt-need","Need · 28 SP",needSub,ndDayBatch,ndWkBatch,ndMoBatch,"var(--acc)")}
-${tRow("","Need · 1 SP","per student to finish on plan",ndDaySP,ndWkSP,ndMoSP,"#fbbf24")}
+<tr class="d127-pt-sec"><td colspan="4">1 SP — Per Student</td></tr>
+<tr class="d127-pt-act">${lbl("Actual","per student")}${cell(aHrDaySP,aLesDaySP,"var(--tx)",true)}${cell(aHrWkSP,aLesWkSP,"var(--tx)",true)}${cell(aHrMoSP,aLesMoSP,"var(--tx)",true)}</tr>
+<tr class="d127-pt-need">${lbl("Need","per student to finish on plan")}${cell(nHrDaySP,nLesDaySP,"var(--acc)",false)}${cell(nHrWkSP,nLesWkSP,"var(--acc)",false)}${cell(nHrMoSP,nLesMoSP,"var(--acc)",false)}</tr>
 <tr class="d127-pt-div"><td colspan="4"></td></tr>
-${gRow(gDay,gWk,gMo)}
+<tr class="d127-pt-gap">${lbl("Gap · 1 SP","actual − need (+ = ahead)")}${gCell(safeG(aHrDaySP,nHrDaySP),safeG(aLesDaySP,nLesDaySP))}${gCell(safeG(aHrWkSP,nHrWkSP),safeG(aLesWkSP,nLesWkSP))}${gCell(safeG(aHrMoSP,nHrMoSP),safeG(aLesMoSP,nLesMoSP))}</tr>
 </tbody></table>
-<div class="d127-pace-meta">Actual based on <b>${rangeLabel}</b> · Need based on plan end <b>${planEndDate?ap127ShortDate(planEndDate):"TBC"}</b></div>`);
+<div class="d127-pace-meta">Actual: <b>${rangeLabel}</b> · Need: plan end <b>${planEndDate?ap127ShortDate(planEndDate):"TBC"}</b> · remaining ${remHrsB.toFixed(1)}h / ${remLesB} les batch-wide</div>`;
+  setH("d127-pace-table",tableHTML);
 
   // ── ETC & action box ──
   const etcColor=(etcDate&&planEndDate&&etcDate>planEndDate)?"#ef4444":"var(--done)";
   const etcSub=etcDate&&planEndDate&&etcDate>planEndDate?`+${ap127DateDiff(etcDate,planEndDate)}d past plan`:etcDate&&planEndDate?"on/before plan":"—";
   const riskColor=atRisk>0?"#ef4444":"var(--done)";
-  const actionMsg=gWk!==null&&gWk<0
-    ?`<b style="color:#ef4444">${fH(Math.abs(gWk))} more/SP/wk</b> needed — ${fH(Math.abs(gMo||0))} extra per SP per month to finish by plan date.`
-    :gWk!==null?`Batch is <b style="color:var(--done)">${fH(gWk)}/SP/wk ahead</b> of required pace — on track to finish by plan date.`
+  const actionMsg=gHrWk!==null&&gHrWk<0
+    ?`<b style="color:#ef4444">${fH(Math.abs(gHrWk))} / ${fL(Math.abs(gLesWk||0))} more per SP per week</b> needed to finish by plan date.`
+    :gHrWk!==null?`Batch is <b style="color:var(--done)">${fH(gHrWk)} / ${fL(gLesWk||0)} per SP/wk ahead</b> of required pace — on track.`
     :"Plan end date unavailable.";
   setH("d127-pace-etc",`<div class="d127-pace-etc-box"><div class="d127-pace-etc-counts">
     <div><div class="d127-kl">Plan End</div><div style="font-family:'Rajdhani',sans-serif;font-size:17px;line-height:1.1;color:var(--tx3)">${planEndDate?ap127ShortDate(planEndDate):"TBC"}</div></div>
     <div><div class="d127-kl">Cohort ETC</div><div style="font-family:'Rajdhani',sans-serif;font-size:17px;line-height:1.1;color:${etcColor}">${etcDate?ap127ShortDate(etcDate):"—"}</div><div class="d127-ks">${etcSub}</div></div>
     <div><div class="d127-kl">On Track</div><div class="d127-kv" style="color:var(--done)">${onTime}</div><div class="d127-ks">ETC ≤ plan</div></div>
-    <div><div class="d127-kl">At Risk</div><div class="d127-kv" style="color:${riskColor}">${atRisk}</div><div class="d127-ks">${atRisk>0?"avg +"+avgDelay+"d late":""}</div></div>
-  </div><div class="d127-pace-etc-action"><div class="d127-kl" style="margin-bottom:4px">Required Action</div><div style="font-size:11px;line-height:1.6;color:var(--tx2)">${actionMsg}</div>${atRisk>0?`<div style="font-size:10px;color:var(--tx3);margin-top:4px">At-risk students average <b style="color:#ef4444">+${avgDelay}d</b> beyond plan end — additional sessions needed.</div>`:""}</div></div>`);
+    <div><div class="d127-kl">At Risk</div><div class="d127-kv" style="color:${riskColor}">${atRisk}</div><div class="d127-ks">${atRisk>0?"avg +"+avgDelay+"d":""}</div></div>
+  </div><div class="d127-pace-etc-action"><div class="d127-kl" style="margin-bottom:4px">Required Action</div><div style="font-size:11px;line-height:1.6;color:var(--tx2)">${actionMsg}</div>${atRisk>0?`<div style="font-size:10px;color:var(--tx3);margin-top:4px">At-risk students average <b style="color:#ef4444">+${avgDelay}d</b> beyond plan end.</div>`:""}</div></div>`);
 }
 
 function renderAP127Detail(){
@@ -1013,7 +1023,7 @@ function ap127FitY(chart){
   function setSS(){ /* no-op: freshness shown in the unified top bar */ }
 
   // expose inline-handler targets used inside the reused markup/row HTML
-  Object.assign(window, { renderAP127Detail, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, openAP127Drawer, closeAP127Drawer, CHARTS });
+  Object.assign(window, { renderAP127Detail, renderAP127Pace, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, openAP127Drawer, closeAP127Drawer, CHARTS });
 
   function mountProgress(data){ G = data; renderAP127Detail(); }
   function destroyProgress(){ try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch(e){} }); } catch(e){} }

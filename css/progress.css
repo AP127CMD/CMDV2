@@ -114,6 +114,8 @@
 .d127-pt-need{background:rgba(245,158,11,.04);}
 .d127-pt-gap{background:rgba(255,255,255,.015);}
 .d127-pt-div td{height:1px;padding:0!important;background:var(--bd2);}
+.d127-pt-sec td{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--c127);text-transform:uppercase;letter-spacing:1px;padding:6px 10px 3px!important;background:var(--s1);}
+.d127-pt-les{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);}
 .d127-pace-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);margin-top:6px;}
 /* ETC box */
 .d127-pace-etc-box{display:grid;grid-template-columns:auto 1fr;gap:14px;background:var(--s2);border:1px solid var(--bd2);border-radius:7px;padding:10px 12px;align-items:start;}
