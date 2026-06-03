@@ -449,23 +449,17 @@ function DateCalendarPopup({ onClose, value: extValue, onChange: extOnChange, da
     return cells;
   }, [vy, vm]);
 
-  const [fy, fm] = ALL_DATES[0].split('-').map(Number);
-  const [ly, lm] = ALL_DATES[ALL_DATES.length-1].split('-').map(Number);
-  const atFirst  = vy < fy || (vy === fy && vm <= fm);
-  const atLast   = vy > ly || (vy === ly && vm >= lm);
-
   const prevM = () => { if (vm===1){setVy(y=>y-1);setVm(12);}else setVm(m=>m-1); };
   const nextM = () => { if (vm===12){setVy(y=>y+1);setVm(1);}else setVm(m=>m+1); };
 
-  const BtnStyle = dis => ({
-    padding:'3px 8px', fontSize:12, background:'transparent', cursor:dis?'default':'pointer',
-    border:'1px solid var(--line)', borderRadius:4, color:dis?'var(--ink-3)':'var(--ink-2)',
-    opacity:dis?0.3:1,
+  const BtnStyle = () => ({
+    padding:'3px 8px', fontSize:12, background:'transparent', cursor:'pointer',
+    border:'1px solid var(--line)', borderRadius:4, color:'var(--ink-2)',
   });
 
   return (
     <>
-      <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:90 }}/>
+      <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:90, cursor:'pointer', WebkitTapHighlightColor:'transparent' }}/>
       <div onClick={e=>e.stopPropagation()} style={{
         position:'absolute', zIndex:91, top:'calc(100% + 4px)', left:0,
         background:'var(--surface)', border:'1px solid var(--line)',
@@ -474,12 +468,12 @@ function DateCalendarPopup({ onClose, value: extValue, onChange: extOnChange, da
       }}>
         {/* Month nav */}
         <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-          <button onClick={prevM} disabled={atFirst} style={BtnStyle(atFirst)}>‹</button>
+          <button onClick={prevM} style={BtnStyle()}>‹</button>
           <div style={{ flex:1, textAlign:'center' }} className="mono uc">
             <span style={{ fontSize:11, fontWeight:600, color:'var(--ink)' }}>{CAL_MONTHS[vm-1]}</span>
             <span style={{ fontSize:10, color:'var(--ink-3)', marginLeft:5 }}>{vy}</span>
           </div>
-          <button onClick={nextM} disabled={atLast} style={BtnStyle(atLast)}>›</button>
+          <button onClick={nextM} style={BtnStyle()}>›</button>
         </div>
         {/* Day-of-week header */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:4 }}>

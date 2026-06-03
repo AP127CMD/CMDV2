@@ -252,14 +252,14 @@ function renderAP127Detail(){
   const totalPlannedHrsToday=ap127PlannedHoursAsOf(today0)*total;
   const hrsVariance=hrsAll-totalPlannedHrsToday;
   const hrsVarColor=hrsVariance>=0?"var(--done)":"#ef4444";
-  setT("d127-k-hrs",`${ap127FmtNum(hrsAll,1)} / ${ap127FmtNum(totalPlannedHrsToday,0)}`);
-  setH("d127-k-hrs-s",`<span style="color:${hrsVarColor}">${hrsVariance>=0?"+":""}${hrsVariance.toFixed(1)}h ${hrsVariance>=0?"ahead":"behind"} plan</span>`);
+  setH("d127-k-hrs",`<span style="color:${hrsVarColor};font-size:22px">${hrsVariance>=0?"+":""}${hrsVariance.toFixed(1)}h</span>`);
+  setH("d127-k-hrs-s",`<span style="color:${hrsVarColor}">${hrsVariance>=0?"ahead":"behind"} plan</span> <span style="color:var(--tx3)">(${ap127FmtNum(hrsAll,1)} / ${ap127FmtNum(totalPlannedHrsToday,0)})</span>`);
   // Lessons done vs plan
   const totalExpectedLessons=expDone*total;
   const lesVariance=doneAll-totalExpectedLessons;
   const lesVarColor=lesVariance>=0?"var(--done)":"#ef4444";
-  setT("d127-k-les",`${doneAll} / ${totalExpectedLessons}`);
-  setH("d127-k-les-s",`<span style="color:${lesVarColor}">${lesVariance>=0?"+":""}${lesVariance} lessons ${lesVariance>=0?"ahead":"behind"}</span>`);
+  setH("d127-k-les",`<span style="color:${lesVarColor};font-size:22px">${lesVariance>=0?"+":""}${lesVariance}</span>`);
+  setH("d127-k-les-s",`<span style="color:${lesVarColor}">${lesVariance>=0?"ahead":"behind"} plan</span> <span style="color:var(--tx3)">(${doneAll} / ${totalExpectedLessons})</span>`);
   setT("d127-meta",`${doneAll} lessons done · Avg ${avgDone.toFixed(1)} · ${onTrack}/${total} on track`);
 
   const today=ap127TodayBKK();
@@ -285,14 +285,14 @@ function renderAP127Detail(){
   const validIdles=rows.map(s=>ap127IdleDays(s,maxDate)).filter(v=>v!==9999);
   const avgIdleAll=validIdles.length?(validIdles.reduce((a,v)=>a+v,0)/validIdles.length):0;
   const validDayDeltas=rows.map(s=>ap127DayDelta(s,planMap,today)).filter(v=>v!==null);
-  const sumDayDeltaAll=validDayDeltas.reduce((a,v)=>a+v,0);
+  const avgDayDeltaAll=validDayDeltas.length?Math.round(validDayDeltas.reduce((a,v)=>a+v,0)/validDayDeltas.length):0;
   const sumHrsDeltaAll=rows.reduce((a,s)=>a+(ap127Hours(s)-plannedHrsToday),0);
   const lagLastLes=(sortedByDone[0]?.flown||[]).at(-1)?.lesson||sortedByDone[0]?.next_lesson||'-';
   const leadLastLes=(sortedByDone.at(-1)?.flown||[]).at(-1)?.lesson||sortedByDone.at(-1)?.next_lesson||'-';
   const allLastDates=all.map(s=>ap127LastFlightDate(s)).filter(Boolean).sort();
   const minFltDate=allLastDates[0]?ap127ShortDate(allLastDates[0]):'-';
   const maxFltDate=allLastDates.at(-1)?ap127ShortDate(allLastDates.at(-1)):'-';
-  const totalRowHtml=`<tr class="d127-total-row"><td colspan="2" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--c127);font-weight:700;letter-spacing:.5px">AP127 · ${rows.length} SPs</td><td>-</td><td>-</td><td>-</td><td style="padding:0 5px"><span class="d127-pbg"><span class="d127-pf" style="width:${avgPctAll.toFixed(1)}%"></span></span><span class="d127-mono" style="font-size:9px">${avgPctAll.toFixed(0)}% avg</span></td><td class="d127-mono" style="color:var(--c127)">${sumHrsAll.toFixed(1)}</td><td class="d127-mono" style="color:var(--c127)">${sumDoneAll}</td><td class="d127-mono" style="font-size:9px">${lagLastLes}→${leadLastLes}</td><td class="d127-mono" style="font-size:9px">${minFltDate}–${maxFltDate}</td><td class="d127-mono">${avgIdleAll.toFixed(0)}d</td><td class="d127-mono" style="color:${sumDayDeltaAll>=0?'#ff6b6b':'var(--done)'}">${sumDayDeltaAll>=0?'+':''}${sumDayDeltaAll}d</td><td class="d127-mono" style="color:${sumHrsDeltaAll>=0?'var(--done)':'#ff6b6b'}">${sumHrsDeltaAll>=0?'+':''}${sumHrsDeltaAll.toFixed(1)}h</td></tr>`;
+  const totalRowHtml=`<tr class="d127-total-row"><td colspan="2" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--c127);font-weight:700;letter-spacing:.5px">AP127 · ${rows.length} SPs</td><td>-</td><td>-</td><td>-</td><td style="padding:0 5px"><span class="d127-pbg"><span class="d127-pf" style="width:${avgPctAll.toFixed(1)}%"></span></span><span class="d127-mono" style="font-size:9px">${avgPctAll.toFixed(0)}%</span></td><td class="d127-mono" style="color:var(--c127)">${sumHrsAll.toFixed(1)}</td><td class="d127-mono" style="color:var(--c127)">${sumDoneAll}</td><td class="d127-mono" style="font-size:9px">${lagLastLes}→${leadLastLes}</td><td class="d127-mono" style="font-size:9px">${minFltDate}–${maxFltDate}</td><td class="d127-mono">${avgIdleAll.toFixed(0)}d</td><td class="d127-mono" style="color:${avgDayDeltaAll>=0?'#ff6b6b':'var(--done)'}">${avgDayDeltaAll>=0?'+':''}${avgDayDeltaAll}d</td><td class="d127-mono" style="color:${sumHrsDeltaAll>=0?'var(--done)':'#ff6b6b'}">${sumHrsDeltaAll>=0?'+':''}${sumHrsDeltaAll.toFixed(1)}h</td></tr>`;
   tbody.innerHTML=totalRowHtml+rows.map((s,idx)=>{
     const rank=idx+1,pct=curriculum?((s.done||0)/curriculum*100):0;
     const hrs=ap127Hours(s);
@@ -824,19 +824,37 @@ function buildAP127CombinedChart(){
           }
         }},
         zoom:{
-          zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'},
-          pan:{enabled:true,mode:'x'},
+          zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x',onZoomComplete:({chart})=>ap127FitY(chart)},
+          pan:{enabled:true,mode:'x',onPanComplete:({chart})=>ap127FitY(chart)},
         }
       },
       scales:{
         x:{type:'time',time:{unit:'month',displayFormats:{day:'d MMM',week:'d MMM',month:'MMM yy'}},
           ticks:{font:{family:'JetBrains Mono',size:8},color:'#6e7681',maxTicksLimit:14,source:'auto'},grid:{color:'#21262d'}},
-        y:{beginAtZero:true,
+        y:{beginAtZero:false,
           ticks:{font:{family:'JetBrains Mono',size:9},color:'#8b949e',callback:v=>isHrs?v.toFixed(0)+'h':v},
           grid:{color:'#21262d'}}
       }
     }
   });
+}
+function ap127FitY(chart){
+  try{
+    const xMin=chart.scales.x.min,xMax=chart.scales.x.max;
+    let yMin=Infinity,yMax=-Infinity;
+    chart.data.datasets.forEach(ds=>{
+      if(ds.label==='Today'||ds.label==='Total')return;
+      (ds.data||[]).forEach(pt=>{
+        const t=pt.x instanceof Date?pt.x.getTime():(typeof pt.x==='number'?pt.x:new Date(pt.x).getTime());
+        if(t>=xMin&&t<=xMax){if(pt.y<yMin)yMin=pt.y;if(pt.y>yMax)yMax=pt.y;}
+      });
+    });
+    if(!isFinite(yMin)||!isFinite(yMax))return;
+    const pad=Math.max((yMax-yMin)*0.06,1);
+    chart.options.scales.y.min=Math.max(0,yMin-pad);
+    chart.options.scales.y.max=yMax+pad;
+    chart.update('none');
+  }catch(e){}
 }
 // ##AP127JS_END##
   // ---------- end DashboardR1 logic ----------

@@ -41,8 +41,7 @@ Chart.register({id:"catcNowLine",afterDraw(chart){
   ctx.fillText("NOW",x+3,top+10);
   ctx.restore();
 }});
-/* ===== Register chartjs-plugin-datalabels (loaded via CDN) ===== */
-try { if(window.ChartDataLabels) Chart.register(window.ChartDataLabels); } catch(e){}
+/* chartjs-plugin-datalabels loaded via CDN but NOT registered — tooltips only, no bar labels */
 /* ===== EXTRA_COLORS + escHtml ===== */
 const EXTRA_COLORS=['#a78bfa','#f472b6','#34d399','#60a5fa','#fbbf24','#f87171'];
 function escHtml(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}

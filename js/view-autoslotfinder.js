@@ -1670,10 +1670,10 @@ function AutoSlotFinderBoard() {
 
       {/* Search strip */}
       <div style={{ padding:'6px 10px 8px', background:'var(--bg-2)', borderBottom:'1px solid var(--line)', display:'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap', flexShrink:0 }}>
-        <label style={{ display:'flex', flexDirection:'column', gap:3 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
           <span className="mono uc" style={{ fontSize:9, color:'var(--ink-3)' }}>DATE</span>
           <DateCalendarTrigger value={asfDate} onChange={setAsfDate} />
-        </label>
+        </div>
         <AsfMultiCheck label="TYPE" items={allAcTypes.map(t=>({v:t,l:t}))} selected={acTypeFilter} onChange={setAcTypeFilter} allLabel="Any type" color="var(--col-pending)" />
         <AsfSel label="SHOW" value={topN} onChange={v=>setTopN(+v)} opts={ASF_TOPN_OPTS} minWidth={70} />
         <AsfMultiCheck label="FI FILTER" items={fiAllNames.map(n=>({ v:n, l:n, badge: Object.keys(leavesMap).some(k => k.toLowerCase() === n.toLowerCase()) ? 'LEAVE' : null }))} selected={fiFilter} onChange={setFiFilter} allLabel="Any available" color="var(--col-pending)" />
