@@ -19,6 +19,20 @@
       <div class="d127-kpi"><div class="d127-kl">Hrs Done / Plan</div><div class="d127-kv" id="d127-k-hrs">-</div><div class="d127-ks" id="d127-k-hrs-s">vs plan today</div></div>
       <div class="d127-kpi"><div class="d127-kl">Lessons Done / Plan</div><div class="d127-kv" id="d127-k-les">-</div><div class="d127-ks" id="d127-k-les-s">vs plan today</div></div>
     </div>
+    <div class="d127-panel d127-pace-panel">
+      <div class="d127-h" style="flex-wrap:wrap;gap:6px">
+        <span class="d127-t">Pace &amp; ETC Monitor</span>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span style="color:var(--tx3);font-size:10px;font-family:'JetBrains Mono',monospace">WEEK:</span>
+          <select id="d127-week-sel" class="d127-wsel" onchange="renderAP127Pace()"></select>
+        </div>
+      </div>
+      <div class="d127-body" style="display:grid;gap:10px">
+        <div class="d127-pace-kpis" id="d127-pace-kpis"></div>
+        <div id="d127-pace-week"></div>
+        <div id="d127-pace-etc"></div>
+      </div>
+    </div>
     <div class="d127-controls">
       <input id="d127-q" placeholder="Search name..." oninput="renderAP127Detail()">
       <select id="d127-sort" onchange="renderAP127Detail()">
@@ -218,6 +232,149 @@ function ap127HeaderClick(key){
   renderAP127Detail();
 }
 function ap127RankClass(rank,total){if(rank<=3)return"bad";if(rank<=Math.ceil(total*.4))return"mid";return"ok";}
+// ── Pace & ETC helpers ──
+function ap127GetWeekRange(weeksAgo,today){
+  const d=new Date(today+"T00:00:00");
+  const dow=d.getDay();// 0=Sun
+  const toMon=(dow===0?-6:1-dow);
+  const thisMon=new Date(d.getTime()+toMon*86400000);
+  const wkStart=new Date(thisMon.getTime()-weeksAgo*7*86400000);
+  const wkEnd=new Date(wkStart.getTime()+6*86400000);
+  const fmt=x=>x.toISOString().slice(0,10);
+  return{start:fmt(wkStart),end:fmt(wkEnd)};
+}
+function renderAP127Pace(){
+  if(!G||!G.ap127)return;
+  const all=G.ap127||[];const n=all.length;if(!n)return;
+  const cur=G.cur127||[];
+  const today=ap127TodayBKK();
+
+  // Plan end date = latest planned_date in curriculum
+  const planEndDate=cur.map(c=>c.planned_date).filter(Boolean).sort().at(-1)||"";
+
+  // Curriculum hours per student
+  const currHrs=ap127CurriculumHours();
+
+  // Batch start = earliest flight date
+  const allFlownDates=all.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort();
+  const startDate=allFlownDates[0]||today;
+
+  // Time elapsed
+  const daysElapsed=Math.max(ap127DateDiff(today,startDate),1);
+  const weeksElapsed=daysElapsed/7;
+
+  // Curriculum lesson-to-mins map (for accurate block-time hours)
+  const lessonsMap={};cur.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
+  const flightHrs=f=>(lessonsMap[f.lesson]||ap127FlightMins(f))/60;
+
+  // Per-student hours
+  const spHrs=all.map(s=>(s.flown||[]).reduce((a,f)=>a+flightHrs(f),0));
+  const totalHrsAll=spHrs.reduce((a,v)=>a+v,0);
+  const avgHrsDone=totalHrsAll/n;
+
+  // Actual pace (batch-wide average)
+  const actualHrsPerDayPerSP=avgHrsDone/daysElapsed;
+  const actualHrsPerWkPerSP=actualHrsPerDayPerSP*7;
+
+  // Remaining weeks to plan end
+  const daysRemaining=planEndDate?Math.max(ap127DateDiff(planEndDate,today),0):null;
+  const weeksRemaining=daysRemaining!==null?daysRemaining/7:null;
+
+  // Average remaining hrs per student
+  const avgRemHrs=Math.max(currHrs-avgHrsDone,0);
+
+  // Target pace to finish on plan
+  const targetHrsPerWkPerSP=(weeksRemaining&&weeksRemaining>0)?avgRemHrs/weeksRemaining:null;
+  const targetHrsPerDayPerSP=targetHrsPerWkPerSP!==null?targetHrsPerWkPerSP/7:null;
+
+  // Pace gap
+  const paceGap=targetHrsPerWkPerSP!==null?actualHrsPerWkPerSP-targetHrsPerWkPerSP:null;
+
+  // Cohort ETC at current pace
+  let etcDate=null;
+  if(actualHrsPerDayPerSP>0&&avgRemHrs>0){
+    const etcDays=avgRemHrs/actualHrsPerDayPerSP;
+    etcDate=new Date(new Date(today+"T00:00:00").getTime()+etcDays*86400000).toISOString().slice(0,10);
+  }else if(avgRemHrs<=0){etcDate=today;}
+
+  // Per-student ETC & risk
+  let onTime=0,atRisk=0;const etcDelays=[];
+  spHrs.forEach(sHrs=>{
+    const sRem=Math.max(currHrs-sHrs,0);
+    const sPace=sHrs/daysElapsed;// hrs/day
+    let sEtcDate;
+    if(sPace>0&&sRem>0){const sEtcDays=sRem/sPace;sEtcDate=new Date(new Date(today+"T00:00:00").getTime()+sEtcDays*86400000).toISOString().slice(0,10);}
+    else if(sRem<=0){sEtcDate=today;}
+    else{sEtcDate="9999-12-31";}
+    if(planEndDate&&sEtcDate>planEndDate){atRisk++;etcDelays.push(ap127DateDiff(sEtcDate,planEndDate));}
+    else onTime++;
+  });
+  const avgDelay=etcDelays.length?Math.round(etcDelays.reduce((a,v)=>a+v,0)/etcDelays.length):0;
+
+  // ── Rebuild week selector (preserve selection) ──
+  const sel=document.getElementById("d127-week-sel");
+  if(sel){
+    const prevVal=sel.value;
+    sel.innerHTML="";
+    for(let i=0;i<=7;i++){
+      const wr=ap127GetWeekRange(i,today);
+      const label=i===0?`This week (${ap127ShortDate(wr.start)}–${ap127ShortDate(wr.end)})`:i===1?`Last week (${ap127ShortDate(wr.start)}–${ap127ShortDate(wr.end)})`:`${ap127ShortDate(wr.start)}–${ap127ShortDate(wr.end)}`;
+      const opt=document.createElement("option");opt.value=i;opt.textContent=label;sel.appendChild(opt);
+    }
+    if(prevVal)sel.value=prevVal;
+  }
+  const weeksAgo=sel?parseInt(sel.value||"0"):0;
+  const weekRange=ap127GetWeekRange(weeksAgo,today);
+  const wkDays=7;
+
+  // Week stats
+  let weekHrs=0,weekFlights=0,weekLessons=0;
+  all.forEach(s=>{
+    const wf=(s.flown||[]).filter(f=>f.date&&f.date>=weekRange.start&&f.date<=weekRange.end);
+    weekFlights+=wf.length;weekLessons+=wf.length;
+    weekHrs+=wf.reduce((a,f)=>a+flightHrs(f),0);
+  });
+  const weekHrsPerSP=n?weekHrs/n:0;
+  const weekHrsPerSPPerDay=weekHrsPerSP/wkDays;
+  const weekTarget=targetHrsPerWkPerSP;
+  const weekGap=weekTarget!==null?weekHrsPerSP-weekTarget:null;
+
+  // ── Render helpers ──
+  const setH=id=>{const e=document.getElementById(id);return h=>e&&(e.innerHTML=h);};
+  const pkpi=(label,val,sub,color)=>`<div class="d127-pace-kpi"><div class="d127-kl">${label}</div><div class="d127-kv" style="color:${color||"var(--tx)"}">${val}</div><div class="d127-ks">${sub}</div></div>`;
+
+  // ── Row 1: Batch-wide pace KPIs ──
+  const paceColor=paceGap===null?"var(--tx)":paceGap>=0?"var(--done)":"#ef4444";
+  const etcColor=(etcDate&&planEndDate&&etcDate>planEndDate)?"#ef4444":"var(--done)";
+  const etcLate=etcDate&&planEndDate&&etcDate>planEndDate?`+${ap127DateDiff(etcDate,planEndDate)}d past plan`:(etcDate&&planEndDate&&etcDate<=planEndDate?"on/before plan":"—");
+  (setH("d127-pace-kpis"))([
+    pkpi("Avg Hrs/Day/SP",actualHrsPerDayPerSP.toFixed(3)+"h",`${actualHrsPerWkPerSP.toFixed(2)}h/wk · ${weeksElapsed.toFixed(1)} wks elapsed`,"var(--tx)"),
+    pkpi("Target Hrs/Day/SP",targetHrsPerDayPerSP!==null?targetHrsPerDayPerSP.toFixed(3)+"h":"—",targetHrsPerWkPerSP!==null?`${targetHrsPerWkPerSP.toFixed(2)}h/wk needed`:"no plan end date","var(--acc)"),
+    pkpi("Pace Gap (Wk)",paceGap!==null?(paceGap>=0?"+":"")+paceGap.toFixed(2)+"h/wk":"—",paceGap!==null?(paceGap>=0?"faster than needed ✓":"below needed pace ⚠"):"",paceColor),
+    pkpi("Plan End Date",planEndDate?ap127ShortDate(planEndDate):"TBC",planEndDate?`${daysRemaining}d / ${weeksRemaining!==null?weeksRemaining.toFixed(1):"—"} wks remaining`:"curriculum target","var(--tx3)"),
+    pkpi("Cohort ETC",etcDate?ap127ShortDate(etcDate):"—",etcLate,etcColor),
+  ].join(""));
+
+  // ── Row 2: Selected-week drill-down ──
+  const wkGapColor=weekGap===null?"var(--tx)":weekGap>=0?"var(--done)":"#ef4444";
+  (setH("d127-pace-week"))(`<div class="d127-pace-week-hdr"><span class="d127-kl" style="font-size:9px">WEEK DETAIL</span></div><div class="d127-pace-week-grid">${[
+    pkpi("Total Hrs (Wk)",weekHrs.toFixed(1)+"h",`${weekFlights} flights · ${n} SPs`,"var(--tx)"),
+    pkpi("Avg Hrs/SP (Wk)",weekHrsPerSP.toFixed(2)+"h",`${weekLessons} lessons batch-wide`,"var(--tx)"),
+    pkpi("Avg Hrs/SP/Day",weekHrsPerSPPerDay.toFixed(3)+"h",`${(weekHrsPerSPPerDay*7).toFixed(2)}h wk-normalised`,"var(--tx)"),
+    pkpi("vs Target (Wk)",weekGap!==null?(weekGap>=0?"+":"")+weekGap.toFixed(2)+"h/SP":"—",weekGap!==null?(weekGap>=0?"met weekly target ✓":"short of weekly target ⚠"):"",wkGapColor),
+  ].join("")}</div>`);
+
+  // ── Row 3: ETC & action ──
+  const riskColor=atRisk>0?"#ef4444":"var(--done)";
+  const actionMsg=paceGap!==null&&paceGap<0
+    ?`<b style="color:#ef4444">${Math.abs(paceGap).toFixed(2)} more hrs/SP/wk</b> needed — each student requires ~${Math.abs(paceGap/7*30).toFixed(1)} extra hrs/month.`
+    :paceGap!==null
+    ?`Batch is <b style="color:var(--done)">${paceGap.toFixed(2)} hrs/SP/wk ahead</b> of required pace — currently on track to finish by plan date.`
+    :"Plan end date unavailable — cannot compute required action.";
+  const riskMsg=atRisk>0?`At-risk students average <b style="color:#ef4444">+${avgDelay}d</b> beyond plan end. Schedule additional sessions to close gap.`:`All students projected to finish on or before plan end date.`;
+  (setH("d127-pace-etc"))(`<div class="d127-pace-etc-box"><div class="d127-pace-etc-counts"><div><div class="d127-kl">On Track</div><div class="d127-kv" style="color:var(--done)">${onTime}</div><div class="d127-ks">ETC ≤ plan end</div></div><div><div class="d127-kl">At Risk</div><div class="d127-kv" style="color:${riskColor}">${atRisk}</div><div class="d127-ks">${atRisk>0?`avg +${avgDelay}d`:"no risk"}</div></div></div><div class="d127-pace-etc-action"><div class="d127-kl" style="margin-bottom:5px">Required Action</div><div style="font-size:11px;line-height:1.6;color:var(--tx2)">${actionMsg}</div><div style="font-size:10px;color:var(--tx3);margin-top:5px">${riskMsg}</div></div></div>`);
+}
+
 function renderAP127Detail(){
   if(!G||!G.ap127)return;
   const all=[...(G.ap127||[])];
@@ -336,6 +493,7 @@ function renderAP127Detail(){
   buildAP127Timeline(all,curriculum,maxDate);
   buildAP127RaceChart(all,curriculum,maxDate);
   buildAP127OverallChart(all,curriculum,maxDate);
+  renderAP127Pace();
 }
 function openAP127Drawer(idx){
   const s=AP127_VIEW_ROWS[idx];if(!s)return;
