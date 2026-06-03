@@ -4,6 +4,26 @@ const { useMemo: useM_asf, useState: useS_asf, useEffect: useE_asf, useRef: useR
 const ASF_CACHE_URL      = 'https://nuguitar.github.io/AP127_NGT_001/cache.json';
 const ASF_CACHE_FALLBACK = 'https://raw.githubusercontent.com/nuguitar/AP127_NGT_001/main/cache.json';
 
+// ─── AP-127 FI qualification map (was in view-slotfinder.js; inlined here so
+//     this file is self-contained regardless of whether slotfinder is loaded) ──
+const SF_AP127_FI_QUALS = {
+  'CHAROENCHAI U.': ['DA40CS', 'DA42TDI'],
+  'EKKAPHOP R.':    ['DA40TDI', 'DA42TDI'],
+  'ITTIPOL P.':     ['DA40TDI', 'DA42TDI'],
+  'KITTICHAI C.':   ['DA40CS', 'DA42TDI'],
+  'KOONPHOL U.':    ['DA40CS', 'DA42TDI'],
+  'NAPATTORN S.':   ['DA40TDI', 'DA42TDI'],
+  'PARINYA B.':     ['DA40CS', 'DA42TDI'],
+  'PHAHOLYUTH P.':  ['DA40CS', 'DA42TDI'],
+  'SANTI PO.':      ['DA40CS', 'DA42TDI'],
+  'SANTI SUK.':     ['DA40CS', 'DA42TDI'],
+  'SOWAN C.':       ['DA40CS', 'DA42TDI'],
+  'THAWATANAN P.':  ['DA40TDI', 'DA42TDI'],
+  'WISANU T.':      ['DA40TDI', 'DA42TDI'],
+  'WUTTHICHAI L.':  ['DA40TDI', 'DA42TDI'],
+};
+const SF_AP127_FI_NAMES = Object.keys(SF_AP127_FI_QUALS).sort();
+
 // ─── FI lookup (short code → full name used in FLIGHTS) ──────────────────
 const ASF_FI_FULL = {
   "W-CHAI":"WUTTHICHAI L.", "P-YUTH":"PHAHOLYUTH P.", "P-YA":"PARINYA B.",
