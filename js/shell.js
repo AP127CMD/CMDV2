@@ -11,7 +11,7 @@
   const GROUPS = [
     { items: [{ id: 'overview', label: 'Home', icon: '◎', ready: true }] },
     { label: 'Operations', items: [
-      { id: 'today', label: 'Today', icon: '✈' }, { id: 'board', label: 'Board', icon: '▤' },
+      { id: 'today', label: 'Day Glance', icon: '✈' }, { id: 'board', label: 'Board', icon: '▤' },
       { id: 'gantt', label: 'Gantt', icon: '▭' }, { id: 'weekly', label: 'Weekly', icon: '▦' },
       { id: 'roster', label: 'Roster', icon: '▥' }, { id: 'calendar', label: 'Calendar', icon: '▦' },
     ] },
