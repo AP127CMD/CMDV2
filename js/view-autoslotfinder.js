@@ -1608,7 +1608,6 @@ function AutoSlotFinderBoard() {
           <div className="mono uc" style={{ fontSize:11, fontWeight:600 }}>AUTO SLOT FINDER</div>
         </div>
         <div style={{ flex:1 }}/>
-        <FocusControls />
         {!isMobile && <div className="mono num" style={{ fontSize:11, color:'var(--ink-3)' }}>{String(day).padStart(2,'0')} {mo} · {wd}</div>}
         <RefreshButton />
         <LastUpdate />
@@ -1616,28 +1615,34 @@ function AutoSlotFinderBoard() {
 
 
 
-      {/* Search strip — collapsible on mobile */}
+      {/* Search strip — collapsible on mobile; DATE always pinned outside collapse */}
       {isMobile && (
         <div style={{ padding:'4px 10px', background:'var(--bg-2)', borderBottom:`1px solid ${filtersOpen?'transparent':'var(--line)'}`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+          {/* Date always visible on mobile */}
+          <DateCalendarTrigger value={asfDate} onChange={setAsfDate} />
           <button onClick={()=>setFiltersOpen(v=>!v)} className="mono uc"
             style={{ padding:'4px 10px', fontSize:9, borderRadius:4, cursor:'pointer', flex:1,
               border:`1px solid ${filtersOpen?'var(--col-pending)':'var(--line)'}`,
               background: filtersOpen?'color-mix(in oklch,var(--col-pending) 12%,transparent)':'transparent',
               color: filtersOpen?'var(--col-pending)':'var(--ink-3)', fontWeight: filtersOpen?600:400,
               display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span>FILTERS{loading?' · SYNCING…':rankData?` · ${rankData.ap127?.length||0} SPs`:''}</span>
+            <span>FILTERS</span>
             <span style={{ fontSize:11, transform:filtersOpen?'rotate(180deg)':'rotate(0deg)', transition:'transform .15s', display:'inline-block' }}>▾</span>
           </button>
-          <span className="mono uc" style={{ fontSize:9, color:stats.openCount>0?'var(--col-done)':'var(--ink-3)', fontWeight:600 }}>
+          <span className="mono uc" style={{ fontSize:9, color:stats.openCount>0?'var(--col-done)':'var(--ink-3)', fontWeight:600, flexShrink:0 }}>
             {ranked.length===0?'—':`${stats.openCount}/${finalRecords.length}`}
           </span>
         </div>
       )}
       <div style={{ padding:'6px 10px 8px', background:'var(--bg-2)', borderBottom:'1px solid var(--line)', display: isMobile&&!filtersOpen?'none':'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap', flexShrink:0 }}>
-        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-          <span className="mono uc" style={{ fontSize:9, color:'var(--ink-3)' }}>DATE</span>
-          <DateCalendarTrigger value={asfDate} onChange={setAsfDate} />
-        </div>
+        {/* DATE hidden on mobile — shown in the pinned row above */}
+        {!isMobile && (
+          <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+            <span className="mono uc" style={{ fontSize:9, color:'var(--ink-3)' }}>DATE</span>
+            <DateCalendarTrigger value={asfDate} onChange={setAsfDate} />
+          </div>
+        )}
+        <AsfSel label="RANK BY" value={sortMode} onChange={setSortMode} opts={[{v:'behind',l:'Most behind'},{v:'idle',l:'Longest idle'},{v:'leader',l:'Leader first'}]} minWidth={110} />
         <AsfMultiCheck label="TYPE" items={allAcTypes.map(t=>({v:t,l:t}))} selected={acTypeFilter} onChange={setAcTypeFilter} allLabel="Any type" color="var(--col-pending)" />
         <AsfSel label="SHOW" value={topN} onChange={v=>setTopN(+v)} opts={ASF_TOPN_OPTS} minWidth={70} />
         <AsfMultiCheck label="FI FILTER" items={fiAllNames.map(n=>({ v:n, l:n, badge: Object.keys(leavesMap).some(k => k.toLowerCase() === n.toLowerCase()) ? 'LEAVE' : null }))} selected={fiFilter} onChange={setFiFilter} allLabel="Any available" color="var(--col-pending)" />
@@ -1670,14 +1675,6 @@ function AutoSlotFinderBoard() {
 
       {/* Control row */}
       <div style={{ padding:'5px 12px', background:'var(--bg-2)', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', flexShrink:0 }}>
-        <span className="mono uc" style={{ fontSize:8, color:'var(--ink-3)' }}>RANK BY</span>
-        {[['behind','MOST BEHIND'],['idle','LONGEST IDLE'],['leader','LEADER FIRST']].map(([v,lbl]) => (
-          <button key={v} onClick={() => setSortMode(v)} className="mono uc"
-            style={{ padding:'2px 8px', fontSize:8, borderRadius:3, cursor:'pointer',
-              border:`1px solid ${sortMode===v?'var(--highlight)':'var(--line)'}`,
-              background: sortMode===v?'color-mix(in oklch,var(--highlight) 12%,transparent)':'transparent',
-              color: sortMode===v?'var(--highlight)':'var(--ink-3)', fontWeight: sortMode===v?600:400 }}>{lbl}</button>
-        ))}
         <span style={{ flex:1 }}/>
         {/* AUTO RESERVE — shown only when there are zero active reservations */}
         {Object.keys(activatedSlots).length === 0 && finalRecords.length > 0 && (
@@ -1725,12 +1722,6 @@ function AutoSlotFinderBoard() {
               borderRadius:999, background:'white', transition:'left .15s', boxShadow:'0 1px 3px oklch(0 0 0 / 0.35)' }}/>
           </div>
         </div>
-        <button onClick={expandAll}   className="mono uc" style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer', border:'1px solid var(--line)', background:'transparent', color:'var(--ink-3)' }}>EXPAND ALL</button>
-        <button onClick={collapseAll} className="mono uc" style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer', border:'1px solid var(--line)', background:'transparent', color:'var(--ink-3)' }}>COLLAPSE</button>
-        <button onClick={resetSettings} className="mono uc"
-          title="Reset filters & toggles to defaults (does not touch reservations)"
-          style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer',
-            border:'1px solid var(--line)', background:'transparent', color:'var(--ink-3)' }}>↺ RESET</button>
       </div>
 
       {/* Single scroll pane: timeline then SP cards */}
