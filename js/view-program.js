@@ -482,10 +482,23 @@ function renderPerformance(){
   rec.forEach(r=>{if(!dm[r.date])dm[r.date]={n:0,h:0,b:{AP124:0,AP126:0,AP127:0,AP129:0},bn:{AP124:0,AP126:0,AP127:0,AP129:0}};dm[r.date].n++;dm[r.date].h+=r.mins/60;dm[r.date].b[r.batch]=(dm[r.date].b[r.batch]||0)+(r.mins/60);dm[r.date].bn[r.batch]=(dm[r.date].bn[r.batch]||0)+1;});
   const dates=[...allDates];
   const rangeDays=dates.length;
+  const thisYear=new Date(today+'T00:00:00').getFullYear();
+  const xAxisLabel=(ds)=>{
+    if(!ds)return null;
+    try{
+      const d=new Date(ds+'T00:00:00');
+      const mo=d.toLocaleDateString('en-GB',{month:'short'});
+      const yr=d.getFullYear();
+      if(rangeDays>90){return yr===thisYear?mo:`${mo} '${String(yr).slice(2)}`;}
+      const day=String(d.getDate()).padStart(2,'0');
+      return yr===thisYear?`${day} ${mo}`:`${day} ${mo} '${String(yr).slice(2)}`;
+    }catch{return null;}
+  };
   const xTickFmt=(value)=>{
-    if(rangeDays>90){return value.slice&&value.slice(8)==='01'?ap127ShortDate(value):'';}
-    if(rangeDays>14){const dw=new Date(value+'T00:00:00').getDay();return(dw===1)?ap127ShortDate(value):'';}
-    return ap127ShortDate(value);
+    if(!value||!value.slice)return null;
+    if(rangeDays>90)return value.slice(8)==='01'?xAxisLabel(value):null;
+    if(rangeDays>14)return new Date(value+'T00:00:00').getDay()===1?xAxisLabel(value):null;
+    return xAxisLabel(value);
   };
   const xGridColor=(ctx)=>{
     const d=dates[ctx.index];if(!d)return'#21262d';
@@ -526,7 +539,7 @@ function renderPerformance(){
       tooltip:{callbacks:{title:([c])=>ap127FmtDate(dates[c.dataIndex]),footer:(items)=>"Total: "+items.reduce((a,i)=>a+(i.raw||0),0).toFixed(unit==="h"?1:0)+" "+(unit==="h"?"hrs":"flights")}}
     },
     scales:{
-      x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",callback:xTickFmt,maxTicksLimit:999,autoSkip:false,maxRotation:45},grid:{color:xGridColor}},
+      x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",callback:xTickFmt,maxTicksLimit:999,autoSkip:false,maxRotation:0,minRotation:0},grid:{color:xGridColor}},
       y:{stacked:true,beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},grid:{color:"#21262d"},title:{display:true,text:unit==="h"?"hours / day":"flights / day",color:"#8b949e",font:{size:9,family:"JetBrains Mono"}}}
     }
   });
