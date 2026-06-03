@@ -500,20 +500,6 @@ function AsfMultiCheck({ label, items, selected, onChange, allLabel, color }) {
 
 // ─── Main timeline ────────────────────────────────────────────────────────
 function AsfTimeline({ baseMap, allFIs, allTails, windowFrom, windowTo, rwyStart, rwyEnd, allResults, activatedSlots, hoveredSlot, onSlotHover, onAvailableSlotClick, onReservedSlotClick, hourEnd, leavesMap, maintTailSet }) {
-  const timelineRef = useR_asf(null);
-  const [tlHeight, setTlHeight] = useS_asf(() => Math.max(260, Math.floor(window.innerHeight * 0.45)));
-
-  // Drag-resize handle handler
-  const onResizeDrag = useC_asf((e) => {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startH = tlHeight;
-    const onMove = (mv) => setTlHeight(Math.max(120, startH + mv.clientY - startY));
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [tlHeight]);
-
   const [timelineTab,  setTimelineTab]  = useS_asf('fi');
   const [showDetails,  setShowDetails]  = useS_asf(false); // OFF by default for performance
   const _app = useApp();
@@ -582,7 +568,7 @@ function AsfTimeline({ baseMap, allFIs, allTails, windowFrom, windowTo, rwyStart
         </div>
       </div>
 
-      <div ref={timelineRef} style={{ height:tlHeight, minHeight:120, overflowY:'auto', position:'relative' }}>
+      <div style={{ overflowY:'auto', minHeight:80 }}>
         {section.rows.map((rowKey, ri) => {
           const flights     = section.raw[rowKey] || [];
           const hasSlots    = section.avSet.has(rowKey);
@@ -756,9 +742,6 @@ function AsfMiniTimeline({ slots, activatedSlot, windowFrom, windowTo, rwyStart,
           })}
         </div>
       </div>
-      <div onMouseDown={onResizeDrag} style={{ height:6, cursor:'ns-resize', background:'var(--line)', borderRadius:3, margin:'2px 0', flexShrink:0, transition:'background .1s' }}
-        onMouseEnter={e=>e.currentTarget.style.background='var(--col-pending)'}
-        onMouseLeave={e=>e.currentTarget.style.background='var(--line)'}/>
     </div>
   );
 }
@@ -1272,6 +1255,17 @@ function AutoSlotFinderBoard() {
   const [tlSlotModal,    setTlSlotModal]    = useS_asf(null); // { slot }
   const [tlReleaseModal, setTlReleaseModal] = useS_asf(null); // act object
 
+  // Split pane: timeline height vs SP list height
+  const [splitH, setSplitH] = useS_asf(() => Math.max(200, Math.floor(window.innerHeight * 0.42)));
+  const onSplitDrag = useC_asf((e) => {
+    e.preventDefault();
+    const startY = e.clientY, startH = splitH;
+    const onMove = mv => setSplitH(Math.max(100, Math.min(startH + mv.clientY - startY, window.innerHeight - 220)));
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [splitH]);
+
   const anyModalOpen = !!(acPickerModal || tlSlotModal || tlReleaseModal || (proposal && proposal.activatedSlot));
 
   // Open the A/C picker for a specific slot — clears hover first so the timeline
@@ -1769,11 +1763,11 @@ function AutoSlotFinderBoard() {
             border:'1px solid var(--line)', background:'transparent', color:'var(--ink-3)' }}>↺ RESET</button>
       </div>
 
-      {/* Scrollable content — pointer-events and opacity locked while any modal is open
-           so hover events on timeline/slot buttons can't fire through the backdrop */}
-      <div style={{ flex:1, minHeight:0, overflowY:'auto', pointerEvents: anyModalOpen ? 'none' : 'auto', opacity: anyModalOpen ? 0.45 : 1, transition:'opacity .15s' }}>
-        <div style={{ display:'flex', flexDirection:'column', gap:8, padding:'10px' }}>
+      {/* Split pane: timeline (top) | drag handle | SP cards (bottom) */}
+      <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
 
+        {/* ─── Timeline pane ─── */}
+        <div style={{ height:splitH, flexShrink:0, overflowY:'auto', pointerEvents:anyModalOpen?'none':'auto', opacity:anyModalOpen?0.45:1, transition:'opacity .15s', padding:'8px 10px' }}>
           {rankData && (
             <AsfTimeline
               baseMap={baseBusyMap}
@@ -1793,6 +1787,18 @@ function AutoSlotFinderBoard() {
             />
           )}
 
+        </div>
+
+        {/* ─── Drag handle between timeline and SP list ─── */}
+        <div onMouseDown={onSplitDrag}
+          style={{ height:8, flexShrink:0, background:'var(--line)', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', transition:'background .12s', userSelect:'none' }}
+          onMouseEnter={e=>e.currentTarget.style.background='var(--col-pending)'}
+          onMouseLeave={e=>e.currentTarget.style.background='var(--line)'}>
+          <div style={{ width:36, height:3, borderRadius:2, background:'var(--ink-3)', opacity:0.45 }}/>
+        </div>
+
+        {/* ─── SP cards pane ─── */}
+        <div style={{ flex:1, minHeight:0, overflowY:'auto', pointerEvents:anyModalOpen?'none':'auto', opacity:anyModalOpen?0.45:1, transition:'opacity .15s', padding:'8px 10px', display:'flex', flexDirection:'column', gap:8 }}>
           {!rankData && loading && (
             <div className="mono uc" style={{ padding:'40px 16px', textAlign:'center', color:'var(--ink-3)', fontSize:10 }}>Fetching AP-127 SP data…</div>
           )}
@@ -1808,7 +1814,6 @@ function AutoSlotFinderBoard() {
               {onlyOpen ? 'No SP has an open slot — disable WITH SLOTS ONLY or widen the window.' : 'No SPs to show.'}
             </div>
           )}
-
           {rankData && finalRecords.map(rec => {
             const spKey = asfShortName(rec.student.name);
             const ovr   = asfGetOverride(spKey, rec.student, spOverrides);
