@@ -150,7 +150,7 @@ function setSS(state,txt){document.getElementById("sdot").className="sdot "+stat
 function fd(ds){if(!ds||ds==="COMPLETE"||ds==="N/A")return ds;try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"2-digit"});}catch{return ds;}}
 function hm(m){if(!m)return"";return Math.floor(m/60)+"h"+(m%60?String(m%60).padStart(2,"0")+"m":"");}
 function mkC(id,cfg){const ctx=document.getElementById(id);if(!ctx)return null;const ex=Chart.getChart(ctx);if(ex)ex.destroy();return new Chart(ctx,cfg);}
-function copts(sx={},sy={},extra={}){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}},...(extra.p||{})},scales:{x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681"},...sx},y:{ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},...sy}}};}
+function copts(sx={},sy={},extra={}){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}},datalabels:{display:false},...(extra.p||{})},scales:{x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681"},...sx},y:{ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},...sy}}};}
 
 // ##AP127JS_START##
 // ── AP127 DETAIL ──
@@ -536,6 +536,7 @@ function buildAP127Timeline(all,curriculum,maxDate){
         if(viewIdx>=0)openAP127Drawer(viewIdx);
       },
       plugins:{
+        datalabels:{display:false},
         legend:{display:false},
         tooltip:{
           filter:(item)=>{const ds=item.chart.data.datasets[item.datasetIndex];return !ds._isToday&&!ds._isCount&&!ds._isIdle;},
@@ -631,7 +632,7 @@ function buildAP127RaceChart(all,curriculum,maxDate){
   CHARTS.ap127race=mkC("d127-race",{
     type:"line",data:{labels,datasets},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{title:(ctx)=>ap127FmtDate(ctx[0]?.label||""),label:(ctx)=>`${ctx.dataset.label}: ${ctx.parsed.y}`}}},
+      plugins:{datalabels:{display:false},legend:{display:false},tooltip:{callbacks:{title:(ctx)=>ap127FmtDate(ctx[0]?.label||""),label:(ctx)=>`${ctx.dataset.label}: ${ctx.parsed.y}`}}},
       scales:{
         x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxTicksLimit:18},grid:{color:"#21262d"}},
         y:{beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#8b949e"},grid:{color:"#21262d"}}
@@ -678,6 +679,7 @@ function buildAP127OverallChart(all,curriculum,maxDate){
       responsive:true,
       maintainAspectRatio:false,
       plugins:{
+        datalabels:{display:false},
         legend:{display:false},
         tooltip:{callbacks:{label:(ctx)=>`${ctx.parsed.x}/${curriculum}`}}
       },
@@ -814,6 +816,7 @@ function buildAP127CombinedChart(){
       parsing:{xAxisKey:'x',yAxisKey:'y'},
       interaction:{mode:'index',intersect:false},
       plugins:{
+        datalabels:{display:false},
         legend:{display:true,labels:{color:'#8b949e',font:{family:'JetBrains Mono',size:9},boxWidth:18,padding:10,filter:item=>item.text!=='Today'&&item.text!=='Total'}},
         tooltip:{callbacks:{
           title:ctx=>{const r=ctx[0]?.raw;return r?ap127FmtDate(r.x):'';},

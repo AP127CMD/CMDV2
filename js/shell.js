@@ -127,7 +127,7 @@
           options: {
             responsive: true, maintainAspectRatio: false, parsing: { xAxisKey: 'x', yAxisKey: 'y' },
             interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { labels: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 14, padding: 8 } },
+            plugins: { datalabels: { display: false }, legend: { labels: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 14, padding: 8 } },
               tooltip: { callbacks: { title: c => { const r = c[0]?.raw; try { return r ? new Date(r.x + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''; } catch { return r?.x || ''; } },
                 label: c => `${c.dataset.label}: ${Math.round(c.raw?.y || 0)} lessons` } } },
             scales: { x: { type: 'time', time: { unit: 'month', displayFormats: { month: 'MMM yy' } }, ticks: { color: '#6e7681', font: { family: 'JetBrains Mono', size: 8 }, maxTicksLimit: 10 }, grid: { color: '#21262d' } },
