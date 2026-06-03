@@ -10,16 +10,14 @@
 <div class="d127-wrap">
   <div class="d127-wrap">
     <div class="d127-title">
-      <h1>AP<b>127</b> PROGRESS<span> · SQUADRON DETAIL</span></h1>
-      <div class="d127-subtitle" id="d127-subtitle">Progress reconciled against the live Operations record · discrepancies tracked in Cross-Check</div>
+      <h1>AP<b>127</b> PROGRESS</h1>
+      <div class="d127-subtitle" id="d127-subtitle">Progress retrieved from CATC FTC records and master plan</div>
     </div>
     <div class="d127-kpis">
-      <div class="d127-kpi"><div class="d127-kl">Cohort Progress</div><div class="d127-kv" id="d127-k-prg">-</div><div class="d127-ks" id="d127-k-prg-s">Done vs Total</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Batch Progress</div><div class="d127-kv" id="d127-k-prg">-</div><div class="d127-ks" id="d127-k-prg-s">Done vs Total</div></div>
       <div class="d127-kpi"><div class="d127-kl">Students</div><div class="d127-kv" id="d127-k-stu">-</div><div class="d127-ks" id="d127-k-stu-s">on the AP127 curriculum</div></div>
-      <div class="d127-kpi"><div class="d127-kl">Pace · at/above vs below</div><div class="d127-kv" id="d127-k-track">-</div><div class="d127-ks" id="d127-k-track-s">vs cohort average</div></div>
-      <div class="d127-kpi"><div class="d127-kl">Total Hours</div><div class="d127-kv" id="d127-k-hrs">-</div><div class="d127-ks">Actual / Curriculum</div></div>
-      <div class="d127-kpi"><div class="d127-kl">Ops-Synced</div><div class="d127-kv" id="d127-k-sync">-</div><div class="d127-ks" id="d127-k-sync-s">from Operations feed</div></div>
-      <div class="d127-kpi"><div class="d127-kl">Lead / Lag</div><div class="d127-person" id="d127-k-ahead"><small>Ahead</small>-</div><div class="d127-person" id="d127-k-behind"><small>Behind</small>-</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Hrs Done / Plan</div><div class="d127-kv" id="d127-k-hrs">-</div><div class="d127-ks" id="d127-k-hrs-s">vs plan today</div></div>
+      <div class="d127-kpi"><div class="d127-kl">Lessons Done / Plan</div><div class="d127-kv" id="d127-k-les">-</div><div class="d127-ks" id="d127-k-les-s">vs plan today</div></div>
     </div>
     <div class="d127-controls">
       <input id="d127-q" placeholder="Search name..." oninput="renderAP127Detail()">
@@ -91,19 +89,19 @@
       </div>
     </div>
     <div class="d127-panel">
-      <div class="d127-h"><span class="d127-t">Flight Timeline vs Progress</span><span class="d127-s" id="d127-tl-meta">-</span></div>
-      <div class="d127-body">
-        <div class="d127-note">Rows are sorted leader to lagger. Dots mark dates each student actually flew, colored by lesson phase. Red segments mark gaps &gt; 7 days. Click any dot for details.</div>
-        <div class="d127-phase-legend" id="d127-phase-legend"></div>
-        <div id="d127-timeline-wrap" style="position:relative;height:330px;width:100%"><canvas id="d127-timeline"></canvas></div>
-      </div>
-    </div>
-    <div class="d127-panel">
       <div class="d127-h"><span class="d127-t">Actual vs Planned</span><span class="d127-s" id="d127-race-meta">All 28 students with planned baseline</span></div>
       <div class="d127-body">
         <div class="d127-note">Solid lines are actual cumulative lessons to current date. Dashed line is planned target from curriculum dates.</div>
         <div style="position:relative;height:330px"><canvas id="d127-race"></canvas></div>
         <div id="d127-race-toggles" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding:8px;background:var(--s2);border-radius:4px;font-size:11px"></div>
+      </div>
+    </div>
+    <div class="d127-panel">
+      <div class="d127-h"><span class="d127-t">Flight Timeline vs Progress</span><span class="d127-s" id="d127-tl-meta">-</span></div>
+      <div class="d127-body">
+        <div class="d127-note">Rows are sorted leader to lagger. Dots mark dates each student actually flew, colored by lesson phase. Red segments mark gaps &gt; 7 days. Click any dot for details.</div>
+        <div class="d127-phase-legend" id="d127-phase-legend"></div>
+        <div id="d127-timeline-wrap" style="position:relative;height:330px;width:100%"><canvas id="d127-timeline"></canvas></div>
       </div>
     </div>
     <div class="d127-panel">
@@ -250,13 +248,18 @@ function renderAP127Detail(){
   setT("d127-k-stu-s",(curriculum||0)+"-lesson curriculum");
   setT("d127-k-prg",prg.toFixed(1)+"%");
   setT("d127-k-prg-s",`${doneAll} of ${total*curriculum} lessons flown`);
-  setT("d127-k-track",`${onTrack} / ${behindN}`);
-  setT("d127-k-track-s",`≥ cohort avg ${avgDone.toFixed(0)} · plan wants ${expDone} by today`);
-  setT("d127-k-hrs",totalHours?`${ap127FmtNum(hrsAll)} / ${ap127FmtNum(totalHours,0)}`:ap127FmtNum(hrsAll));
-  setT("d127-k-sync",opsSync);
-  setT("d127-k-sync-s",opsSync?`student${opsSync>1?"s":""} ahead of Progress${opsAtTxt?" · "+opsAtTxt:""}`:"matches Progress record");
-  setH("d127-k-ahead",`<small>Ahead</small>${aheadNames||"-"}`);
-  setH("d127-k-behind",`<small>Behind</small>${lagNames||"-"}`);
+  // Hrs done vs plan
+  const totalPlannedHrsToday=ap127PlannedHoursAsOf(today0)*total;
+  const hrsVariance=hrsAll-totalPlannedHrsToday;
+  const hrsVarColor=hrsVariance>=0?"var(--done)":"#ef4444";
+  setT("d127-k-hrs",`${ap127FmtNum(hrsAll,1)} / ${ap127FmtNum(totalPlannedHrsToday,0)}`);
+  setH("d127-k-hrs-s",`<span style="color:${hrsVarColor}">${hrsVariance>=0?"+":""}${hrsVariance.toFixed(1)}h ${hrsVariance>=0?"ahead":"behind"} plan</span>`);
+  // Lessons done vs plan
+  const totalExpectedLessons=expDone*total;
+  const lesVariance=doneAll-totalExpectedLessons;
+  const lesVarColor=lesVariance>=0?"var(--done)":"#ef4444";
+  setT("d127-k-les",`${doneAll} / ${totalExpectedLessons}`);
+  setH("d127-k-les-s",`<span style="color:${lesVarColor}">${lesVariance>=0?"+":""}${lesVariance} lessons ${lesVariance>=0?"ahead":"behind"}</span>`);
   setT("d127-meta",`${doneAll} lessons done · Avg ${avgDone.toFixed(1)} · ${onTrack}/${total} on track`);
 
   const today=ap127TodayBKK();
@@ -274,7 +277,23 @@ function renderAP127Detail(){
   const getBandColor=(done)=>{if(done>=aheadLo)return"#7be9b8";if(done>=midLo)return"#ffd67a";return"#ffa0a0";};
   const tbody=document.getElementById("d127-rows");
   const plannedHrsToday=ap127PlannedHoursAsOf(today);
-  tbody.innerHTML=rows.map((s,idx)=>{
+  // Totals row calculations
+  const sortedByDone=[...all].sort((a,b)=>(a.done||0)-(b.done||0));
+  const avgPctAll=curriculum?rows.reduce((a,s)=>a+(s.done||0),0)/rows.length/curriculum*100:0;
+  const sumHrsAll=rows.reduce((a,s)=>a+ap127Hours(s),0);
+  const sumDoneAll=rows.reduce((a,s)=>a+(s.done||0),0);
+  const validIdles=rows.map(s=>ap127IdleDays(s,maxDate)).filter(v=>v!==9999);
+  const avgIdleAll=validIdles.length?(validIdles.reduce((a,v)=>a+v,0)/validIdles.length):0;
+  const validDayDeltas=rows.map(s=>ap127DayDelta(s,planMap,today)).filter(v=>v!==null);
+  const sumDayDeltaAll=validDayDeltas.reduce((a,v)=>a+v,0);
+  const sumHrsDeltaAll=rows.reduce((a,s)=>a+(ap127Hours(s)-plannedHrsToday),0);
+  const lagLastLes=(sortedByDone[0]?.flown||[]).at(-1)?.lesson||sortedByDone[0]?.next_lesson||'-';
+  const leadLastLes=(sortedByDone.at(-1)?.flown||[]).at(-1)?.lesson||sortedByDone.at(-1)?.next_lesson||'-';
+  const allLastDates=all.map(s=>ap127LastFlightDate(s)).filter(Boolean).sort();
+  const minFltDate=allLastDates[0]?ap127ShortDate(allLastDates[0]):'-';
+  const maxFltDate=allLastDates.at(-1)?ap127ShortDate(allLastDates.at(-1)):'-';
+  const totalRowHtml=`<tr class="d127-total-row"><td colspan="2" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--c127);font-weight:700;letter-spacing:.5px">AP127 · ${rows.length} SPs</td><td>-</td><td>-</td><td>-</td><td style="padding:0 5px"><span class="d127-pbg"><span class="d127-pf" style="width:${avgPctAll.toFixed(1)}%"></span></span><span class="d127-mono" style="font-size:9px">${avgPctAll.toFixed(0)}% avg</span></td><td class="d127-mono" style="color:var(--c127)">${sumHrsAll.toFixed(1)}</td><td class="d127-mono" style="color:var(--c127)">${sumDoneAll}</td><td class="d127-mono" style="font-size:9px">${lagLastLes}→${leadLastLes}</td><td class="d127-mono" style="font-size:9px">${minFltDate}–${maxFltDate}</td><td class="d127-mono">${avgIdleAll.toFixed(0)}d</td><td class="d127-mono" style="color:${sumDayDeltaAll>=0?'#ff6b6b':'var(--done)'}">${sumDayDeltaAll>=0?'+':''}${sumDayDeltaAll}d</td><td class="d127-mono" style="color:${sumHrsDeltaAll>=0?'var(--done)':'#ff6b6b'}">${sumHrsDeltaAll>=0?'+':''}${sumHrsDeltaAll.toFixed(1)}h</td></tr>`;
+  tbody.innerHTML=totalRowHtml+rows.map((s,idx)=>{
     const rank=idx+1,pct=curriculum?((s.done||0)/curriculum*100):0;
     const hrs=ap127Hours(s);
     const hrsDelta=hrs-plannedHrsToday;
@@ -290,8 +309,7 @@ function renderAP127Detail(){
     const rankColor=getBandColor(s.done||0);
     const last=(s.flown||[]).at(-1)||{};
     const flewToday=last.date===today;
-    const rel=last.date?ap127RelDays(today,last.date):"";
-    return `<tr onclick="openAP127Drawer(${idx})"><td><span class="d127-rank" style="background:${rankColor};color:#000">${rank}</span>${flewToday?'<span class="d127-today-dot" title="Flew today"></span>':""}</td><td><div class="d127-name">${ap127ShortName(s.name)}</div></td><td class="d127-mono" style="font-weight:700;color:var(--c127)">${s.nick||"-"}</td><td class="d127-mono" style="color:${s.se==="DA40-TDI"?"#fb923c":"#38bdf8"};font-weight:600">${s.se||"-"}</td><td class="d127-mono">${AP127_FI_FULL[s.fi]||s.fi||"-"}</td><td style="padding:0 4px"><span class="d127-pbg"><span class="d127-pf" style="width:${pct.toFixed(1)}%"></span></span><span class="d127-mono" style="font-size:9px">${pct.toFixed(0)}%</span></td><td class="d127-mono">${hrs.toFixed(1)}</td><td class="d127-mono">${s.done||0}</td><td class="d127-mono">${last.lesson||s.next_lesson||"-"}</td><td class="d127-mono">${ap127ShortDate(last.date)}${rel?`<span class="d127-rel">(${rel})</span>`:""}</td><td class="d127-mono" style="${idleStyle}">${idleTxt}</td><td class="d127-mono" style="color:${dayDeltaColor}">${dayDeltaTxt}</td><td class="d127-mono" style="color:${hrsDeltaColor}">${hrsDeltaTxt}</td></tr>`;
+    return `<tr onclick="openAP127Drawer(${idx})"><td><span class="d127-rank" style="background:${rankColor};color:#000">${rank}</span>${flewToday?'<span class="d127-today-dot" title="Flew today"></span>':""}</td><td><div class="d127-name">${ap127ShortName(s.name)}</div></td><td class="d127-mono" style="font-weight:700;color:var(--c127)">${s.nick||"-"}</td><td class="d127-mono" style="color:${s.se==="DA40-TDI"?"#fb923c":"#38bdf8"};font-weight:600">${s.se||"-"}</td><td class="d127-mono">${AP127_FI_FULL[s.fi]||s.fi||"-"}</td><td style="padding:0 4px"><span class="d127-pbg"><span class="d127-pf" style="width:${pct.toFixed(1)}%"></span></span><span class="d127-mono" style="font-size:9px">${pct.toFixed(0)}%</span></td><td class="d127-mono">${hrs.toFixed(1)}</td><td class="d127-mono">${s.done||0}</td><td class="d127-mono">${last.lesson||s.next_lesson||"-"}</td><td class="d127-mono">${ap127ShortDate(last.date)}</td><td class="d127-mono" style="${idleStyle}">${idleTxt}</td><td class="d127-mono" style="color:${dayDeltaColor}">${dayDeltaTxt}</td><td class="d127-mono" style="color:${hrsDeltaColor}">${hrsDeltaTxt}</td></tr>`;
   }).join("");
   const curSort=document.getElementById("d127-sort")?.value||"behind";
   document.querySelectorAll(".d127-table th[data-key]").forEach(th=>{
@@ -313,7 +331,7 @@ function renderAP127Detail(){
   }).join("");
 
   const recent=[...all].map(s=>({s,last:(s.flown||[]).at(-1)||{}})).filter(x=>x.last.date).sort((a,b)=>(b.last.date||"").localeCompare(a.last.date||"")||(b.s.done||0)-(a.s.done||0)).slice(0,8);
-  document.getElementById("d127-activity").innerHTML=recent.map(x=>`<div class="d127-ai"><div class="d127-an">${ap127ShortName(x.s.name)} · ${x.last.lesson||"-"}</div><div class="d127-ad">${ap127FmtDate(x.last.date)} · ${ap127Hours(x.s).toFixed(2)} hrs · ${x.s.done||0}/${curriculum}</div></div>`).join("")||`<div class="d127-ad">No activity yet.</div>`;
+  document.getElementById("d127-activity").innerHTML=recent.map(x=>`<div class="d127-ai"><div class="d127-an">${ap127ShortName(x.s.name)} · ${x.last.lesson||"-"}</div><div class="d127-ad">${ap127ShortDate(x.last.date)} · ${ap127Hours(x.s).toFixed(2)} hrs · ${x.s.done||0}/${curriculum}</div></div>`).join("")||`<div class="d127-ad">No activity yet.</div>`;
   buildAP127CombinedChart();
   buildAP127Timeline(all,curriculum,maxDate);
   buildAP127RaceChart(all,curriculum,maxDate);
@@ -325,9 +343,9 @@ function openAP127Drawer(idx){
   document.getElementById("d127-d-name").textContent=s.name;
   document.getElementById("d127-d-meta").textContent=`${s.catc_id||"-"} · ${done}/${total} lessons · ${ap127Hours(s).toFixed(2)} hrs`;
   const flown=(s.flown||[]).slice(-14).reverse();
-  document.getElementById("d127-d-flown").innerHTML=flown.length?flown.map(f=>`<div class="d127-li"><div class="d127-ldt">${ap127FmtDate(f.date)}</div><div class="d127-ll">${f.lesson||"-"}</div><div class="d127-ld">${hm(ap127FlightMins(f))}</div></div>`).join(""):`<div class="d127-ad">No completed flights.</div>`;
+  document.getElementById("d127-d-flown").innerHTML=flown.length?flown.map(f=>`<div class="d127-li"><div class="d127-ldt">${ap127ShortDate(f.date)}</div><div class="d127-ll">${f.lesson||"-"}</div><div class="d127-ld">${hm(ap127FlightMins(f))}</div></div>`).join(""):`<div class="d127-ad">No completed flights.</div>`;
   const plan=(s.planned||[]).slice(0,14);
-  document.getElementById("d127-d-plan").innerHTML=plan.length?plan.map(p=>`<div class="d127-li"><div class="d127-ldt">${ap127FmtDate(p.date)}</div><div class="d127-ll">${p.lesson||"-"}</div><div class="d127-ld">${hm(p.mins||p.planned_mins||0)}</div></div>`).join(""):`<div class="d127-ad">No planned flights.</div>`;
+  document.getElementById("d127-d-plan").innerHTML=plan.length?plan.map(p=>`<div class="d127-li"><div class="d127-ldt">${ap127ShortDate(p.date)}</div><div class="d127-ll">${p.lesson||"-"}</div><div class="d127-ld">${hm(p.mins||p.planned_mins||0)}</div></div>`).join(""):`<div class="d127-ad">No planned flights.</div>`;
   document.getElementById("d127-draw-ov").classList.add("show");
 }
 function closeAP127Drawer(){document.getElementById("d127-draw-ov").classList.remove("show");}
