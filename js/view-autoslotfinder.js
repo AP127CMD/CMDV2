@@ -375,13 +375,13 @@ function AsfTimePicker({ label, value, onChange, accent }) {
 // ─── AsfInlineSel (per-SP filter row) ─────────────────────────────────────
 function AsfInlineSel({ label, value, onChange, opts }) {
   return (
-    <label style={{ display:'flex', flexDirection:'column', gap:2 }}>
+    <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
       <span className="mono uc" style={{ fontSize:7, color:'var(--ink-3)' }}>{label}</span>
       <select className="mono" value={value} onChange={e => onChange(e.target.value)}
         style={{ background:'var(--surface)', color:'var(--ink)', border:'1px solid var(--line)', borderRadius:3, padding:'2px 4px', fontSize:10, outline:'none', height:22, minWidth:0 }}>
         {opts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
       </select>
-    </label>
+    </div>
   );
 }
 
@@ -979,7 +979,7 @@ function AsfSlotBtn({ slot, isActive, onRelease, onReservePair, activePair, isHo
       <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
         {fiEntries.map(([fi, tails]) => (
           <div key={fi} style={{ display:'flex', alignItems:'flex-start', gap:8, flexWrap:'wrap' }}>
-            <span style={{ fontSize:10, minWidth:130, flexShrink:0, paddingTop:3,
+            <span style={{ fontSize:10, minWidth:80, maxWidth:150, flexShrink:1, paddingTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
               fontWeight: isActive && activePair?.fi===fi ? 700 : 400,
               color: isActive && activePair?.fi===fi ? 'var(--highlight)' : 'var(--ink-2)' }}>{fi}</span>
             <div style={{ display:'flex', gap:4, flexWrap:'wrap', flex:1 }}>
@@ -1086,82 +1086,59 @@ function AsfStudentCard({
   const hasReservation = !!activatedSlot;
 
   return (
-    <div style={{ background: `linear-gradient(to right, ${hasReservation ? 'var(--highlight)' : accent} 4px, var(--surface) 4px)`, boxShadow: `inset 0 0 0 1px ${expanded ? `color-mix(in oklch,${accent} 50%,var(--line))` : 'var(--line)'}`, borderRadius:6, overflow:'hidden' }}>
+    <div style={{ background: `linear-gradient(to right, ${hasReservation ? 'var(--highlight)' : accent} 4px, var(--surface) 4px)`, boxShadow: `inset 0 0 0 1px ${expanded ? `color-mix(in oklch,${accent} 50%,var(--line))` : 'var(--line)'}`, borderRadius:6, overflow:'visible' }}>
 
-      {/* Summary row — single line on wide layouts, wraps on narrow */}
-      <div onClick={onToggle} style={{ background:'transparent', cursor:'pointer', width:'100%', textAlign:'left', padding:'6px 10px', display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
-        <span className="mono" style={{ width:22, height:22, borderRadius:4, background: hasReservation ? 'var(--highlight)' : accent, color:'oklch(0.12 0 0)', fontWeight:700, fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{rank}</span>
-        <span style={{ fontSize:12, fontWeight:600, color: hasReservation ? 'var(--highlight)' : 'var(--ink)', whiteSpace:'nowrap' }}>{asfShortName(student.name)}</span>
-        {student.nick && <span className="mono uc" style={{ fontSize:8, color:'var(--ink-3)', letterSpacing:'0.04em', whiteSpace:'nowrap' }}>{student.nick}</span>}
-        <span style={{ color:'var(--line)', fontSize:10, flexShrink:0 }}>│</span>
-        <span className="mono" style={{ fontSize:9, color:'var(--ink-2)', whiteSpace:'nowrap' }}>
-          <span style={{ fontSize:7, color:'var(--ink-3)' }}>NEXT </span>{student.next_lesson || '—'}
-        </span>
-        <span className="mono num" style={{ fontSize:9, color:idleColor, fontWeight: idle != null && idle >= 6 ? 600 : 400, whiteSpace:'nowrap' }}>
-          <span style={{ fontSize:7, color:'var(--ink-3)' }}>IDLE </span>{idle == null ? '—' : `${idle}d`}
-        </span>
-        <span style={{ flex:1 }}/>
-        {hasReservation && (
-          <>
-            <span className="mono uc" style={{ padding:'3px 7px', borderRadius:4, fontSize:8, fontWeight:700, boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--highlight) 55%,transparent)', background:'color-mix(in oklch,var(--highlight) 14%,transparent)', color:'var(--highlight)' }}>
-              ★ {asfMinsToHHMM(activatedSlot.t)}–{asfMinsToHHMM(activatedSlot.end)}
-            </span>
-            <button onClick={e => { e.stopPropagation(); onRelease(); }} className="mono uc"
-              style={{ padding:'3px 8px', fontSize:8, borderRadius:3, cursor:'pointer',
-                boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-cancel) 55%,transparent)',
-                background:'color-mix(in oklch,var(--col-cancel) 12%,transparent)',
-                color:'var(--col-cancel)', fontWeight:600 }}>
-              RELEASE
-            </button>
-            <button onClick={e => { e.stopPropagation(); onPropose(); }} className="mono uc"
-              style={{ padding:'3px 8px', fontSize:8, borderRadius:3, cursor:'pointer', boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--highlight) 55%,transparent)', background:'color-mix(in oklch,var(--highlight) 14%,transparent)', color:'var(--highlight)', fontWeight:600 }}>
-              PROPOSE ▸
-            </button>
-          </>
-        )}
-        {onLeave && (
-          <span className="mono uc" title={onLeave}
-            style={{ padding:'3px 7px', borderRadius:4, fontSize:8, fontWeight:700,
-              boxShadow:'inset 0 0 0 1px color-mix(in oklch,#3b82f6 55%,transparent)',
-              background:'color-mix(in oklch,#3b82f6 14%,transparent)',
-              color:'#3b82f6' }}>ON LEAVE</span>
-        )}
-        {!onLeave && hasFlight && (
-          <span className="mono uc" title="Already has a flight scheduled today"
-            style={{ padding:'3px 7px', borderRadius:4, fontSize:8, fontWeight:700,
-              boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-done) 55%,transparent)',
-              background:'color-mix(in oklch,var(--col-done) 14%,transparent)',
-              color:'var(--col-done)' }}>SCHEDULED</span>
-        )}
-        <span className="mono uc" style={{ padding:'3px 9px', borderRadius:4, fontSize:9, fontWeight:600, boxShadow: `inset 0 0 0 1px ${slots.length===0?'var(--line)':'color-mix(in oklch,var(--col-done) 45%,transparent)'}`, background: slots.length===0?'transparent':'color-mix(in oklch,var(--col-done) 12%,transparent)', color: slots.length===0?'var(--ink-3)':'var(--col-done)' }}>{slotBadge}</span>
-        {/* Cascade feedback: amber chip when reservations reduced this SP's slot count,
-            red chip when reservations have eliminated all options. Suppressed during
-            the empty-reservation baseline short-circuit (blocked computes to 0). */}
-        {blockedAll && (
-          <span className="mono uc"
-            title={`Baseline (no reservations): ${baselineCount} slots — blocked by other reservations`}
-            style={{ padding:'3px 7px', borderRadius:4, fontSize:8, fontWeight:700,
-              boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-cancel) 55%,transparent)',
-              background:'color-mix(in oklch,var(--col-cancel) 14%,transparent)',
-              color:'var(--col-cancel)' }}>
-            BLOCKED BY OTHERS
+      {/* Card: main click target */}
+      <div onClick={onToggle} style={{ cursor:'pointer', width:'100%', textAlign:'left' }}>
+        {/* Row 1: rank • name • nick ── slot count • arrow */}
+        <div style={{ padding:'7px 10px', display:'flex', alignItems:'center', gap:7 }}>
+          <span className="mono" style={{ width:22, height:22, borderRadius:4, background: hasReservation ? 'var(--highlight)' : accent, color:'oklch(0.12 0 0)', fontWeight:700, fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{rank}</span>
+          <span style={{ fontSize:12, fontWeight:600, color: hasReservation ? 'var(--highlight)' : 'var(--ink)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>{asfShortName(student.name)}</span>
+          {student.nick && <span className="mono uc" style={{ fontSize:8, color:'var(--ink-3)', letterSpacing:'0.04em', flexShrink:0 }}>{student.nick}</span>}
+          <span className="mono uc" style={{ padding:'2px 7px', borderRadius:3, fontSize:9, fontWeight:600, flexShrink:0, boxShadow: `inset 0 0 0 1px ${slots.length===0?'var(--line)':'color-mix(in oklch,var(--col-done) 45%,transparent)'}`, background: slots.length===0?'transparent':'color-mix(in oklch,var(--col-done) 12%,transparent)', color: slots.length===0?'var(--ink-3)':'var(--col-done)' }}>{slotBadge}</span>
+          <span className="mono" style={{ fontSize:11, color:'var(--ink-3)', transform: expanded?'rotate(90deg)':'rotate(0deg)', transition:'transform .15s', display:'inline-block', width:12, flexShrink:0 }}>▸</span>
+        </div>
+        {/* Row 2: status/meta strip */}
+        <div style={{ padding:'3px 10px 5px', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', borderTop:'1px solid var(--line-soft)' }}>
+          {onLeave && (
+            <span className="mono uc" title={onLeave} style={{ padding:'2px 6px', borderRadius:3, fontSize:8, fontWeight:700, boxShadow:'inset 0 0 0 1px color-mix(in oklch,#3b82f6 55%,transparent)', background:'color-mix(in oklch,#3b82f6 14%,transparent)', color:'#3b82f6' }}>ON LEAVE</span>
+          )}
+          {!onLeave && hasFlight && (
+            <span className="mono uc" style={{ padding:'2px 6px', borderRadius:3, fontSize:8, fontWeight:700, boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-done) 55%,transparent)', background:'color-mix(in oklch,var(--col-done) 14%,transparent)', color:'var(--col-done)' }}>SCHEDULED</span>
+          )}
+          {blockedAll && (
+            <span className="mono uc" title={`Baseline: ${baselineCount} slots — blocked by other reservations`} style={{ padding:'2px 6px', borderRadius:3, fontSize:8, fontWeight:700, boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-cancel) 55%,transparent)', background:'color-mix(in oklch,var(--col-cancel) 14%,transparent)', color:'var(--col-cancel)' }}>BLOCKED</span>
+          )}
+          {!blockedAll && blocked > 0 && (
+            <span className="mono uc" title={`${blocked} slots blocked by other reservations`} style={{ padding:'2px 6px', borderRadius:3, fontSize:8, fontWeight:600, boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-pending) 55%,transparent)', background:'color-mix(in oklch,var(--col-pending) 12%,transparent)', color:'var(--col-pending)' }}>−{blocked} BLOCKED</span>
+          )}
+          <span className="mono" style={{ fontSize:9, color:'var(--ink-3)', whiteSpace:'nowrap' }}>
+            <span style={{ fontSize:7, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em' }}>NEXT </span>{student.next_lesson || '—'}
           </span>
-        )}
-        {!blockedAll && blocked > 0 && (
-          <span className="mono uc"
-            title={`Baseline (no reservations): ${baselineCount} slots — ${blocked} now blocked by other reservations`}
-            style={{ padding:'3px 7px', borderRadius:4, fontSize:8, fontWeight:600,
-              boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-pending) 55%,transparent)',
-              background:'color-mix(in oklch,var(--col-pending) 12%,transparent)',
-              color:'var(--col-pending)' }}>
-            −{blocked} BLOCKED
+          <span className="mono num" style={{ fontSize:9, color:idleColor, fontWeight: idle != null && idle >= 6 ? 600 : 400, whiteSpace:'nowrap' }}>
+            <span style={{ fontSize:7, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.04em' }}>IDLE </span>{idle == null ? '—' : `${idle}d`}
           </span>
-        )}
-        <span className="mono" style={{ fontSize:11, color:'var(--ink-3)', transform: expanded?'rotate(90deg)':'rotate(0deg)', transition:'transform .15s', display:'inline-block', width:12 }}>▸</span>
+          {hasReservation && (
+            <>
+              <span style={{ flex:1 }}/>
+              <span className="mono uc" style={{ padding:'2px 6px', borderRadius:3, fontSize:8, fontWeight:700, boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--highlight) 55%,transparent)', background:'color-mix(in oklch,var(--highlight) 14%,transparent)', color:'var(--highlight)' }}>
+                ★ {asfMinsToHHMM(activatedSlot.t)}–{asfMinsToHHMM(activatedSlot.end)}
+              </span>
+              <button onClick={e => { e.stopPropagation(); onRelease(); }} className="mono uc"
+                style={{ padding:'2px 7px', fontSize:8, borderRadius:3, cursor:'pointer', boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-cancel) 55%,transparent)', background:'color-mix(in oklch,var(--col-cancel) 12%,transparent)', color:'var(--col-cancel)', fontWeight:600 }}>
+                RELEASE
+              </button>
+              <button onClick={e => { e.stopPropagation(); onPropose(); }} className="mono uc"
+                style={{ padding:'2px 7px', fontSize:8, borderRadius:3, cursor:'pointer', boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--highlight) 55%,transparent)', background:'color-mix(in oklch,var(--highlight) 14%,transparent)', color:'var(--highlight)', fontWeight:600 }}>
+                PROPOSE ▸
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Per-SP filter row */}
-      <div onClick={e => e.stopPropagation()} style={{ padding:'4px 10px 5px 39px', borderTop:'1px solid var(--line-soft)', background:'color-mix(in oklch,var(--ink) 1%,transparent)', display:'flex', gap:6, flexWrap:'wrap', alignItems:'flex-end' }}>
+      <div onClick={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()} style={{ padding:'4px 10px 5px', borderTop:'1px solid var(--line-soft)', background:'color-mix(in oklch,var(--ink) 1%,transparent)', display:'flex', gap:6, flexWrap:'wrap', alignItems:'flex-end' }}>
         <AsfInlineSel label="FI"       value={overrides.fi}       onChange={v => onOverrideChange('fi', v)}        opts={fiOpts} />
         <AsfInlineSel label="SE TYPE"  value={overrides.seType}   onChange={v => onOverrideChange('seType', v)}    opts={seTypeOpts} />
         <AsfInlineSel label="DURATION" value={overrides.duration} onChange={v => onOverrideChange('duration', +v)} opts={ASF_DUR_OPTS} />
@@ -1170,7 +1147,7 @@ function AsfStudentCard({
 
       {/* Expanded: mini-timeline + slot cards */}
       {expanded && (
-        <div style={{ padding:'6px 12px 12px 12px', borderTop:'1px solid var(--line-soft)', background:'color-mix(in oklch,var(--ink) 1.5%,transparent)', display:'flex', flexDirection:'column', gap:7 }}>
+        <div style={{ padding:'6px 12px 12px 12px', borderTop:'1px solid var(--line-soft)', background:'color-mix(in oklch,var(--ink) 1.5%,transparent)', display:'flex', flexDirection:'column', gap:7, overflowX:'hidden' }}>
           {slots.length > 0 && (
             <AsfMiniTimeline
               slots={slots} activatedSlot={activatedSlot}
