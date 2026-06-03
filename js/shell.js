@@ -72,7 +72,7 @@
       const flag = v.id === 'crosscheck' && integrityFlag;
       return h('button', { key: v.id, onClick: () => { d.go(v.id); if (onClose) onClose(); }, title: rail ? v.label : '', className: 'mono uc',
         style: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: rail ? 'center' : 'flex-start', gap: 10, padding: rail ? '9px 0' : '8px 12px', borderRadius: 6, cursor: 'pointer', textAlign: 'left', border: `1px solid ${active ? 'var(--highlight)' : 'transparent'}`,
-          background: active ? 'color-mix(in oklch,var(--highlight) 14%,var(--surface))' : 'transparent', color: active ? 'var(--highlight)' : 'var(--ink-3)', fontWeight: active ? 600 : 400, fontSize: 10.5, width: '100%' } },
+          background: active ? 'color-mix(in oklch,var(--highlight) 14%,var(--surface))' : 'transparent', color: active ? 'var(--highlight)' : 'var(--ink-2)', fontWeight: active ? 600 : 500, fontSize: 10.5, width: '100%' } },
         h('span', { style: { width: rail ? 'auto' : 19, fontSize: 17, lineHeight: 1, textAlign: 'center', position: 'relative' } }, v.icon,
           flag && rail && h('span', { style: { position: 'absolute', top: -3, right: -4, width: 7, height: 7, borderRadius: 999, background: 'var(--col-pending)', boxShadow: '0 0 6px var(--col-pending)' } })),
         !rail && v.label,
@@ -95,6 +95,49 @@
           h('p', { style: { fontSize: 13, lineHeight: 1.6 } }, `No view is registered for “${view}”. Pick a destination from the sidebar, or open the `,
             h('a', { className: 'link', href: 'legacy.html', target: '_top' }, 'v1 dashboard'), '.'),
           h('p', { className: 'muted', style: { fontSize: 11, marginTop: 10 } }, 'If you reached this from a bookmark, the route may have been renamed in the unified app.'))));
+  }
+
+  // Per-student progress line chart: plan vs actual vs projected (ETC).
+  function StudentProgressChart({ student, curriculum, today }) {
+    const ref = React.useRef(null);
+    React.useEffect(() => {
+      const ctx = ref.current; if (!ctx || !window.Chart) return;
+      try { const ex = window.Chart.getChart(ctx); if (ex) ex.destroy(); } catch (e) {}
+      const flown = (student.flown || []).filter(f => f.date).slice().sort((a, b) => a.date.localeCompare(b.date));
+      let acc = 0; const actual = flown.map(f => ({ x: f.date, y: ++acc }));
+      const planDates = (curriculum || []).filter(c => c.planned_date).slice().sort((a, b) => a.planned_date.localeCompare(b.planned_date));
+      let pacc = 0; const plan = planDates.map(c => ({ x: c.planned_date, y: ++pacc }));
+      const total = student.total || (curriculum || []).length || 101;
+      const done = student.done || 0;
+      const firstDate = flown[0]?.date || today;
+      const days = Math.max(1, Math.round((new Date(today) - new Date(firstDate)) / 86400000));
+      const pace = done / days;
+      const remaining = Math.max(total - done, 0);
+      const projEnd = pace > 0 ? new Date(new Date(today).getTime() + (remaining / pace) * 86400000).toISOString().slice(0, 10) : null;
+      const proj = projEnd ? [{ x: today, y: done }, { x: projEnd, y: total }] : [];
+      let chart;
+      try {
+        chart = new window.Chart(ctx, {
+          type: 'line',
+          data: { datasets: [
+            { label: 'Plan', data: plan, borderColor: '#cbd5e1', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, tension: 0 },
+            { label: 'Actual', data: actual, borderColor: '#e88aff', borderWidth: 2.5, pointRadius: 2, tension: 0 },
+            { label: 'Projected', data: proj, borderColor: '#38bdf8', borderDash: [3, 3], borderWidth: 1.5, pointRadius: 0, tension: 0 },
+          ] },
+          options: {
+            responsive: true, maintainAspectRatio: false, parsing: { xAxisKey: 'x', yAxisKey: 'y' },
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { labels: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 14, padding: 8 } },
+              tooltip: { callbacks: { title: c => { const r = c[0]?.raw; try { return r ? new Date(r.x + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''; } catch { return r?.x || ''; } },
+                label: c => `${c.dataset.label}: ${Math.round(c.raw?.y || 0)} lessons` } } },
+            scales: { x: { type: 'time', time: { unit: 'month', displayFormats: { month: 'MMM yy' } }, ticks: { color: '#6e7681', font: { family: 'JetBrains Mono', size: 8 }, maxTicksLimit: 10 }, grid: { color: '#21262d' } },
+              y: { beginAtZero: true, ticks: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 9 } }, grid: { color: '#21262d' } } },
+          },
+        });
+      } catch (e) {}
+      return () => { try { chart && chart.destroy(); } catch (e) {} };
+    }, [student, curriculum, today]);
+    return h('div', { style: { position: 'relative', height: 260 } }, h('canvas', { ref }));
   }
 
   // Student Lens — the unifying view: one student's Operations schedule linked to
@@ -133,14 +176,44 @@
 
     const fd = ds => { if (!ds) return '—'; try { return new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }); } catch { return ds; } };
     const hm = m => m ? Math.floor(m / 60) + 'h' + (m % 60 ? String(m % 60).padStart(2, '0') : '') : '—';
+    const today = (() => { const n = new Date(); const b = new Date(n.getTime() + (n.getTimezoneOffset() + 420) * 60000); return b.toISOString().slice(0, 10); })();
     // This student's Operations flights (match progress name → ops "FIRST L." key)
     const key = window.AP127Reconcile.ccKeyFromFull(s.name);
     const opsFlights = d.FLIGHTS.filter(f => window.AP127Reconcile.ccNameNorm(f.student) === key).sort((a, b) => (b.date + (b.start || '')).localeCompare(a.date + (a.start || '')));
     const flown = (s.flown || []).slice().reverse();
-    const planned = (s.planned || []).slice(0, 12);
-    const SC = { Completed: 'var(--col-done)', Pending: 'var(--col-pending)', Canceled: 'var(--col-cancel)' };
+    const curriculum = d.curriculum || [];
+    // Upcoming = ACTUAL scheduled Operations flights (future, not completed/cancelled) —
+    // not simulation projections or TBC curriculum dates.
+    const upcomingOps = opsFlights
+      .filter(f => f.status !== 'Completed' && f.status !== 'Canceled' && f.date >= today)
+      .sort((a, b) => (a.date + (a.start || '')).localeCompare(b.date + (b.start || '')))
+      .slice(0, 14);
+
+    // ── KPI computations ──
+    const lessonMins = {}; curriculum.forEach(c => { lessonMins[c.lesson] = c.planned_mins || 0; });
+    const hoursDone = (s.flown || []).reduce((a, f) => a + (lessonMins[f.lesson] || f.actual_mins || 0), 0) / 60;
+    const plannedHrsToday = curriculum.filter(c => c.planned_date && c.planned_date <= today).reduce((a, c) => a + (c.planned_mins || 0), 0) / 60;
+    const hrsDelta = hoursDone - plannedHrsToday;
+    const expectedToday = curriculum.filter(c => c.planned_date && c.planned_date <= today).length;
+    const lesDelta = (s.done || 0) - expectedToday;
+    const lastDate = (s.flown || []).map(f => f.date).filter(Boolean).sort().at(-1) || '';
+    const idle = lastDate ? Math.max(0, Math.round((new Date(today) - new Date(lastDate)) / 86400000)) : null;
+    const total = s.total || curriculum.length || 101;
+    const totalHrs = curriculum.reduce((a, c) => a + (c.planned_mins || 0), 0) / 60;
+    // Projected finish (ETC) at recent pace
+    const flownAsc = (s.flown || []).filter(f => f.date).slice().sort((a, b) => a.date.localeCompare(b.date));
+    const firstDate = flownAsc[0]?.date || today;
+    const paceDays = Math.max(1, Math.round((new Date(today) - new Date(firstDate)) / 86400000));
+    const pace = (s.done || 0) / paceDays;
+    const etcDate = pace > 0 ? new Date(new Date(today).getTime() + (Math.max(total - (s.done || 0), 0) / pace) * 86400000).toISOString().slice(0, 10) : null;
+
+    const SC = { Completed: 'var(--col-done)', Pending: 'var(--col-pending)', Canceled: 'var(--col-cancel)', Scheduled: 'var(--col-pending)' };
     const listPanel = (title, sub, children) => h('div', { className: 'panel' }, h('div', { className: 'ph' }, h('span', { className: 'pt' }, title), h('span', { className: 'ps' }, sub)), h('div', { style: { overflow: 'auto', maxHeight: 380 } }, children));
     const rowsOrEmpty = (arr, fn, empty) => arr.length ? arr.map(fn) : h('div', { className: 'empty' }, empty);
+    const kpiDelta = (label, valTxt, delta, unit) => h('div', { className: 'kpi' },
+      h('div', { className: 'kl' }, label),
+      h('div', { className: 'kv', style: { fontSize: 18 } }, valTxt),
+      h('div', { className: 'ks', style: { color: delta >= 0 ? 'var(--col-done)' : 'var(--col-cancel)' } }, `${delta >= 0 ? '+' : ''}${unit === 'h' ? delta.toFixed(1) + 'h' : delta + ''} ${delta >= 0 ? 'ahead' : 'behind'}`));
 
     return h('div', { style: { padding: 16, display: 'grid', gap: 14, overflow: 'auto', height: '100%' } },
       h('div', { className: 'panel' }, h('div', { className: 'ph' },
@@ -150,11 +223,17 @@
             h('button', { className: 'chip', onClick: () => d.setStudentLens(null), title: 'Pick a different student' }, '↺ Change'))),
         h('div', { className: 'pb' }, h('div', { className: 'kpis' },
           h('div', { className: 'kpi acc' }, h('div', { className: 'kl' }, 'Progress'), h('div', { className: 'kv' }, (s.pct || 0).toFixed(0) + '%'), h('div', { className: 'ks' }, `${s.done}/${s.total} lessons`)),
-          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Next Lesson'), h('div', { className: 'kv', style: { fontSize: 20 } }, s.next_lesson || '—'), h('div', { className: 'ks' }, 'up next')),
-          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Instructor'), h('div', { className: 'kv', style: { fontSize: 16 } }, (d.FI_FULL[s.fi] || s.fi || '—')), h('div', { className: 'ks' }, 'assigned FI')),
-          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Aircraft'), h('div', { className: 'kv', style: { fontSize: 18 } }, s.se || '—'), h('div', { className: 'ks' }, 'SE type')),
-          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Ops Flights'), h('div', { className: 'kv' }, opsFlights.length), h('div', { className: 'ks' }, 'in schedule feed')),
+          kpiDelta('Lessons vs Plan', `${s.done || 0} / ${expectedToday}`, lesDelta, ''),
+          kpiDelta('Hours vs Plan', `${hoursDone.toFixed(1)} / ${plannedHrsToday.toFixed(0)}`, hrsDelta, 'h'),
+          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Next Lesson'), h('div', { className: 'kv', style: { fontSize: 18 } }, s.next_lesson || '—'), h('div', { className: 'ks' }, upcomingOps[0] ? 'sched ' + fd(upcomingOps[0].date) : 'not scheduled')),
+          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Idle Days'), h('div', { className: 'kv', style: { color: idle != null && idle >= 6 ? 'var(--col-cancel)' : idle != null && idle >= 3 ? 'var(--col-pending)' : 'var(--ink)' } }, idle == null ? '—' : idle), h('div', { className: 'ks' }, lastDate ? 'last ' + fd(lastDate) : 'no flights')),
+          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Proj. Finish'), h('div', { className: 'kv', style: { fontSize: 16, color: 'var(--col-pending)' } }, etcDate ? fd(etcDate) : '—'), h('div', { className: 'ks' }, 'ETC at current pace')),
+          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Total Hours' ), h('div', { className: 'kv', style: { fontSize: 16 } }, `${hoursDone.toFixed(0)}/${totalHrs.toFixed(0)}`), h('div', { className: 'ks' }, 'flown / curriculum')),
+          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Instructor'), h('div', { className: 'kv', style: { fontSize: 15 } }, (d.FI_FULL[s.fi] || s.fi || '—')), h('div', { className: 'ks' }, (s.se || '—') + ' · ' + opsFlights.length + ' ops')),
         ))),
+      h('div', { className: 'panel' },
+        h('div', { className: 'ph' }, h('span', { className: 'pt' }, 'Progress · Plan vs Actual'), h('span', { className: 'ps' }, etcDate ? 'projected finish ' + fd(etcDate) : 'cumulative lessons over time')),
+        h('div', { className: 'pb' }, h(StudentProgressChart, { student: s, curriculum, today }))),
       h('div', { style: { display: 'grid', gridTemplateColumns: d.isMobile ? '1fr' : '1.2fr 1fr 1fr', gap: 14 } },
         listPanel('Operations Schedule', 'from flight ops', h('table', { className: 'tb' },
           h('thead', null, h('tr', null, h('th', null, 'Date'), h('th', null, 'Lesson'), h('th', null, 'FI'), h('th', null, 'Status'))),
@@ -168,10 +247,10 @@
           rowsOrEmpty(flown.slice(0, 30), (f, i) => h('div', { key: i, style: { display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 11 } },
             h('span', { className: 'mono muted', style: { width: 56, fontSize: 9 } }, fd(f.date)), h('span', { className: 'mono', style: { flex: 1 } }, f.lesson || '—'), h('span', { className: 'muted', style: { fontSize: 10 } }, hm(f.actual_mins))),
             'No completed flights'))),
-        listPanel('Upcoming Plan', 'curriculum', h('div', { style: { padding: 10 } },
-          rowsOrEmpty(planned, (p, i) => h('div', { key: i, style: { display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 11 } },
-            h('span', { className: 'mono muted', style: { width: 56, fontSize: 9 } }, fd(p.date)), h('span', { className: 'mono', style: { flex: 1 } }, p.lesson || '—'), h('span', { className: 'muted', style: { fontSize: 10 } }, hm(p.mins || p.planned_mins))),
-            'No planned flights')))));
+        listPanel('Upcoming Scheduled', upcomingOps.length + ' in ops', h('div', { style: { padding: 10 } },
+          rowsOrEmpty(upcomingOps, (f, i) => h('div', { key: i, onClick: () => d.setDrawer(f.id), style: { display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 11, cursor: 'pointer' } },
+            h('span', { className: 'mono muted', style: { width: 56, fontSize: 9 } }, fd(f.date), ' ', f.start || ''), h('span', { className: 'mono', style: { flex: 1 } }, f.lesson || '—'), h('span', { className: 'muted mono', style: { fontSize: 9 } }, f.instructor || '')),
+            'No scheduled flights in Operations')))));
   }
 
   // Maps view id → component. Resolved at render time (after all view scripts load).

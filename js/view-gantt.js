@@ -199,10 +199,26 @@ function GanttBoard() {
               return { label: groupBy==='tail'?'TAIL HRS':'FLT HRS', value:`${h}h${String(m).padStart(2,'0')}`, sub:`${r.flights.length} FLT` };
             })();
 
+            // Overlap lanes: pack flights into sub-rows so overlapping schedules are
+            // all visible and individually clickable (no stacked, unreachable bars).
+            const laneEnds = [];                    // last end-minute per lane
+            const flightLane = new Map();
+            [...r.flights].sort((a,b)=>(minutesOf(a.start)||0)-(minutesOf(b.start)||0)).forEach(f=>{
+              const s = minutesOf(f.start)||0;
+              const e = minutesOf(f.end) || (s + (f.durMin||60));
+              let lane = laneEnds.findIndex(end => end <= s);
+              if (lane === -1) { lane = laneEnds.length; laneEnds.push(e); }
+              else laneEnds[lane] = e;
+              flightLane.set(f, lane);
+            });
+            const laneCount = Math.max(1, laneEnds.length);
+            const LANE_H = isMobile ? 30 : 48;
+            const rowH   = Math.max(54, laneCount*LANE_H + 6);
+
             return (
               <div key={r.key} style={{
                 display:'grid', gridTemplateColumns:`${TRACK_LEFT}px 1fr ${TRACK_RIGHT}px`,
-                borderBottom:'1px solid var(--line-soft)', minHeight:54,
+                borderBottom:'1px solid var(--line-soft)', minHeight:rowH,
                 background:ri%2?'transparent':'color-mix(in oklch,var(--ink) 1.2%,transparent)',
                 opacity:rowAlpha, transition:'opacity .15s',
               }}>
@@ -234,26 +250,31 @@ function GanttBoard() {
                     const done      = f.status==='Completed';
                     const dim       = f.status==='Canceled';
                     const stby      = f.isStandby;
+                    const dashed    = stby||isFiSP||isSolo;
+                    const lane      = flightLane.get(f) || 0;
                     return (
                       <button key={f.id+fi+(isFiSP?'s':'')} onClick={()=>app.setDrawer(f.id)}
                         title={isFiSP
                           ? `${f.start}–${f.end} · ${f.student} flying as SP · instr: ${f.instructor} · ${f.lesson}`
-                          : `${f.start}–${f.end} · ${f.student||f.instructor||''} · ${f.lesson}`}
+                          : isSolo
+                            ? `${f.start}–${f.end} · ${f.student||''} SOLO · ${f.lesson} · monitor: ${f.instructor||'—'}`
+                            : `${f.start}–${f.end} · ${f.student||f.instructor||''} · ${f.lesson}`}
                         style={{
                           position:'absolute', left:`${left}%`, width:`calc(${width}% - 2px)`,
-                          top: isFiSP ? 2 : 5, bottom: isFiSP ? 2 : 5,
+                          top: lane*LANE_H + 3, height: LANE_H - 6,
                           background:`color-mix(in oklch,${color} ${stby?8:isFiSP?10:18}%,var(--surface))`,
-                          border:`${stby||isFiSP?'1px dashed':'1px solid'} ${color}`,
-                          borderLeft:`3px ${stby||isFiSP?'dashed':'solid'} ${color}`,
+                          border:`${dashed?'1px dashed':'1px solid'} ${color}`,
+                          borderLeft:`3px ${dashed?'dashed':'solid'} ${color}`,
                           borderRadius:4, padding:'2px 5px', textAlign:'left',
                           cursor:'pointer', overflow:'hidden', color:'var(--ink)',
                           opacity: dim?0.4:isFiSP?0.75:1,
                           textDecoration: dim?'line-through':'none',
+                          zIndex: 1,
                         }}>
                         <div className="mono num" style={{ fontSize:9,display:'flex',justifyContent:'space-between',gap:4 }}>
                           <span>{f.start}</span>
                           {isFiSP && <span style={{color:'var(--col-stby)',fontSize:7,fontWeight:600}}>AS SP</span>}
-                          {!isFiSP && isSolo && <span style={{color:'var(--col-solo)',fontSize:7,fontWeight:600}}>MONITOR</span>}
+                          {!isFiSP && isSolo && <span style={{color:'var(--col-solo)',fontSize:7,fontWeight:700}}>SOLO</span>}
                           {!isFiSP && !isSolo && done && <span style={{color:'var(--col-done)'}}>✓</span>}
                           {!isFiSP && !isSolo && stby && <span style={{color:'var(--col-stby)',fontSize:8}}>STBY</span>}
                           {!isFiSP && !isSolo && isMtg && <span style={{color:'var(--ink-3)',fontSize:7}}>MTG</span>}
@@ -316,8 +337,8 @@ function GanttBoard() {
             MTG/OTHER
           </span>
           <span style={{ display:'flex',gap:5,alignItems:'center' }}>
-            <span style={{ width:12,height:7,background:`color-mix(in oklch,var(--col-solo) 20%,var(--surface))`,border:'1px solid var(--col-solo)',borderRadius:2 }}/>
-            MONITOR/SOLO
+            <span style={{ width:12,height:7,background:`color-mix(in oklch,var(--col-solo) 20%,var(--surface))`,border:'1px dashed var(--col-solo)',borderRadius:2 }}/>
+            SOLO
           </span>
           <span style={{flex:1}}/>
           <span>CLICK A BAR FOR DETAILS</span>
