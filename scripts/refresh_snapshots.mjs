@@ -16,9 +16,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const FLIGHT_SRC = 'https://raw.githubusercontent.com/nuguitar/AP127_Command_Center/main/flight-data.js';
+const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flight-data.js';
 const PROGRESS_SRC = 'https://ap127-data-api.anusorn-tanmetha.workers.dev';
-const NGT_SRC = 'https://raw.githubusercontent.com/nuguitar/AP127_NGT_001/main/cache.json';
+const NGT_SRC = 'https://raw.githubusercontent.com/AP127CMD/DB001/main/cache.json';
 const RETRIES = 3, RETRY_DELAY_MS = 15_000;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));

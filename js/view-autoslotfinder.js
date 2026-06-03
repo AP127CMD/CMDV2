@@ -1,8 +1,8 @@
 // AUTO SLOT FINDER — auto-rank AP-127 SPs and find the best slot for each.
 const { useMemo: useM_asf, useState: useS_asf, useEffect: useE_asf, useRef: useR_asf, useCallback: useC_asf } = React;
 
-const ASF_CACHE_URL      = 'https://nuguitar.github.io/AP127_NGT_001/cache.json';
-const ASF_CACHE_FALLBACK = 'https://raw.githubusercontent.com/nuguitar/AP127_NGT_001/main/cache.json';
+const ASF_CACHE_URL      = 'https://ap127cmd.github.io/DB001/cache.json';
+const ASF_CACHE_FALLBACK = 'https://raw.githubusercontent.com/AP127CMD/DB001/main/cache.json';
 
 // ─── AP-127 FI qualification map (was in view-slotfinder.js; inlined here so
 //     this file is self-contained regardless of whether slotfinder is loaded) ──
