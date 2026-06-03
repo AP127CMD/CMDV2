@@ -1232,16 +1232,8 @@ function AutoSlotFinderBoard() {
   const [tlSlotModal,    setTlSlotModal]    = useS_asf(null); // { slot }
   const [tlReleaseModal, setTlReleaseModal] = useS_asf(null); // act object
 
-  // Split pane: timeline height vs SP list height
-  const [splitH, setSplitH] = useS_asf(() => Math.max(200, Math.floor(window.innerHeight * 0.42)));
-  const onSplitDrag = useC_asf((e) => {
-    e.preventDefault();
-    const startY = e.clientY, startH = splitH;
-    const onMove = mv => setSplitH(Math.max(100, Math.min(startH + mv.clientY - startY, window.innerHeight - 220)));
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [splitH]);
+  // Mobile: collapsible filter strip
+  const [filtersOpen, setFiltersOpen] = useS_asf(false);
 
   const anyModalOpen = !!(acPickerModal || tlSlotModal || tlReleaseModal || (proposal && proposal.activatedSlot));
 
@@ -1622,25 +1614,26 @@ function AutoSlotFinderBoard() {
         <LastUpdate />
       </div>
 
-      {/* SP info banner */}
-      <div style={{ padding:'5px 14px', background:'color-mix(in oklch,var(--col-pending) 5%,var(--bg-2))', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', flexShrink:0 }}>
-        <span className="mono uc" style={{ fontSize:8, color:'var(--ink-3)' }}>SP SOURCE</span>
-        <a href="https://nuguitar.github.io/AP127_NGT_001/" target="_blank" rel="noopener" className="mono" style={{ fontSize:10, color:'var(--col-pending)', textDecoration:'none', fontWeight:600 }}>AP127_NGT_001 ↗</a>
-        <span className="mono" style={{ fontSize:9, color:'var(--ink-3)' }}>
-          {loading ? 'Loading…' : fetchErr ? `Error: ${fetchErr}` : rankData ? `Updated ${updatedLabel} · ${rankData.ap127?.length||0} SPs` : 'No data yet'}
-        </span>
-        <span style={{ flex:1 }}/>
-        <button onClick={loadRank} disabled={loading} className="mono uc"
-          style={{ padding:'3px 10px', fontSize:9, borderRadius:3, cursor: loading?'wait':'pointer',
-            border:'1px solid #3b82f6',
-            background:'color-mix(in oklch,#3b82f6 14%,transparent)',
-            color:'#3b82f6', fontWeight:600 }}>
-          {loading ? 'SYNCING…' : '⟳ SYNC SP INFO'}
-        </button>
-      </div>
 
-      {/* Search strip */}
-      <div style={{ padding:'6px 10px 8px', background:'var(--bg-2)', borderBottom:'1px solid var(--line)', display:'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap', flexShrink:0 }}>
+
+      {/* Search strip — collapsible on mobile */}
+      {isMobile && (
+        <div style={{ padding:'4px 10px', background:'var(--bg-2)', borderBottom:`1px solid ${filtersOpen?'transparent':'var(--line)'}`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+          <button onClick={()=>setFiltersOpen(v=>!v)} className="mono uc"
+            style={{ padding:'4px 10px', fontSize:9, borderRadius:4, cursor:'pointer', flex:1,
+              border:`1px solid ${filtersOpen?'var(--col-pending)':'var(--line)'}`,
+              background: filtersOpen?'color-mix(in oklch,var(--col-pending) 12%,transparent)':'transparent',
+              color: filtersOpen?'var(--col-pending)':'var(--ink-3)', fontWeight: filtersOpen?600:400,
+              display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <span>FILTERS{loading?' · SYNCING…':rankData?` · ${rankData.ap127?.length||0} SPs`:''}</span>
+            <span style={{ fontSize:11, transform:filtersOpen?'rotate(180deg)':'rotate(0deg)', transition:'transform .15s', display:'inline-block' }}>▾</span>
+          </button>
+          <span className="mono uc" style={{ fontSize:9, color:stats.openCount>0?'var(--col-done)':'var(--ink-3)', fontWeight:600 }}>
+            {ranked.length===0?'—':`${stats.openCount}/${finalRecords.length}`}
+          </span>
+        </div>
+      )}
+      <div style={{ padding:'6px 10px 8px', background:'var(--bg-2)', borderBottom:'1px solid var(--line)', display: isMobile&&!filtersOpen?'none':'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap', flexShrink:0 }}>
         <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
           <span className="mono uc" style={{ fontSize:9, color:'var(--ink-3)' }}>DATE</span>
           <DateCalendarTrigger value={asfDate} onChange={setAsfDate} />
@@ -1740,11 +1733,9 @@ function AutoSlotFinderBoard() {
             border:'1px solid var(--line)', background:'transparent', color:'var(--ink-3)' }}>↺ RESET</button>
       </div>
 
-      {/* Split pane: timeline (top) | drag handle | SP cards (bottom) */}
-      <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-
-        {/* ─── Timeline pane ─── */}
-        <div style={{ height:splitH, flexShrink:0, overflowY:'auto', pointerEvents:anyModalOpen?'none':'auto', opacity:anyModalOpen?0.45:1, transition:'opacity .15s', padding:'8px 10px' }}>
+      {/* Single scroll pane: timeline then SP cards */}
+      <div style={{ flex:1, minHeight:0, overflowY:'auto', pointerEvents:anyModalOpen?'none':'auto', opacity:anyModalOpen?0.45:1, transition:'opacity .15s' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:8, padding:'10px' }}>
           {rankData && (
             <AsfTimeline
               baseMap={baseBusyMap}
@@ -1763,27 +1754,13 @@ function AutoSlotFinderBoard() {
               maintTailSet={MAINT_TAILS}
             />
           )}
-
-        </div>
-
-        {/* ─── Drag handle between timeline and SP list ─── */}
-        <div onMouseDown={onSplitDrag}
-          style={{ height:8, flexShrink:0, background:'var(--line)', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', transition:'background .12s', userSelect:'none' }}
-          onMouseEnter={e=>e.currentTarget.style.background='var(--col-pending)'}
-          onMouseLeave={e=>e.currentTarget.style.background='var(--line)'}>
-          <div style={{ width:36, height:3, borderRadius:2, background:'var(--ink-3)', opacity:0.45 }}/>
-        </div>
-
-        {/* ─── SP cards pane ─── */}
-        <div style={{ flex:1, minHeight:0, overflowY:'auto', pointerEvents:anyModalOpen?'none':'auto', opacity:anyModalOpen?0.45:1, transition:'opacity .15s', padding:'8px 10px', display:'flex', flexDirection:'column', gap:8 }}>
           {!rankData && loading && (
-            <div className="mono uc" style={{ padding:'40px 16px', textAlign:'center', color:'var(--ink-3)', fontSize:10 }}>Fetching AP-127 SP data…</div>
+            <div className="mono uc" style={{ padding:'40px 16px', textAlign:'center', color:'var(--ink-3)', fontSize:10 }}>Loading SP data…</div>
           )}
           {!rankData && !loading && (
             <div style={{ padding:'30px 16px', textAlign:'center' }}>
               <div className="mono uc" style={{ fontSize:10, color:'var(--ink-3)', marginBottom:8 }}>NO SP DATA</div>
-              <div style={{ fontSize:10, color:'var(--ink-3)', marginBottom:14 }}>{fetchErr || 'Click SYNC SP INFO to fetch student progress.'}</div>
-              <button onClick={loadRank} className="mono uc" style={{ padding:'6px 16px', fontSize:10, borderRadius:4, cursor:'pointer', border:'1px solid #3b82f6', background:'color-mix(in oklch,#3b82f6 14%,transparent)', color:'#3b82f6', fontWeight:600 }}>⟳ SYNC SP INFO</button>
+              <div style={{ fontSize:10, color:'var(--ink-3)', marginBottom:14 }}>{fetchErr || 'SP data will load automatically on next view.'}</div>
             </div>
           )}
           {rankData && finalRecords.length === 0 && (
