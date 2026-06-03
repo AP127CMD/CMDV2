@@ -429,8 +429,11 @@ function HighlightBar({ on }) {
 const CAL_MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 const DATE_SET   = new Set(ALL_DATES);
 
-function DateCalendarPopup({ onClose }) {
-  const { date, setDate } = useApp();
+function DateCalendarPopup({ onClose, value: extValue, onChange: extOnChange, dateSet: extDateSet }) {
+  const { date: appDate, setDate: appSetDate } = useApp();
+  const date = extValue !== undefined ? extValue : appDate;
+  const setDate = extOnChange !== undefined ? extOnChange : appSetDate;
+  const activeSet = extDateSet !== undefined ? extDateSet : DATE_SET;
   const today = localToday();
   const [vy, setVy] = useState(() => Number(date.slice(0,4)));
   const [vm, setVm] = useState(() => Number(date.slice(5,7)));
@@ -488,7 +491,7 @@ function DateCalendarPopup({ onClose }) {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
           {grid.map((d,i)=>{
             if (!d) return <div key={i}/>;
-            const inRange = DATE_SET.has(d);
+            const inRange = activeSet.size === 0 || activeSet.has(d);
             const isSel   = d === date;
             const isTod   = d === today;
             const dayNum  = Number(d.slice(8));
@@ -501,22 +504,29 @@ function DateCalendarPopup({ onClose }) {
                   cursor: inRange?'pointer':'default',
                   border: isSel?'1px solid var(--col-pending)':isTod?'1px solid color-mix(in oklch,var(--col-pending) 50%,transparent)':'1px solid transparent',
                   background: isSel?'color-mix(in oklch,var(--col-pending) 18%,var(--bg-2))':'transparent',
-                  color: !inRange?'var(--line)': isSel?'var(--ink)':'var(--ink-2)',
+                  color: !inRange?'var(--ink-3)': isSel?'var(--ink)':'var(--ink-2)',
+                  opacity: !inRange ? 0.25 : 1,
                   fontWeight: isSel?700:400,
                 }}>{dayNum}</button>
             );
           })}
         </div>
-        <div className="mono uc" style={{ fontSize:7, color:'var(--ink-3)', textAlign:'center', marginTop:6, borderTop:'1px solid var(--line-soft)', paddingTop:5 }}>
-          ONLY SCHEDULED DATES SELECTABLE
+        <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:6, borderTop:'1px solid var(--line-soft)', paddingTop:5 }}>
+          <button onClick={()=>{ setDate(today); onClose(); }}
+            style={{ flex:1, padding:'4px 0', fontSize:9, fontFamily:'JetBrains Mono,monospace', fontWeight:600, textTransform:'uppercase', letterSpacing:'.05em', borderRadius:4, cursor:'pointer',
+              border:`1px solid ${today===date?'var(--col-pending)':'var(--line)'}`,
+              background: today===date?'color-mix(in oklch,var(--col-pending) 16%,var(--bg-2))':'var(--surface)',
+              color: today===date?'var(--col-pending)':'var(--ink-2)'
+            }}>Today</button>
         </div>
       </div>
     </>
   );
 }
 
-function DateCalendarTrigger() {
-  const { date } = useApp();
+function DateCalendarTrigger({ value: extValue, onChange: extOnChange, dateSet: extDateSet } = {}) {
+  const { date: appDate } = useApp();
+  const date = extValue !== undefined ? extValue : appDate;
   const [open, setOpen] = useState(false);
   const { wd, day, mo } = fmtDay(date);
   return (
@@ -534,7 +544,7 @@ function DateCalendarTrigger() {
         <span className="mono uc" style={{ fontSize:8, color:'var(--ink-3)' }}>{mo}</span>
         <span style={{ fontSize:9, color:'var(--ink-3)', marginLeft:2 }}>▾</span>
       </button>
-      {open && <DateCalendarPopup onClose={()=>setOpen(false)}/>}
+      {open && <DateCalendarPopup onClose={()=>setOpen(false)} value={extValue} onChange={extOnChange} dateSet={extDateSet}/>}
     </div>
   );
 }

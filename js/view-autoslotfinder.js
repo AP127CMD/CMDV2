@@ -500,6 +500,20 @@ function AsfMultiCheck({ label, items, selected, onChange, allLabel, color }) {
 
 // ─── Main timeline ────────────────────────────────────────────────────────
 function AsfTimeline({ baseMap, allFIs, allTails, windowFrom, windowTo, rwyStart, rwyEnd, allResults, activatedSlots, hoveredSlot, onSlotHover, onAvailableSlotClick, onReservedSlotClick, hourEnd, leavesMap, maintTailSet }) {
+  const timelineRef = useR_asf(null);
+  const [tlHeight, setTlHeight] = useS_asf(() => Math.max(260, Math.floor(window.innerHeight * 0.45)));
+
+  // Drag-resize handle handler
+  const onResizeDrag = useC_asf((e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = tlHeight;
+    const onMove = (mv) => setTlHeight(Math.max(120, startH + mv.clientY - startY));
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [tlHeight]);
+
   const [timelineTab,  setTimelineTab]  = useS_asf('fi');
   const [showDetails,  setShowDetails]  = useS_asf(false); // OFF by default for performance
   const _app = useApp();
@@ -568,7 +582,7 @@ function AsfTimeline({ baseMap, allFIs, allTails, windowFrom, windowTo, rwyStart
         </div>
       </div>
 
-      <div style={{ maxHeight:268, overflowY:'auto' }}>
+      <div ref={timelineRef} style={{ height:tlHeight, minHeight:120, overflowY:'auto', position:'relative' }}>
         {section.rows.map((rowKey, ri) => {
           const flights     = section.raw[rowKey] || [];
           const hasSlots    = section.avSet.has(rowKey);
@@ -742,6 +756,9 @@ function AsfMiniTimeline({ slots, activatedSlot, windowFrom, windowTo, rwyStart,
           })}
         </div>
       </div>
+      <div onMouseDown={onResizeDrag} style={{ height:6, cursor:'ns-resize', background:'var(--line)', borderRadius:3, margin:'2px 0', flexShrink:0, transition:'background .1s' }}
+        onMouseEnter={e=>e.currentTarget.style.background='var(--col-pending)'}
+        onMouseLeave={e=>e.currentTarget.style.background='var(--line)'}/>
     </div>
   );
 }
@@ -1653,7 +1670,10 @@ function AutoSlotFinderBoard() {
 
       {/* Search strip */}
       <div style={{ padding:'6px 10px 8px', background:'var(--bg-2)', borderBottom:'1px solid var(--line)', display:'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap', flexShrink:0 }}>
-        <AsfSel label="DATE" value={asfDate} onChange={setAsfDate} opts={dateOpts} minWidth={130} />
+        <label style={{ display:'flex', flexDirection:'column', gap:3 }}>
+          <span className="mono uc" style={{ fontSize:9, color:'var(--ink-3)' }}>DATE</span>
+          <DateCalendarTrigger value={asfDate} onChange={setAsfDate} />
+        </label>
         <AsfMultiCheck label="TYPE" items={allAcTypes.map(t=>({v:t,l:t}))} selected={acTypeFilter} onChange={setAcTypeFilter} allLabel="Any type" color="var(--col-pending)" />
         <AsfSel label="SHOW" value={topN} onChange={v=>setTopN(+v)} opts={ASF_TOPN_OPTS} minWidth={70} />
         <AsfMultiCheck label="FI FILTER" items={fiAllNames.map(n=>({ v:n, l:n, badge: Object.keys(leavesMap).some(k => k.toLowerCase() === n.toLowerCase()) ? 'LEAVE' : null }))} selected={fiFilter} onChange={setFiFilter} allLabel="Any available" color="var(--col-pending)" />
