@@ -147,6 +147,8 @@ const ASF_DEFAULTS = {
   sortMode:     'behind',
   topN:         8,
   onlyOpen:     false,
+  excludedSPs:  [],     // spKey strings to skip in slot-finding
+  excludedTails:[],     // tail numbers to exclude from candidates
 };
 const asfLoadSettings = () => {
   try { return { ...ASF_DEFAULTS, ...JSON.parse(localStorage.getItem(ASF_SETTINGS_LS_KEY) || '{}') }; }
@@ -499,7 +501,7 @@ function AsfMultiCheck({ label, items, selected, onChange, allLabel, color }) {
 }
 
 // ─── Main timeline ────────────────────────────────────────────────────────
-function AsfTimeline({ baseMap, allFIs, allTails, windowFrom, windowTo, rwyStart, rwyEnd, allResults, activatedSlots, hoveredSlot, onSlotHover, onAvailableSlotClick, onReservedSlotClick, hourEnd, leavesMap, maintTailSet }) {
+function AsfTimeline({ baseMap, allFIs, allTails, windowFrom, windowTo, rwyStart, rwyEnd, allResults, activatedSlots, hoveredSlot, onSlotHover, onAvailableSlotClick, onReservedSlotClick, hourEnd, leavesMap, maintTailSet, ghostedFlightIds, renderRawFI, renderRawTail, onFlightClick }) {
   const [timelineTab,  setTimelineTab]  = useS_asf('fi');
   const [showDetails,  setShowDetails]  = useS_asf(false); // OFF by default for performance
   const _app = useApp();
@@ -520,10 +522,10 @@ function AsfTimeline({ baseMap, allFIs, allTails, windowFrom, windowTo, rwyStart
   const isHovSlot = slot => hoveredSlot && hoveredSlot.t === slot.t && hoveredSlot.end === slot.end;
 
   const sections = [
-    { id:'fi', label:'FLIGHT INSTRUCTORS', rows:[...allFIs].sort(),   raw:rawFI,   avSet:avFISet,
+    { id:'fi', label:'FLIGHT INSTRUCTORS', rows:[...allFIs].sort(),   raw: renderRawFI   || rawFI,   avSet:avFISet,
       getAct: k => actList.filter(a => a.fi   === k),
       inPairs: (slot, k) => slot.pairs.some(p => p.fi   === k) },
-    { id:'ac', label:'AIRCRAFT',           rows:[...allTails].sort(), raw:rawTail, avSet:avTailSet,
+    { id:'ac', label:'AIRCRAFT',           rows:[...allTails].sort(), raw: renderRawTail || rawTail, avSet:avTailSet,
       getAct: k => actList.filter(a => a.tail === k),
       inPairs: (slot, k) => slot.pairs.some(p => p.tail === k) },
   ];
@@ -598,39 +600,41 @@ function AsfTimeline({ baseMap, allFIs, allTails, windowFrom, windowTo, rwyStart
                   <div style={{ position:'absolute', left:pct(Math.max(BASE_MIN,rwyStart)), width:wpct(Math.min(BASE_MIN+SPAN_MIN,rwyEnd)-Math.max(BASE_MIN,rwyStart)), top:0, bottom:0, background:'color-mix(in oklch,var(--col-cancel) 8%,transparent)', pointerEvents:'none' }}/>
                 )}
                 {flights.map((fl, fi) => {
-                  if (!showDetails) {
-                    return (
-                      <div key={fi} style={{
-                        position:'absolute',
-                        left:pct(Math.max(BASE_MIN,fl.s)),
-                        width:wpct(Math.min(BASE_MIN+SPAN_MIN,fl.e)-Math.max(BASE_MIN,fl.s)),
-                        top:4, bottom:4,
-                        background:'color-mix(in oklch,var(--ink-2) 25%,transparent)',
-                        boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--ink-2) 40%,transparent)',
-                        borderRadius:3, pointerEvents:'none',
-                      }}/>
-                    );
-                  }
-                  const flObj = fl.flight;
-                  const flColor = flObj ? STATUS_COLOR(flObj) : 'var(--ink-2)';
+                  const flObj   = fl.flight;
+                  const isGhost = !!(ghostedFlightIds && flObj && ghostedFlightIds.has(flObj.id));
+                  const flColor = (showDetails && flObj && !isGhost) ? STATUS_COLOR(flObj) : 'var(--ink-2)';
                   return (
                     <button key={fi}
-                      onClick={() => flObj && _app.setDrawer(flObj.id)}
-                      title={flObj ? `${flObj.start}–${flObj.end} · ${flObj.student||flObj.instructor||''} · ${flObj.lesson||''}` : ''}
+                      onClick={e => { e.stopPropagation(); flObj && onFlightClick && onFlightClick(flObj, isGhost, { x: e.clientX, y: e.clientY }); }}
+                      title={flObj ? `${flObj.start}–${flObj.end} · ${flObj.student||flObj.instructor||''} · ${flObj.lesson||''}${isGhost?' [BLANKED]':''}` : ''}
                       style={{
                         position:'absolute', left:pct(Math.max(BASE_MIN,fl.s)),
                         width:`calc(${wpct(Math.min(BASE_MIN+SPAN_MIN,fl.e)-Math.max(BASE_MIN,fl.s))} - 1px)`,
-                        top:3, bottom:3,
-                        background:`color-mix(in oklch,${flColor} 22%,transparent)`,
-                        boxShadow:`inset 0 0 0 1px color-mix(in oklch,${flColor} 40%,transparent)`,
-                        borderLeft: flObj ? `3px solid ${flColor}` : 'none',
-                        borderRadius:3, cursor: flObj ? 'pointer' : 'default',
+                        top: isGhost ? 6 : (showDetails ? 3 : 4),
+                        bottom: isGhost ? 6 : (showDetails ? 3 : 4),
+                        background: isGhost
+                          ? 'transparent'
+                          : showDetails
+                            ? `color-mix(in oklch,${flColor} 22%,transparent)`
+                            : 'color-mix(in oklch,var(--ink-2) 25%,transparent)',
+                        boxShadow: isGhost
+                          ? 'inset 0 0 0 1px color-mix(in oklch,var(--col-cancel) 35%,transparent)'
+                          : showDetails
+                            ? `inset 0 0 0 1px color-mix(in oklch,${flColor} 40%,transparent)`
+                            : 'inset 0 0 0 1px color-mix(in oklch,var(--ink-2) 40%,transparent)',
+                        borderLeft: (showDetails && flObj && !isGhost) ? `3px solid ${flColor}` : 'none',
+                        borderRadius:3,
+                        cursor: (flObj && onFlightClick) ? 'pointer' : 'default',
                         overflow:'hidden', textAlign:'left', padding:'1px 3px',
+                        opacity: isGhost ? 0.5 : 1,
                       }}>
-                      {flObj && (
+                      {showDetails && flObj && !isGhost && (
                         <div className="mono" style={{ fontSize:7, lineHeight:1.2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--ink)' }}>
                           <span style={{ fontWeight:600 }}>{flObj.start}</span>{' '}{flObj.lesson || flObj.student || ''}
                         </div>
+                      )}
+                      {isGhost && (
+                        <span className="mono" style={{ fontSize:6, color:'var(--col-cancel)', fontWeight:700, lineHeight:1, verticalAlign:'middle' }}>✕</span>
                       )}
                     </button>
                   );
@@ -677,6 +681,7 @@ function AsfTimeline({ baseMap, allFIs, allTails, windowFrom, windowTo, rwyStart
       <div style={{ display:'flex', gap:12, padding:'4px 10px', flexWrap:'wrap', borderTop:'1px solid var(--line-soft)', background:'color-mix(in oklch,var(--ink) 2%,var(--surface))' }}>
         {[
           ['color-mix(in oklch,var(--ink-2) 28%,transparent)',     'inset 0 0 0 1px color-mix(in oklch,var(--ink-2) 45%,transparent)',     'Scheduled'],
+          ['transparent',                                           'inset 0 0 0 1px color-mix(in oklch,var(--col-cancel) 35%,transparent)','Blanked (tap to restore)'],
           ['color-mix(in oklch,var(--col-done) 18%,transparent)',  'inset 0 0 0 1px color-mix(in oklch,var(--col-done) 45%,transparent)',  'Available (click to reserve)'],
           ['color-mix(in oklch,var(--highlight) 28%,transparent)', 'inset 0 0 0 1px color-mix(in oklch,var(--highlight) 65%,transparent)', 'Reserved (click to release)'],
           ['color-mix(in oklch,var(--col-pending) 8%,transparent)','none', 'Search window'],
@@ -1187,9 +1192,51 @@ function AsfStudentCard({
   );
 }
 
+// ─── AsfFlightActionPopup (tap occupied block → ghost / restore) ──────────
+function AsfFlightActionPopup({ flight, isGhosted, pos, onView, onToggleGhost, onClose }) {
+  const ref = useR_asf(null);
+  useE_asf(() => {
+    const close = e => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [onClose]);
+
+  const left = Math.min(pos.x + 4, window.innerWidth  - 224);
+  const top  = Math.min(pos.y + 4, window.innerHeight - 112);
+
+  return (
+    <div ref={ref} style={{
+      position:'fixed', top, left, zIndex:500,
+      background:'var(--bg-2)', borderRadius:6, border:'1px solid var(--line)',
+      boxShadow:'0 8px 28px oklch(0 0 0 / 0.5)',
+      padding:'8px', display:'flex', flexDirection:'column', gap:5, minWidth:210,
+    }}>
+      <div className="mono" style={{ fontSize:9, color:'var(--ink-3)', paddingBottom:5, borderBottom:'1px solid var(--line-soft)', marginBottom:2 }}>
+        <span style={{ fontWeight:700, color:'var(--ink)' }}>{flight.start}–{flight.end}</span>
+        {flight.student   ? ` · ${flight.student}`   : (flight.instructor ? ` · ${flight.instructor}` : '')}
+        {flight.lesson    ? ` · ${flight.lesson}`    : ''}
+      </div>
+      {flight.id && (
+        <button onClick={() => { onView(); onClose(); }} className="mono uc"
+          style={{ padding:'5px 10px', fontSize:9, borderRadius:4, cursor:'pointer', textAlign:'left',
+            border:'1px solid var(--line)', background:'transparent', color:'var(--ink-2)' }}>
+          VIEW IN DRAWER
+        </button>
+      )}
+      <button onClick={() => { onToggleGhost(); onClose(); }} className="mono uc"
+        style={{ padding:'5px 10px', fontSize:9, borderRadius:4, cursor:'pointer', textAlign:'left', fontWeight:600,
+          border:`1px solid ${isGhosted?'color-mix(in oklch,var(--col-done) 55%,transparent)':'color-mix(in oklch,var(--col-cancel) 55%,transparent)'}`,
+          background: isGhosted?'color-mix(in oklch,var(--col-done) 12%,transparent)':'color-mix(in oklch,var(--col-cancel) 12%,transparent)',
+          color: isGhosted?'var(--col-done)':'var(--col-cancel)' }}>
+        {isGhosted ? '↩ RESTORE SLOT' : '✕ BLANK THIS SLOT'}
+      </button>
+    </div>
+  );
+}
+
 // ─── Root component ───────────────────────────────────────────────────────
 function AutoSlotFinderBoard() {
-  const { isMobile } = useApp();
+  const { isMobile, setDrawer } = useApp();
 
   // Persisted user settings (filters, toggles, window, sort) — loaded once on mount
   const saved = useM_asf(() => asfLoadSettings(), []);
@@ -1212,6 +1259,10 @@ function AutoSlotFinderBoard() {
   const [hoveredSlot,    setHoveredSlot]    = useS_asf(null);
   const [fiFilter,       setFiFilter]       = useS_asf(saved.fiFilter); // [] = all
   const [fiMatchSp,      setFiMatchSp]      = useS_asf(saved.fiMatchSp);
+  const [excludedSPs,    setExcludedSPs]    = useS_asf(saved.excludedSPs   || []);
+  const [excludedTails,  setExcludedTails]  = useS_asf(saved.excludedTails || []);
+  const [ghostedFlightIds, setGhostedFlightIds] = useS_asf(new Set());
+  const [flightPopup,    setFlightPopup]    = useS_asf(null); // { flObj, isGhost, pos }
 
   // Export-all "✓ COPIED" feedback flag
   const [exportCopied,   setExportCopied]   = useS_asf(false);
@@ -1223,9 +1274,10 @@ function AutoSlotFinderBoard() {
         acTypeFilter, fiFilter, fiMatchSp,
         windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo,
         sortMode, topN, onlyOpen,
+        excludedSPs, excludedTails,
       }));
     } catch (_) { /* localStorage unavailable — silently skip */ }
-  }, [acTypeFilter, fiFilter, fiMatchSp, windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo, sortMode, topN, onlyOpen]);
+  }, [acTypeFilter, fiFilter, fiMatchSp, windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo, sortMode, topN, onlyOpen, excludedSPs, excludedTails]);
 
   // Modals
   const [acPickerModal,  setAcPickerModal]  = useS_asf(null); // { slot, spName, onReserve }
@@ -1244,10 +1296,11 @@ function AutoSlotFinderBoard() {
     setAcPickerModal({ slot, spName, onReserve });
   }, []);
 
-  // Date change releases all reservations
+  // Date change releases all reservations and clears ghost list
   const setAsfDate = useC_asf(d => {
     setAsfDateRaw(d);
     setActivatedSlots({});
+    setGhostedFlightIds(new Set());
   }, []);
 
   const cached = useM_asf(() => asfLoadCached(), []);
@@ -1283,9 +1336,15 @@ function AutoSlotFinderBoard() {
     return [{ v:'Any', l:'Any type' }, ...types.map(t => ({ v:t, l:t }))];
   }, []);
 
-  const dateFlights = useM_asf(() =>
+  // All real flights on this date (used for timeline rendering — includes ghosted)
+  const allDateFlights = useM_asf(() =>
     FLIGHTS.filter(f => f.date === asfDate && f.status !== 'Canceled')
   , [asfDate]);
+
+  // Non-ghosted flights (used for all slot-finding logic)
+  const dateFlights = useM_asf(() =>
+    allDateFlights.filter(f => !ghostedFlightIds.has(f.id))
+  , [allDateFlights, ghostedFlightIds]);
 
   // Dynamic timeline end: max of 18:00 and the actual last-flight end on this date
   const dynHourEnd = useM_asf(() => {
@@ -1313,10 +1372,11 @@ function AutoSlotFinderBoard() {
     );
     const candTails = RESOURCES.filter(r =>
       r.tail && !r.isMaint && !/SIM|Classroom/i.test(r.acType || '') &&
-      (acTypeFilter === null || acTypeFilter.includes(r.acType))
+      (acTypeFilter === null || acTypeFilter.includes(r.acType)) &&
+      (excludedTails.length === 0 || !excludedTails.includes(r.tail))
     ).map(r => r.tail).sort();
     return { candFIs, candTails };
-  }, [acTypeFilter, leavesMap, fiFilter]);
+  }, [acTypeFilter, leavesMap, fiFilter, excludedTails]);
 
   const rwyBand = useM_asf(() => {
     if (!rwyEnabled) return { rwyStart:null, rwyEnd:null };
@@ -1332,7 +1392,9 @@ function AutoSlotFinderBoard() {
     return [...dateFlights, ...actFlights];
   }, [dateFlights, activatedSlots, asfDate]);
 
-  const baseBusyMap = useM_asf(() => asfBuildBusyMap(dateFlights, 0), [dateFlights]);
+  const baseBusyMap        = useM_asf(() => asfBuildBusyMap(dateFlights, 0),    [dateFlights]);
+  // Render map includes ghosted flights so they remain visible (dimmed) in the timeline
+  const allBusyMapForRender = useM_asf(() => asfBuildBusyMap(allDateFlights, 0), [allDateFlights]);
 
   const ranked = useM_asf(() => {
     if (!rankData?.ap127) return [];
@@ -1352,6 +1414,8 @@ function AutoSlotFinderBoard() {
       // SP on leave → zero slots regardless of other availability
       const spOnLeave = Object.keys(leavesMap).some(k => asfShortName(k).toLowerCase() === spKey.toLowerCase());
       if (spOnLeave) { map[spKey] = []; return; }
+      // SP manually excluded → skip (existing flights still block resources for others)
+      if (excludedSPs.length > 0 && excludedSPs.includes(spKey)) { map[spKey] = []; return; }
       // SP already has a real flight today → no additional slot
       const spHasFlight = dateFlights.some(f => f.student && f.status !== 'Canceled' && asfShortName(f.student).toLowerCase() === spKey.toLowerCase());
       if (spHasFlight) { map[spKey] = []; return; }
@@ -1371,7 +1435,7 @@ function AutoSlotFinderBoard() {
       map[spKey] = asfMergeSlots(raw);
     });
     return map;
-  }, [ranked, windowFrom, windowTo, rwyBand, augmentedFlights, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, leavesMap]);
+  }, [ranked, windowFrom, windowTo, rwyBand, augmentedFlights, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, leavesMap, excludedSPs]);
 
   // Baseline = same slot computation but using ONLY dateFlights (no activated cascade).
   // Used to detect "you blocked yourself out by reserving for someone else" — the
@@ -1388,6 +1452,7 @@ function AutoSlotFinderBoard() {
       const spKey = asfShortName(rec.student.name);
       const spOnLeave = Object.keys(leavesMap).some(k => asfShortName(k).toLowerCase() === spKey.toLowerCase());
       if (spOnLeave) { map[spKey] = []; return; }
+      if (excludedSPs.length > 0 && excludedSPs.includes(spKey)) { map[spKey] = []; return; }
       // SP already has a real flight today → no additional slot
       const spHasFlight = dateFlights.some(f => f.student && f.status !== 'Canceled' && asfShortName(f.student).toLowerCase() === spKey.toLowerCase());
       if (spHasFlight) { map[spKey] = []; return; }
@@ -1407,7 +1472,7 @@ function AutoSlotFinderBoard() {
       map[spKey] = asfMergeSlots(raw);
     });
     return map;
-  }, [ranked, windowFrom, windowTo, rwyBand, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, activatedSlots, slotsByStudent, leavesMap]);
+  }, [ranked, windowFrom, windowTo, rwyBand, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, activatedSlots, slotsByStudent, leavesMap, excludedSPs]);
 
   const finalRecords = useM_asf(() => {
     const out = ranked.map(rec => {
@@ -1424,7 +1489,8 @@ function AutoSlotFinderBoard() {
     return (onlyOpen
       ? out.filter(r => r.slots.length > 0 || !!activatedSlots[asfShortName(r.student.name)])
       : out
-    ).slice(0, topN);
+    ).filter(r => excludedSPs.length === 0 || !excludedSPs.includes(asfShortName(r.student.name)))
+     .slice(0, topN);
   }, [ranked, slotsByStudent, baselineSlotsByStudent, onlyOpen, topN, leavesMap, dateFlights, activatedSlots]);
 
   const stats = useM_asf(() => ({
@@ -1475,6 +1541,19 @@ function AutoSlotFinderBoard() {
     return [...s].sort();
   }, [dateFlights, acTypeFilter, tailTypeMap, activatedSlots]);
 
+  // SP options for EXCL SP dropdown (uses full ranked list regardless of current topN)
+  const spExclOpts = useM_asf(() =>
+    (ranked || []).map(r => ({ v: asfShortName(r.student.name), l: asfShortName(r.student.name) }))
+  , [ranked]);
+
+  // Tail options for EXCL A/C dropdown
+  const tailExclOpts = useM_asf(() =>
+    [...new Set([
+      ...RESOURCES.filter(r => r.tail && !/SIM|Classroom/i.test(r.acType || '')).map(r => r.tail),
+      ...allDateFlights.map(f => f.tail).filter(t => t && !/\(SIM\)/i.test(t)),
+    ])].sort().map(t => ({ v:t, l:t }))
+  , [allDateFlights]);
+
   // ── Handlers ─────────────────────────────────────────────────────────────
   const toggleExpand  = spKey => setExpanded(prev => { const n = new Set(prev); n.has(spKey) ? n.delete(spKey) : n.add(spKey); return n; });
   const expandAll     = () => setExpanded(new Set(finalRecords.map(r => asfShortName(r.student.name))));
@@ -1490,6 +1569,20 @@ function AutoSlotFinderBoard() {
 
   const releaseSlot = useC_asf(spKey => {
     setActivatedSlots(prev => { const n = { ...prev }; delete n[spKey]; return n; });
+  }, []);
+
+  // Toggle a flight's ghost state (blank / restore)
+  const toggleGhost = useC_asf(id => {
+    setGhostedFlightIds(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }, []);
+
+  // Called by AsfTimeline when user taps an occupied flight block
+  const handleFlightClick = useC_asf((flObj, isGhost, pos) => {
+    setFlightPopup({ flObj, isGhost, pos });
   }, []);
 
   // ── Reset filters / toggles / window to defaults ────────────────────────
@@ -1508,6 +1601,8 @@ function AutoSlotFinderBoard() {
     setSortMode(ASF_DEFAULTS.sortMode);
     setTopN(ASF_DEFAULTS.topN);
     setOnlyOpen(ASF_DEFAULTS.onlyOpen);
+    setExcludedSPs(ASF_DEFAULTS.excludedSPs);
+    setExcludedTails(ASF_DEFAULTS.excludedTails);
   }, []);
 
   // ── Bulk auto-reserve: earliest matched slot per ranked SP ──────────────
@@ -1646,6 +1741,16 @@ function AutoSlotFinderBoard() {
         <AsfMultiCheck label="TYPE" items={allAcTypes.map(t=>({v:t,l:t}))} selected={acTypeFilter} onChange={setAcTypeFilter} allLabel="Any type" color="var(--col-pending)" />
         <AsfSel label="SHOW" value={topN} onChange={v=>setTopN(+v)} opts={ASF_TOPN_OPTS} minWidth={70} />
         <AsfMultiCheck label="FI FILTER" items={fiAllNames.map(n=>({ v:n, l:n, badge: Object.keys(leavesMap).some(k => k.toLowerCase() === n.toLowerCase()) ? 'LEAVE' : null }))} selected={fiFilter} onChange={setFiFilter} allLabel="Any available" color="var(--col-pending)" />
+        <AsfMultiCheck label="EXCL SP"
+          items={spExclOpts}
+          selected={excludedSPs.length === 0 ? null : excludedSPs}
+          onChange={v => setExcludedSPs(v === null ? [] : v)}
+          allLabel="None excluded" color="var(--col-cancel)" />
+        <AsfMultiCheck label="EXCL A/C"
+          items={tailExclOpts}
+          selected={excludedTails.length === 0 ? null : excludedTails}
+          onChange={v => setExcludedTails(v === null ? [] : v)}
+          allLabel="None excluded" color="var(--col-cancel)" />
         <div style={{ width:1, height:38, background:'var(--line)', alignSelf:'flex-end', marginBottom:1, flexShrink:0 }}/>
         <AsfTimePicker label="FROM" value={windowFrom} onChange={setWindowFrom} />
         <AsfTimePicker label="TO"   value={windowTo}   onChange={setWindowTo} />
@@ -1743,6 +1848,10 @@ function AutoSlotFinderBoard() {
               hourEnd={dynHourEnd}
               leavesMap={leavesMap}
               maintTailSet={MAINT_TAILS}
+              ghostedFlightIds={ghostedFlightIds}
+              renderRawFI={allBusyMapForRender.rawFI}
+              renderRawTail={allBusyMapForRender.rawTail}
+              onFlightClick={handleFlightClick}
             />
           )}
           {!rankData && loading && (
@@ -1821,6 +1930,16 @@ function AutoSlotFinderBoard() {
           act={tlReleaseModal}
           onRelease={releaseSlot}
           onClose={() => setTlReleaseModal(null)}
+        />
+      )}
+      {flightPopup && (
+        <AsfFlightActionPopup
+          flight={flightPopup.flObj}
+          isGhosted={flightPopup.isGhost}
+          pos={flightPopup.pos}
+          onView={() => setDrawer(flightPopup.flObj.id)}
+          onToggleGhost={() => toggleGhost(flightPopup.flObj.id)}
+          onClose={() => setFlightPopup(null)}
         />
       )}
 
