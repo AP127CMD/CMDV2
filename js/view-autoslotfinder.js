@@ -80,6 +80,30 @@ function asfIdleSort(arr, refDate) {
     (a.done || 0) - (b.done || 0));
 }
 
+// ─── Session persistence ──────────────────────────────────────────────────
+// Working session: auto-saved on every state change, restored on mount so
+// switching to another view and back doesn't wipe reservations / blanks.
+const ASF_WORKING_LS_KEY = 'ap127-asf-working-v1';
+// Named save slots: 5 manual checkpoints the user can name and reload any time.
+const ASF_SAVES_LS_KEY   = 'ap127-asf-saves-v1';
+const ASF_MAX_SAVES      = 5;
+
+function asfLoadSaves() {
+  try {
+    const raw = localStorage.getItem(ASF_SAVES_LS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    while (arr.length < ASF_MAX_SAVES) arr.push(null);
+    return arr.slice(0, ASF_MAX_SAVES);
+  } catch (_) { return Array(ASF_MAX_SAVES).fill(null); }
+}
+function asfStoreSaves(saves) {
+  try { localStorage.setItem(ASF_SAVES_LS_KEY, JSON.stringify(saves)); } catch (_) {}
+}
+function asfLoadWorking() {
+  try { return JSON.parse(localStorage.getItem(ASF_WORKING_LS_KEY) || 'null'); }
+  catch (_) { return null; }
+}
+
 // ─── Cache feed ───────────────────────────────────────────────────────────
 const ASF_LS_KEY     = 'ap127-rank-cache-v1';
 const ASF_LS_MAX_AGE = 6 * 60 * 60 * 1000;
@@ -1192,6 +1216,115 @@ function AsfStudentCard({
   );
 }
 
+// ─── AsfSavesPanel (5-slot named session saves) ───────────────────────────
+function AsfSavesPanel({ saves, onSave, onLoad, onClear, onClose, saveBtnRef }) {
+  const panelRef = useR_asf(null);
+  const [pos, setPos] = useS_asf({ top:0, right:16 });
+
+  useE_asf(() => {
+    if (saveBtnRef?.current) {
+      const r = saveBtnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) });
+    }
+  }, []);
+
+  useE_asf(() => {
+    const close = e => {
+      if (panelRef.current && !panelRef.current.contains(e.target) &&
+          saveBtnRef?.current && !saveBtnRef.current.contains(e.target))
+        onClose();
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [onClose]);
+
+  const fmtSlotDate = dateStr => {
+    if (!dateStr) return '—';
+    try { const { wd, day, mo } = fmtDay(dateStr); return `${wd} ${String(day).padStart(2,'0')} ${mo}`; }
+    catch (_) { return dateStr; }
+  };
+  const fmtSlotTime = iso => {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleString('en-GB', {
+        day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit',
+        hour12:false, timeZone:'Asia/Bangkok',
+      }).replace(',', '');
+    } catch (_) { return ''; }
+  };
+
+  return (
+    <div ref={panelRef} style={{
+      position:'fixed', top: pos.top, right: pos.right, zIndex:450,
+      background:'var(--bg-2)', borderRadius:8, border:'1px solid var(--line)',
+      boxShadow:'0 12px 40px oklch(0 0 0 / 0.55)',
+      width:340, display:'flex', flexDirection:'column', overflow:'hidden',
+    }}>
+      <div style={{ padding:'8px 12px', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:8 }}>
+        <span className="mono uc" style={{ fontSize:10, fontWeight:700 }}>SAVED SESSIONS</span>
+        <span className="mono" style={{ fontSize:8, color:'var(--ink-3)', flex:1 }}>5 slots · survive page reload</span>
+        <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--ink-3)', cursor:'pointer', fontSize:16, lineHeight:1, padding:'0 2px' }}>✕</button>
+      </div>
+      {saves.map((slot, idx) => (
+        <div key={idx} style={{
+          display:'flex', alignItems:'center', gap:8, padding:'8px 12px',
+          borderBottom: idx < ASF_MAX_SAVES-1 ? '1px solid var(--line-soft)' : 'none',
+          background: slot ? 'color-mix(in oklch,var(--highlight) 4%,transparent)' : 'transparent',
+        }}>
+          <span className="mono" style={{
+            width:18, height:18, borderRadius:4, flexShrink:0,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:9, fontWeight:700,
+            background: slot ? 'var(--highlight)' : 'var(--line)',
+            color: slot ? 'oklch(0.12 0 0)' : 'var(--ink-3)',
+          }}>{idx+1}</span>
+          <div style={{ flex:1, minWidth:0 }}>
+            {slot ? (
+              <>
+                <div className="mono" style={{ fontSize:10, color:'var(--ink)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {fmtSlotDate(slot.date)}
+                </div>
+                <div className="mono" style={{ fontSize:8, color:'var(--ink-3)' }}>
+                  {slot.reservedCount ?? 0} reserved · {slot.ghostedCount ?? 0} blanked · {fmtSlotTime(slot.savedAt)}
+                </div>
+              </>
+            ) : (
+              <span className="mono uc" style={{ fontSize:9, color:'var(--ink-3)' }}>EMPTY</span>
+            )}
+          </div>
+          <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+            <button onClick={() => onSave(idx)} className="mono uc"
+              style={{ padding:'3px 8px', fontSize:8, borderRadius:3, cursor:'pointer', fontWeight:600,
+                border:`1px solid ${slot ? 'color-mix(in oklch,var(--col-pending) 55%,transparent)' : 'color-mix(in oklch,var(--col-done) 55%,transparent)'}`,
+                background: slot ? 'color-mix(in oklch,var(--col-pending) 12%,transparent)' : 'color-mix(in oklch,var(--col-done) 12%,transparent)',
+                color: slot ? 'var(--col-pending)' : 'var(--col-done)' }}>
+              {slot ? 'OVERWRITE' : 'SAVE'}
+            </button>
+            {slot && (
+              <>
+                <button onClick={() => { onLoad(idx); onClose(); }} className="mono uc"
+                  style={{ padding:'3px 8px', fontSize:8, borderRadius:3, cursor:'pointer', fontWeight:600,
+                    border:'1px solid color-mix(in oklch,var(--highlight) 55%,transparent)',
+                    background:'color-mix(in oklch,var(--highlight) 12%,transparent)',
+                    color:'var(--highlight)' }}>LOAD</button>
+                <button onClick={() => onClear(idx)} className="mono uc"
+                  style={{ padding:'3px 7px', fontSize:8, borderRadius:3, cursor:'pointer',
+                    border:'1px solid color-mix(in oklch,var(--col-cancel) 40%,transparent)',
+                    background:'transparent', color:'var(--col-cancel)' }}>✕</button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+      <div style={{ padding:'6px 12px', borderTop:'1px solid var(--line-soft)', background:'color-mix(in oklch,var(--ink) 2%,var(--surface))' }}>
+        <span className="mono" style={{ fontSize:8, color:'var(--ink-3)' }}>
+          Working state auto-saves on every change — switching views & back restores it.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── AsfFlightActionPopup (tap occupied block → ghost / restore) ──────────
 function AsfFlightActionPopup({ flight, isGhosted, pos, onView, onToggleGhost, onClose }) {
   const ref = useR_asf(null);
@@ -1241,7 +1374,11 @@ function AutoSlotFinderBoard() {
   // Persisted user settings (filters, toggles, window, sort) — loaded once on mount
   const saved = useM_asf(() => asfLoadSettings(), []);
 
-  const [asfDate,      setAsfDateRaw]  = useS_asf(DEFAULT_DATE);
+  // Working session — auto-saved on every change; restores reservations/blanks
+  // when user navigates away and returns to this view (component remounts).
+  const workingSession = useM_asf(() => asfLoadWorking(), []);
+
+  const [asfDate,      setAsfDateRaw]  = useS_asf(workingSession?.date || DEFAULT_DATE);
   const [acTypeFilter, setAcTypeFilter]= useS_asf(saved.acTypeFilter); // [] = all
   const [windowFrom,   setWindowFrom]  = useS_asf(saved.windowFrom);
   const [windowTo,     setWindowTo]    = useS_asf(saved.windowTo);
@@ -1251,18 +1388,23 @@ function AutoSlotFinderBoard() {
   const [topN,         setTopN]        = useS_asf(saved.topN);
   const [sortMode,     setSortMode]    = useS_asf(saved.sortMode);
   const [onlyOpen,     setOnlyOpen]    = useS_asf(saved.onlyOpen);
-  const [expanded,     setExpanded]    = useS_asf(new Set());
+  const [expanded,     setExpanded]    = useS_asf(new Set(workingSession?.expanded || []));
   const [proposal,     setProposal]    = useS_asf(null);
 
-  const [spOverrides,    setSpOverrides]    = useS_asf({});
-  const [activatedSlots, setActivatedSlots] = useS_asf({});
+  const [spOverrides,    setSpOverrides]    = useS_asf(workingSession?.spOverrides    || {});
+  const [activatedSlots, setActivatedSlots] = useS_asf(workingSession?.activatedSlots || {});
   const [hoveredSlot,    setHoveredSlot]    = useS_asf(null);
   const [fiFilter,       setFiFilter]       = useS_asf(saved.fiFilter); // [] = all
   const [fiMatchSp,      setFiMatchSp]      = useS_asf(saved.fiMatchSp);
   const [excludedSPs,    setExcludedSPs]    = useS_asf(saved.excludedSPs   || []);
   const [excludedTails,  setExcludedTails]  = useS_asf(saved.excludedTails || []);
-  const [ghostedFlightIds, setGhostedFlightIds] = useS_asf(new Set());
+  const [ghostedFlightIds, setGhostedFlightIds] = useS_asf(new Set(workingSession?.ghostedIds || []));
   const [flightPopup,    setFlightPopup]    = useS_asf(null); // { flObj, isGhost, pos }
+
+  // Named saves (5 slots)
+  const [saves,     setSaves]     = useS_asf(() => asfLoadSaves());
+  const [savesOpen, setSavesOpen] = useS_asf(false);
+  const saveBtnRef = useR_asf(null);
 
   // Export-all "✓ COPIED" feedback flag
   const [exportCopied,   setExportCopied]   = useS_asf(false);
@@ -1278,6 +1420,20 @@ function AutoSlotFinderBoard() {
       }));
     } catch (_) { /* localStorage unavailable — silently skip */ }
   }, [acTypeFilter, fiFilter, fiMatchSp, windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo, sortMode, topN, onlyOpen, excludedSPs, excludedTails]);
+
+  // Auto-save working session on every meaningful state change so switching views
+  // and returning restores the exact reservation + ghost + override state.
+  useE_asf(() => {
+    try {
+      localStorage.setItem(ASF_WORKING_LS_KEY, JSON.stringify({
+        date: asfDate,
+        activatedSlots,
+        ghostedIds: [...ghostedFlightIds],
+        spOverrides,
+        expanded: [...expanded],
+      }));
+    } catch (_) {}
+  }, [asfDate, activatedSlots, ghostedFlightIds, spOverrides, expanded]);
 
   // Modals
   const [acPickerModal,  setAcPickerModal]  = useS_asf(null); // { slot, spName, onReserve }
@@ -1585,6 +1741,40 @@ function AutoSlotFinderBoard() {
     setFlightPopup({ flObj, isGhost, pos });
   }, []);
 
+  // ── Session saves ─────────────────────────────────────────────────────────
+  const saveToSlot = useC_asf(idx => {
+    const slot = {
+      date: asfDate,
+      activatedSlots,
+      ghostedIds: [...ghostedFlightIds],
+      spOverrides,
+      savedAt: new Date().toISOString(),
+      reservedCount: Object.keys(activatedSlots).length,
+      ghostedCount: ghostedFlightIds.size,
+    };
+    const next = [...saves];
+    next[idx] = slot;
+    setSaves(next);
+    asfStoreSaves(next);
+  }, [asfDate, activatedSlots, ghostedFlightIds, spOverrides, saves]);
+
+  const loadFromSlot = useC_asf(idx => {
+    const slot = saves[idx];
+    if (!slot) return;
+    // Use setAsfDateRaw (not setAsfDate) so we don't wipe the data we're restoring
+    setAsfDateRaw(slot.date || DEFAULT_DATE);
+    setActivatedSlots(slot.activatedSlots || {});
+    setGhostedFlightIds(new Set(slot.ghostedIds || []));
+    setSpOverrides(slot.spOverrides || {});
+  }, [saves]);
+
+  const clearSlot = useC_asf(idx => {
+    const next = [...saves];
+    next[idx] = null;
+    setSaves(next);
+    asfStoreSaves(next);
+  }, [saves]);
+
   // ── Reset filters / toggles / window to defaults ────────────────────────
   // Clears the localStorage key and snaps every persisted setter back to its
   // built-in default. Does NOT touch reservations, overrides, or hover state.
@@ -1780,6 +1970,18 @@ function AutoSlotFinderBoard() {
 
       {/* Control row */}
       <div style={{ padding:'5px 12px', background:'var(--bg-2)', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', flexShrink:0 }}>
+        {/* SAVES button */}
+        <div ref={saveBtnRef}>
+          <button onClick={() => setSavesOpen(v => !v)} className="mono uc"
+            title="Save or restore session (reserved slots, blanked flights, overrides)"
+            style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer',
+              border:`1px solid ${savesOpen ? 'var(--col-pending)' : saves.some(Boolean) ? 'color-mix(in oklch,var(--col-pending) 45%,transparent)' : 'var(--line)'}`,
+              background: savesOpen ? 'color-mix(in oklch,var(--col-pending) 14%,transparent)' : 'transparent',
+              color: savesOpen ? 'var(--col-pending)' : saves.some(Boolean) ? 'var(--ink-2)' : 'var(--ink-3)',
+              fontWeight: savesOpen ? 600 : 400 }}>
+            SAVES{saves.filter(Boolean).length > 0 ? ` (${saves.filter(Boolean).length})` : ''}
+          </button>
+        </div>
         <span style={{ flex:1 }}/>
         {/* AUTO RESERVE — shown only when there are zero active reservations */}
         {Object.keys(activatedSlots).length === 0 && finalRecords.length > 0 && (
@@ -1930,6 +2132,16 @@ function AutoSlotFinderBoard() {
           act={tlReleaseModal}
           onRelease={releaseSlot}
           onClose={() => setTlReleaseModal(null)}
+        />
+      )}
+      {savesOpen && (
+        <AsfSavesPanel
+          saves={saves}
+          onSave={saveToSlot}
+          onLoad={loadFromSlot}
+          onClear={clearSlot}
+          onClose={() => setSavesOpen(false)}
+          saveBtnRef={saveBtnRef}
         />
       )}
       {flightPopup && (
