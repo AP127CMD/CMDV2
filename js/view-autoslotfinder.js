@@ -1727,6 +1727,13 @@ function AutoSlotFinderBoard() {
     setActivatedSlots(prev => { const n = { ...prev }; delete n[spKey]; return n; });
   }, []);
 
+  const resetEverything = useC_asf(() => {
+    setActivatedSlots({});
+    setGhostedFlightIds(new Set());
+    setSpOverrides({});
+    setExpanded(new Set());
+  }, []);
+
   // Toggle a flight's ghost state (blank / restore)
   const toggleGhost = useC_asf(id => {
     setGhostedFlightIds(prev => {
@@ -2011,6 +2018,16 @@ function AutoSlotFinderBoard() {
               background:'color-mix(in oklch,var(--col-cancel) 12%,transparent)',
               color:'var(--col-cancel)', fontWeight:600 }}>
             RELEASE ALL ({Object.keys(activatedSlots).length})
+          </button>
+        )}
+        {(Object.keys(activatedSlots).length > 0 || ghostedFlightIds.size > 0 || Object.keys(spOverrides).length > 0) && (
+          <button onClick={resetEverything} className="mono uc"
+            title="Clear all reservations, blanked flights, and per-SP overrides"
+            style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer',
+              border:'1px solid color-mix(in oklch,var(--col-cancel) 35%,transparent)',
+              background:'transparent',
+              color:'var(--col-cancel)', fontWeight:500 }}>
+            RESET ALL
           </button>
         )}
         <button onClick={() => setOnlyOpen(v => !v)} className="mono uc"
