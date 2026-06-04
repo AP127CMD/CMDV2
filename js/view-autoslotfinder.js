@@ -208,23 +208,36 @@ function asfBuildBusyMap(flights, gapMin) {
     ...(typeof SF_AP127_FI_NAMES !== 'undefined' ? SF_AP127_FI_NAMES : []),
   ]);
 
-  const rawFI = {}, rawSP = {}, rawTail = {}, fiDuty = {};
+  // rawFI = all FI entries for timeline display (includes solo-monitor flights)
+  // rawFIBusy = only flights where FI is physically in the aircraft (used for fiBusy)
+  // soloFI = per-FI windows where they are solo-monitor only (available but flagged)
+  const rawFI = {}, rawFIBusy = {}, rawSP = {}, rawTail = {}, fiDuty = {};
+  const soloFI = {};
   flights.forEach(f => {
     const s = minutesOf(f.start), e = minutesOf(f.end);
     if (s == null || e == null) return;
     // Include full flight object so the timeline can show clickable detail
     const push = (map, key) => { if (key) (map[key] = map[key] || []).push({ s, e, flight: f }); };
+    const isSolo = /\bsolo\b/i.test(f.lesson || '');
+    // Always display FI block and block student/tail
     push(rawFI, f.instructor); push(rawSP, f.student); push(rawTail, f.tail);
-    // If an FI appears as the student (e.g. FAM FI, PPC check), block their FI time too
-    if (f.student && _fiSet.has(f.student)) push(rawFI, f.student);
-    const trackDuty = (name) => {
-      if (!name) return;
-      const d = fiDuty[name];
-      if (!d) fiDuty[name] = { first: s, last: e };
-      else { d.first = Math.min(d.first, s); d.last = Math.max(d.last, e); }
-    };
-    trackDuty(f.instructor);
-    if (f.student && _fiSet.has(f.student)) trackDuty(f.student);
+    if (isSolo) {
+      // Solo: FI is ground monitor — not in aircraft, so available for scheduling.
+      // Record the window so any overlapping proposed slot is flagged as special.
+      if (f.instructor) (soloFI[f.instructor] = soloFI[f.instructor] || []).push({ start: s, end: e });
+    } else {
+      // Regular flight: FI is in the aircraft → block their scheduling time
+      push(rawFIBusy, f.instructor);
+      if (f.student && _fiSet.has(f.student)) { push(rawFI, f.student); push(rawFIBusy, f.student); }
+      const trackDuty = (name) => {
+        if (!name) return;
+        const d = fiDuty[name];
+        if (!d) fiDuty[name] = { first: s, last: e };
+        else { d.first = Math.min(d.first, s); d.last = Math.max(d.last, e); }
+      };
+      trackDuty(f.instructor);
+      if (f.student && _fiSet.has(f.student)) trackDuty(f.student);
+    }
   });
   const toBusy = rawMap => {
     const out = {};
@@ -233,10 +246,10 @@ function asfBuildBusyMap(flights, gapMin) {
     });
     return out;
   };
-  return { fiBusy: toBusy(rawFI), spBusy: toBusy(rawSP), tailBusy: toBusy(rawTail), fiDuty, rawFI, rawSP, rawTail };
+  return { fiBusy: toBusy(rawFIBusy), spBusy: toBusy(rawSP), tailBusy: toBusy(rawTail), fiDuty, rawFI, rawSP, rawTail, soloFI };
 }
 
-function asfFindSlotsForStudent(spName, { windowStart, windowEnd, durationMin, rwyStart, rwyEnd }, { fiBusy, spBusy, tailBusy, fiDuty }, { candFIs, candTails, tailTypeMap, fiQuals }) {
+function asfFindSlotsForStudent(spName, { windowStart, windowEnd, durationMin, rwyStart, rwyEnd }, { fiBusy, spBusy, tailBusy, fiDuty, soloFI }, { candFIs, candTails, tailTypeMap, fiQuals }) {
   const results = [];
   for (let t = windowStart; t <= windowEnd - durationMin; t += 15) {
     const end = t + durationMin;
@@ -248,8 +261,10 @@ function asfFindSlotsForStudent(spName, { windowStart, windowEnd, durationMin, r
     const pairs = [];
     for (const fi of freeFIs) {
       const quals = fiQuals[fi] || [];
+      // Flag if this FI is monitoring a solo flight during the proposed window
+      const soloOverlap = !!(soloFI?.[fi]?.some(s => t < s.end && end > s.start));
       for (const tail of freeTails)
-        if (quals.includes(tailTypeMap[tail])) pairs.push({ fi, tail });
+        if (quals.includes(tailTypeMap[tail])) pairs.push({ fi, tail, soloOverlap });
     }
     if (!pairs.length) continue;
     results.push({ t, end, pairs });
@@ -262,7 +277,8 @@ function asfMergeSlots(rawSlots) {
   const makeKey = slot => {
     const fis = [...new Set(slot.pairs.map(p => p.fi))].sort().join('|');
     const tls = [...new Set(slot.pairs.map(p => p.tail))].sort().join('|');
-    return `${fis}##${tls}`;
+    const solo = slot.pairs.some(p => p.soloOverlap) ? '~S' : '';
+    return `${fis}##${tls}${solo}`;
   };
   const windows = [];
   let cur = null;
@@ -796,9 +812,18 @@ function AsfAcPickerModal({ slot, spName, onReserve, onClose }) {
           <span className="mono" style={{ fontSize:9, color:'var(--ink-3)' }}>{asfFmtDur(slot.end-slot.t)} · {slot.pairs.length} combo{slot.pairs.length>1?'s':''}</span>
         </div>
         <div style={{ overflowY:'auto', flex:1, padding:'10px 14px', display:'flex', flexDirection:'column', gap:12 }}>
-          {Object.entries(byFI).sort(([a],[b]) => a.localeCompare(b)).map(([fi, tails]) => (
+          {Object.entries(byFI).sort(([a],[b]) => a.localeCompare(b)).map(([fi, tails]) => {
+            const fiSolo = slot.pairs.some(p => p.fi === fi && p.soloOverlap);
+            return (
             <div key={fi}>
-              <div style={{ fontSize:10, color:'var(--ink-2)', fontWeight:600, marginBottom:6 }}>{fi}</div>
+              <div style={{ fontSize:10, fontWeight:600, marginBottom:6, display:'flex', alignItems:'center', gap:6,
+                color: fiSolo ? 'var(--col-solo)' : 'var(--ink-2)' }}>
+                {fi}
+                {fiSolo && <span className="mono uc" style={{ fontSize:7, padding:'1px 5px', borderRadius:3, fontWeight:700,
+                  background:'color-mix(in oklch,var(--col-solo) 18%,transparent)',
+                  boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-solo) 45%,transparent)',
+                  color:'var(--col-solo)' }}>OVERLAP SOLO</span>}
+              </div>
               <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                 {[...tails].sort().map(tail => {
                   const res = RESOURCES.find(r => r.tail === tail);
@@ -815,7 +840,8 @@ function AsfAcPickerModal({ slot, spName, onReserve, onClose }) {
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -866,7 +892,16 @@ function AsfTimelineSlotModal({ slot, slotsByStudent, ranked, activatedSlots, on
                     <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                       {Object.entries(byFI).sort(([a],[b]) => a.localeCompare(b)).map(([fi, tails]) => (
                         <div key={fi} style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                          <span style={{ fontSize:9, color:'var(--ink-2)', minWidth:120 }}>{fi}</span>
+                          <span style={{ fontSize:9, minWidth:120, display:'flex', alignItems:'center', gap:5,
+                            color: pairs.some(p => p.fi===fi && p.soloOverlap) ? 'var(--col-solo)' : 'var(--ink-2)' }}>
+                            {fi}
+                            {pairs.some(p => p.fi===fi && p.soloOverlap) && (
+                              <span className="mono uc" style={{ fontSize:6, padding:'1px 4px', borderRadius:2, fontWeight:700,
+                                background:'color-mix(in oklch,var(--col-solo) 18%,transparent)',
+                                boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-solo) 40%,transparent)',
+                                color:'var(--col-solo)' }}>SOLO</span>
+                            )}
+                          </span>
                           {[...tails].sort().map(tail => {
                             const res = RESOURCES.find(r => r.tail === tail);
                             return (
@@ -979,6 +1014,14 @@ function AsfSlotBtn({ slot, isActive, onRelease, onReservePair, activePair, isHo
         <span className="mono" style={{ fontSize:9, color:'var(--ink-3)' }}>
           {asfFmtDur(slot.end - slot.t)} · {nFIs} FI{nFIs>1?'s':''} · {nTails} A/C
         </span>
+        {slot.pairs.some(p => p.soloOverlap) && (
+          <span className="mono uc" style={{ fontSize:7, padding:'1px 5px', borderRadius:3, fontWeight:700,
+            background:'color-mix(in oklch,var(--col-solo) 18%,transparent)',
+            color:'var(--col-solo)',
+            boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-solo) 45%,transparent)' }}>
+            OVERLAP SOLO
+          </span>
+        )}
         <span style={{ flex:1 }}/>
         <span className="mono" style={{ fontSize:10, fontWeight:700, color:accent }}>{nCombos}&thinsp;COMBO{nCombos>1?'S':''}</span>
         {isActive ? (
@@ -1006,11 +1049,15 @@ function AsfSlotBtn({ slot, isActive, onRelease, onReservePair, activePair, isHo
       )}
 
       <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-        {fiEntries.map(([fi, tails]) => (
+        {fiEntries.map(([fi, tails]) => {
+          const fiSolo = slot.pairs.some(p => p.fi === fi && p.soloOverlap);
+          return (
           <div key={fi} style={{ display:'flex', alignItems:'flex-start', gap:8, flexWrap:'wrap' }}>
             <span style={{ fontSize:10, minWidth:80, maxWidth:150, flexShrink:1, paddingTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
               fontWeight: isActive && activePair?.fi===fi ? 700 : 400,
-              color: isActive && activePair?.fi===fi ? 'var(--highlight)' : 'var(--ink-2)' }}>{fi}</span>
+              color: isActive && activePair?.fi===fi ? 'var(--highlight)' : fiSolo ? 'var(--col-solo)' : 'var(--ink-2)' }}>
+              {fi}{fiSolo ? ' ◈' : ''}
+            </span>
             <div style={{ display:'flex', gap:4, flexWrap:'wrap', flex:1 }}>
               {[...tails].sort().map(tail => {
                 const res = RESOURCES.find(r => r.tail === tail);
@@ -1033,7 +1080,8 @@ function AsfSlotBtn({ slot, isActive, onRelease, onReservePair, activePair, isHo
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
     </div>
@@ -1056,6 +1104,7 @@ function AsfProposeModal({ student, activatedSlot, dateStr, onClose }) {
     ``,
     `FI    : ${activatedSlot.fi}`,
     `A/C   : ${activatedSlot.tail}${res?.acType ? ` (${res.acType})` : ''}`,
+    ...(activatedSlot.soloOverlap ? [``, `⚠ Note : FI is monitoring a solo flight during this window — confirm availability with dispatcher before locking in.`] : []),
   ].join('\n');
 
   const copyText = async () => {
@@ -1069,6 +1118,12 @@ function AsfProposeModal({ student, activatedSlot, dateStr, onClose }) {
         <div style={{ padding:'10px 14px', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ width:7, height:7, borderRadius:999, background:'var(--highlight)', boxShadow:'0 0 7px var(--highlight)' }}/>
           <span className="mono uc" style={{ fontSize:11, fontWeight:700, letterSpacing:'0.05em' }}>DISPATCHER PROPOSAL</span>
+          {activatedSlot.soloOverlap && (
+            <span className="mono uc" style={{ fontSize:8, padding:'2px 7px', borderRadius:3, fontWeight:700,
+              background:'color-mix(in oklch,var(--col-solo) 18%,transparent)',
+              boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-solo) 50%,transparent)',
+              color:'var(--col-solo)' }}>OVERLAP SOLO</span>
+          )}
           <span style={{ flex:1 }}/>
           <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--ink-3)', cursor:'pointer', fontSize:18, padding:'0 4px', lineHeight:1 }}>✕</button>
         </div>
@@ -1153,6 +1208,12 @@ function AsfStudentCard({
               <span className="mono uc" style={{ padding:'2px 6px', borderRadius:3, fontSize:8, fontWeight:700, boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--highlight) 55%,transparent)', background:'color-mix(in oklch,var(--highlight) 14%,transparent)', color:'var(--highlight)' }}>
                 ★ {asfMinsToHHMM(activatedSlot.t)}–{asfMinsToHHMM(activatedSlot.end)}
               </span>
+              {activatedSlot.soloOverlap && (
+                <span className="mono uc" style={{ padding:'2px 5px', borderRadius:3, fontSize:7, fontWeight:700,
+                  background:'color-mix(in oklch,var(--col-solo) 18%,transparent)',
+                  boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-solo) 45%,transparent)',
+                  color:'var(--col-solo)' }}>SOLO</span>
+              )}
               <button onClick={e => { e.stopPropagation(); onRelease(); }} className="mono uc"
                 style={{ padding:'2px 7px', fontSize:8, borderRadius:3, cursor:'pointer', boxShadow:'inset 0 0 0 1px color-mix(in oklch,var(--col-cancel) 55%,transparent)', background:'color-mix(in oklch,var(--col-cancel) 12%,transparent)', color:'var(--col-cancel)', fontWeight:600 }}>
                 RELEASE
@@ -1720,8 +1781,10 @@ function AutoSlotFinderBoard() {
   }, []);
 
   const activateSlot = useC_asf((spKey, spName, t, end, fi, tail) => {
-    setActivatedSlots(prev => ({ ...prev, [spKey]: { t, end, fi, tail, spKey, spName } }));
-  }, []);
+    const matchSlot = (slotsByStudent[spKey] || []).find(s => s.t === t && s.end === end);
+    const matchPair = matchSlot?.pairs.find(p => p.fi === fi && p.tail === tail);
+    setActivatedSlots(prev => ({ ...prev, [spKey]: { t, end, fi, tail, spKey, spName, soloOverlap: !!matchPair?.soloOverlap } }));
+  }, [slotsByStudent]);
 
   const releaseSlot = useC_asf(spKey => {
     setActivatedSlots(prev => { const n = { ...prev }; delete n[spKey]; return n; });
@@ -1866,7 +1929,7 @@ function AutoSlotFinderBoard() {
       const res = RESOURCES.find(r => r.tail === act.tail);
       const acType = res?.acType ? ` (${res.acType})` : '';
       const lesson = rec.student.next_lesson || '—';
-      rows.push(`${String(idx).padStart(2,'0')}  ${spKey.padEnd(16,' ')} ${asfMinsToHHMM(act.t)}–${asfMinsToHHMM(act.end)} (${asfFmtDur(dur)})  ${lesson.padEnd(8,' ')}  ${String(act.fi).padEnd(14,' ')} ${act.tail}${acType}`);
+      rows.push(`${String(idx).padStart(2,'0')}  ${spKey.padEnd(16,' ')} ${asfMinsToHHMM(act.t)}–${asfMinsToHHMM(act.end)} (${asfFmtDur(dur)})  ${lesson.padEnd(8,' ')}  ${String(act.fi).padEnd(14,' ')} ${act.tail}${acType}${act.soloOverlap ? '  ⚠ SOLO MONITOR' : ''}`);
       idx++;
     });
     const text = `${header}\n\n${rows.join('\n')}`;
