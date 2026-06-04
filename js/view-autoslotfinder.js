@@ -222,20 +222,22 @@ function asfBuildBusyMap(flights, gapMin, includeSolo = false) {
     const isSolo = /\bsolo\b/i.test(f.cond || '') || /\bsolo\b/i.test(f.lesson || '');
     // Always display FI block and block student/tail
     push(rawFI, f.instructor); push(rawSP, f.student); push(rawTail, f.tail);
+    // Duty tracking always applies — solo-monitor duty still counts toward the FI's duty window
+    const trackDuty = (name) => {
+      if (!name) return;
+      const d = fiDuty[name];
+      if (!d) fiDuty[name] = { first: s, last: e };
+      else { d.first = Math.min(d.first, s); d.last = Math.max(d.last, e); }
+    };
     if (isSolo && includeSolo) {
       // Solo + toggle ON: FI is ground monitor — available for scheduling.
       // Record the window so any overlapping proposed slot is flagged as special.
       if (f.instructor) (soloFI[f.instructor] = soloFI[f.instructor] || []).push({ start: s, end: e });
+      trackDuty(f.instructor);
     } else {
       // Regular flight: FI is in the aircraft → block their scheduling time
       push(rawFIBusy, f.instructor);
       if (f.student && _fiSet.has(f.student)) { push(rawFI, f.student); push(rawFIBusy, f.student); }
-      const trackDuty = (name) => {
-        if (!name) return;
-        const d = fiDuty[name];
-        if (!d) fiDuty[name] = { first: s, last: e };
-        else { d.first = Math.min(d.first, s); d.last = Math.max(d.last, e); }
-      };
       trackDuty(f.instructor);
       if (f.student && _fiSet.has(f.student)) trackDuty(f.student);
     }
