@@ -1281,12 +1281,14 @@ function AsfStudentCard({
 // ─── AsfSavesPanel (5-slot named session saves) ───────────────────────────
 function AsfSavesPanel({ saves, onSave, onLoad, onClear, onClose, saveBtnRef }) {
   const panelRef = useR_asf(null);
-  const [pos, setPos] = useS_asf({ top:0, right:16 });
+  const [pos, setPos] = useS_asf({ top:0, left:0 });
 
   useE_asf(() => {
     if (saveBtnRef?.current) {
       const r = saveBtnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) });
+      // Align left edge with button, clamp so panel doesn't overflow right edge
+      const left = Math.min(r.left, window.innerWidth - 348);
+      setPos({ top: r.bottom + 4, left: Math.max(8, left) });
     }
   }, []);
 
@@ -1317,7 +1319,7 @@ function AsfSavesPanel({ saves, onSave, onLoad, onClear, onClose, saveBtnRef }) 
 
   return (
     <div ref={panelRef} style={{
-      position:'fixed', top: pos.top, right: pos.right, zIndex:450,
+      position:'fixed', top: pos.top, left: pos.left, zIndex:450,
       background:'var(--bg-2)', borderRadius:8, border:'1px solid var(--line)',
       boxShadow:'0 12px 40px oklch(0 0 0 / 0.55)',
       width:340, display:'flex', flexDirection:'column', overflow:'hidden',
@@ -2042,8 +2044,8 @@ function AutoSlotFinderBoard() {
 
       {/* Control row */}
       <div style={{ padding:'5px 12px', background:'var(--bg-2)', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', flexShrink:0 }}>
-        {/* SAVES button */}
-        <div ref={saveBtnRef}>
+        {/* SAVES + RESET group */}
+        <div ref={saveBtnRef} style={{ display:'flex', gap:4 }}>
           <button onClick={() => setSavesOpen(v => !v)} className="mono uc"
             title="Save or restore session (reserved slots, blanked flights, overrides)"
             style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer',
@@ -2053,6 +2055,16 @@ function AutoSlotFinderBoard() {
               fontWeight: savesOpen ? 600 : 400 }}>
             SAVES{saves.filter(Boolean).length > 0 ? ` (${saves.filter(Boolean).length})` : ''}
           </button>
+          {(Object.keys(activatedSlots).length > 0 || ghostedFlightIds.size > 0 || Object.keys(spOverrides).length > 0) && (
+            <button onClick={resetEverything} className="mono uc"
+              title="Clear all reservations, blanked flights, and per-SP overrides"
+              style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer',
+                border:'1px solid color-mix(in oklch,var(--col-cancel) 35%,transparent)',
+                background:'transparent',
+                color:'var(--col-cancel)', fontWeight:500 }}>
+              RESET
+            </button>
+          )}
         </div>
         <span style={{ flex:1 }}/>
         {/* AUTO RESERVE — shown only when there are zero active reservations */}
@@ -2083,16 +2095,6 @@ function AutoSlotFinderBoard() {
               background:'color-mix(in oklch,var(--col-cancel) 12%,transparent)',
               color:'var(--col-cancel)', fontWeight:600 }}>
             RELEASE ALL ({Object.keys(activatedSlots).length})
-          </button>
-        )}
-        {(Object.keys(activatedSlots).length > 0 || ghostedFlightIds.size > 0 || Object.keys(spOverrides).length > 0) && (
-          <button onClick={resetEverything} className="mono uc"
-            title="Clear all reservations, blanked flights, and per-SP overrides"
-            style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer',
-              border:'1px solid color-mix(in oklch,var(--col-cancel) 35%,transparent)',
-              background:'transparent',
-              color:'var(--col-cancel)', fontWeight:500 }}>
-            RESET ALL
           </button>
         )}
         <button onClick={() => setOnlyOpen(v => !v)} className="mono uc"
