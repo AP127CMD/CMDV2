@@ -218,7 +218,7 @@ function asfBuildBusyMap(flights, gapMin) {
     if (s == null || e == null) return;
     // Include full flight object so the timeline can show clickable detail
     const push = (map, key) => { if (key) (map[key] = map[key] || []).push({ s, e, flight: f }); };
-    const isSolo = /\bsolo\b/i.test(f.lesson || '');
+    const isSolo = /\bsolo\b/i.test(f.cond || '') || /\bsolo\b/i.test(f.lesson || '');
     // Always display FI block and block student/tail
     push(rawFI, f.instructor); push(rawSP, f.student); push(rawTail, f.tail);
     if (isSolo) {
