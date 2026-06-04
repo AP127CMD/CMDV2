@@ -171,8 +171,9 @@ const ASF_DEFAULTS = {
   sortMode:     'behind',
   topN:         8,
   onlyOpen:     false,
-  excludedSPs:  [],     // spKey strings to skip in slot-finding
-  excludedTails:[],     // tail numbers to exclude from candidates
+  excludedSPs:       [],    // spKey strings to skip in slot-finding
+  excludedTails:     [],    // tail numbers to exclude from candidates
+  includeSoloOverlap:false, // when true, FIs monitoring solo flights are available (slots flagged OVERLAP SOLO)
 };
 const asfLoadSettings = () => {
   try { return { ...ASF_DEFAULTS, ...JSON.parse(localStorage.getItem(ASF_SETTINGS_LS_KEY) || '{}') }; }
@@ -196,7 +197,7 @@ function asfDutyOk(duty, t, end) {
   return (Math.max(duty.last, end) - Math.min(duty.first, t)) <= ASF_MAX_DUTY;
 }
 
-function asfBuildBusyMap(flights, gapMin) {
+function asfBuildBusyMap(flights, gapMin, includeSolo = false) {
   // Build the full set of known FI names from every flight in this call's flight list,
   // then union with SF_AP127_FI_NAMES (AP-127 specific FIs).
   // This detects ANY flight where a person who also appears as an instructor
@@ -221,8 +222,8 @@ function asfBuildBusyMap(flights, gapMin) {
     const isSolo = /\bsolo\b/i.test(f.cond || '') || /\bsolo\b/i.test(f.lesson || '');
     // Always display FI block and block student/tail
     push(rawFI, f.instructor); push(rawSP, f.student); push(rawTail, f.tail);
-    if (isSolo) {
-      // Solo: FI is ground monitor — not in aircraft, so available for scheduling.
+    if (isSolo && includeSolo) {
+      // Solo + toggle ON: FI is ground monitor — available for scheduling.
       // Record the window so any overlapping proposed slot is flagged as special.
       if (f.instructor) (soloFI[f.instructor] = soloFI[f.instructor] || []).push({ start: s, end: e });
     } else {
@@ -1457,8 +1458,9 @@ function AutoSlotFinderBoard() {
   const [hoveredSlot,    setHoveredSlot]    = useS_asf(null);
   const [fiFilter,       setFiFilter]       = useS_asf(saved.fiFilter); // [] = all
   const [fiMatchSp,      setFiMatchSp]      = useS_asf(saved.fiMatchSp);
-  const [excludedSPs,    setExcludedSPs]    = useS_asf(saved.excludedSPs   || []);
-  const [excludedTails,  setExcludedTails]  = useS_asf(saved.excludedTails || []);
+  const [excludedSPs,         setExcludedSPs]         = useS_asf(saved.excludedSPs        || []);
+  const [excludedTails,       setExcludedTails]       = useS_asf(saved.excludedTails       || []);
+  const [includeSoloOverlap,  setIncludeSoloOverlap]  = useS_asf(saved.includeSoloOverlap  ?? false);
   const [ghostedFlightIds, setGhostedFlightIds] = useS_asf(new Set(workingSession?.ghostedIds || []));
   const [flightPopup,    setFlightPopup]    = useS_asf(null); // { flObj, isGhost, pos }
 
@@ -1477,10 +1479,10 @@ function AutoSlotFinderBoard() {
         acTypeFilter, fiFilter, fiMatchSp,
         windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo,
         sortMode, topN, onlyOpen,
-        excludedSPs, excludedTails,
+        excludedSPs, excludedTails, includeSoloOverlap,
       }));
     } catch (_) { /* localStorage unavailable — silently skip */ }
-  }, [acTypeFilter, fiFilter, fiMatchSp, windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo, sortMode, topN, onlyOpen, excludedSPs, excludedTails]);
+  }, [acTypeFilter, fiFilter, fiMatchSp, windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo, sortMode, topN, onlyOpen, excludedSPs, excludedTails, includeSoloOverlap]);
 
   // Auto-save working session on every meaningful state change so switching views
   // and returning restores the exact reservation + ghost + override state.
@@ -1609,9 +1611,8 @@ function AutoSlotFinderBoard() {
     return [...dateFlights, ...actFlights];
   }, [dateFlights, activatedSlots, asfDate]);
 
-  const baseBusyMap        = useM_asf(() => asfBuildBusyMap(dateFlights, 0),    [dateFlights]);
-  // Render map includes ghosted flights so they remain visible (dimmed) in the timeline
-  const allBusyMapForRender = useM_asf(() => asfBuildBusyMap(allDateFlights, 0), [allDateFlights]);
+  const baseBusyMap         = useM_asf(() => asfBuildBusyMap(dateFlights,    0, includeSoloOverlap), [dateFlights,    includeSoloOverlap]);
+  const allBusyMapForRender = useM_asf(() => asfBuildBusyMap(allDateFlights, 0, includeSoloOverlap), [allDateFlights, includeSoloOverlap]);
 
   const ranked = useM_asf(() => {
     if (!rankData?.ap127) return [];
@@ -1640,7 +1641,7 @@ function AutoSlotFinderBoard() {
       const dur   = ovr.duration;
       const gap   = ovr.gap;
       if (wEnd <= wStart + dur) return;
-      const busyMap     = asfBuildBusyMap(augmentedFlights, gap);
+      const busyMap     = asfBuildBusyMap(augmentedFlights, gap, includeSoloOverlap);
       const spCandFIs   = (!fiMatchSp || ovr.fi === 'Any') ? candidates.candFIs : candidates.candFIs.filter(fi => fi === ovr.fi);
       const spCandTails = ovr.seType === 'Any' ? candidates.candTails : candidates.candTails.filter(tail => tailTypeMap[tail] === ovr.seType);
       const raw = asfFindSlotsForStudent(
@@ -1652,7 +1653,7 @@ function AutoSlotFinderBoard() {
       map[spKey] = asfMergeSlots(raw);
     });
     return map;
-  }, [ranked, windowFrom, windowTo, rwyBand, augmentedFlights, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, leavesMap, excludedSPs]);
+  }, [ranked, windowFrom, windowTo, rwyBand, augmentedFlights, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, leavesMap, excludedSPs, includeSoloOverlap]);
 
   // Baseline = same slot computation but using ONLY dateFlights (no activated cascade).
   // Used to detect "you blocked yourself out by reserving for someone else" — the
@@ -1677,7 +1678,7 @@ function AutoSlotFinderBoard() {
       const dur   = ovr.duration;
       const gap   = ovr.gap;
       if (wEnd <= wStart + dur) return;
-      const busyMap     = asfBuildBusyMap(dateFlights, gap);
+      const busyMap     = asfBuildBusyMap(dateFlights, gap, includeSoloOverlap);
       const spCandFIs   = (!fiMatchSp || ovr.fi === 'Any') ? candidates.candFIs : candidates.candFIs.filter(fi => fi === ovr.fi);
       const spCandTails = ovr.seType === 'Any' ? candidates.candTails : candidates.candTails.filter(tail => tailTypeMap[tail] === ovr.seType);
       const raw = asfFindSlotsForStudent(
@@ -1689,7 +1690,7 @@ function AutoSlotFinderBoard() {
       map[spKey] = asfMergeSlots(raw);
     });
     return map;
-  }, [ranked, windowFrom, windowTo, rwyBand, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, activatedSlots, slotsByStudent, leavesMap, excludedSPs]);
+  }, [ranked, windowFrom, windowTo, rwyBand, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, activatedSlots, slotsByStudent, leavesMap, excludedSPs, includeSoloOverlap]);
 
   const finalRecords = useM_asf(() => {
     const out = ranked.map(rec => {
@@ -1863,6 +1864,7 @@ function AutoSlotFinderBoard() {
     setOnlyOpen(ASF_DEFAULTS.onlyOpen);
     setExcludedSPs(ASF_DEFAULTS.excludedSPs);
     setExcludedTails(ASF_DEFAULTS.excludedTails);
+    setIncludeSoloOverlap(ASF_DEFAULTS.includeSoloOverlap);
   }, []);
 
   // ── Bulk auto-reserve: earliest matched slot per ranked SP ──────────────
@@ -1891,7 +1893,7 @@ function AutoSlotFinderBoard() {
       const gap   = ovr.gap;
       if (wEnd <= wStart + dur) continue;
 
-      const busyMap     = asfBuildBusyMap(augmented, gap);
+      const busyMap     = asfBuildBusyMap(augmented, gap, includeSoloOverlap);
       const spCandFIs   = (!fiMatchSp || ovr.fi === 'Any') ? candidates.candFIs : candidates.candFIs.filter(fi => fi === ovr.fi);
       const spCandTails = ovr.seType === 'Any' ? candidates.candTails : candidates.candTails.filter(t => tailTypeMap[t] === ovr.seType);
 
@@ -2098,6 +2100,17 @@ function AutoSlotFinderBoard() {
             border:`1px solid ${onlyOpen?'var(--col-done)':'var(--line)'}`,
             background: onlyOpen?'color-mix(in oklch,var(--col-done) 14%,transparent)':'transparent',
             color: onlyOpen?'var(--col-done)':'var(--ink-3)', fontWeight: onlyOpen?600:400 }}>WITH SLOTS ONLY</button>
+        {/* SOLO OVERLAP toggle */}
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <span className="mono uc" style={{ fontSize:8, color: includeSoloOverlap ? 'var(--col-solo)' : 'var(--ink-3)' }}>SOLO OVERLAP</span>
+          <div onClick={() => setIncludeSoloOverlap(v => !v)}
+            style={{ width:28, height:15, borderRadius:999, cursor:'pointer', transition:'background .15s',
+              background: includeSoloOverlap ? 'var(--col-solo)' : 'var(--line)',
+              position:'relative', flexShrink:0 }}>
+            <div style={{ position:'absolute', top:2, left: includeSoloOverlap ? 15 : 2, width:11, height:11,
+              borderRadius:999, background:'white', transition:'left .15s', boxShadow:'0 1px 3px oklch(0 0 0 / 0.35)' }}/>
+          </div>
+        </div>
         {/* SP-FI matched toggle */}
         <div style={{ display:'flex', alignItems:'center', gap:5 }}>
           <span className="mono uc" style={{ fontSize:8, color: fiMatchSp ? 'var(--col-done)' : 'var(--ink-3)' }}>SP-FI MATCHED</span>
