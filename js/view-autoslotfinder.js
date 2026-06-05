@@ -187,7 +187,7 @@ async function asfFetchRank() {
       if (!r.ok) continue;
       const data = await r.json();
       if (data && Array.isArray(data.ap127)) {
-        const payload = { ap127: data.ap127, _updated: data._updated, _fetchedAt: Date.now(), _src: url };
+        const payload = { ap127: data.ap127, cur127: data.cur127 || [], _updated: data._updated, _fetchedAt: Date.now(), _src: url };
         try { localStorage.setItem(ASF_LS_KEY, JSON.stringify(payload)); } catch (_) {}
         return payload;
       }
@@ -1692,9 +1692,12 @@ function AutoSlotFinderBoard() {
 
   // Ops-augmented student list: merges any ops-Completed lessons not yet
   // reflected in the NGT cache so next_lesson / done are always current.
+  // cur127 falls back to window.NGT_CACHE in case the localStorage entry
+  // predates the fix and doesn't carry cur127 yet.
   const augStudents = useM_asf(() => {
     if (!rankData?.ap127) return [];
-    return asfOpsAugment(rankData.ap127, rankData.cur127 || []);
+    const curriculum = rankData.cur127 || (window.NGT_CACHE && window.NGT_CACHE.cur127) || [];
+    return asfOpsAugment(rankData.ap127, curriculum);
   }, [rankData]);
 
   const ranked = useM_asf(() => {
