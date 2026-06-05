@@ -60,8 +60,10 @@ async function runWatchdog(env) {
     const events = diffSnapshots(prevSnap, newSnap);
     const filtered = events.filter(e => config.eventTypes?.[e.type] !== false);
 
-    // Save snapshot first — if Telegram fails, next run won't replay the same events
-    await env.KV.put('watchdog:snapshot', JSON.stringify(newSnap));
+    // Only write snapshot when something changed (or first run) — saves KV write quota
+    if (filtered.length > 0 || !prevRaw) {
+      await env.KV.put('watchdog:snapshot', JSON.stringify(newSnap));
+    }
 
     const logEntries = [];
     for (const event of filtered) {
