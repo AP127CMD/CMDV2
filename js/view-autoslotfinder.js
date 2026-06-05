@@ -80,6 +80,78 @@ function asfIdleSort(arr, refDate) {
     (a.done || 0) - (b.done || 0));
 }
 
+// ─── Ops augmentation ────────────────────────────────────────────────────
+// Mirror of opsAugment() in view-cohort.js — merges ops-Completed lessons
+// into each student's flown list and recomputes done + next_lesson so the
+// Auto Slot Finder reflects the most-current state even when the NGT cache
+// is a few hours stale.
+//
+// next_lesson strategy: "next from last by curriculum position" — i.e. find
+// the highest curriculum-position lesson the student has completed and take
+// the one immediately after.  This matches the user expectation ("next from
+// their last lesson") and avoids the gap-filling issue that "first not done"
+// can produce when ops records are slightly out-of-order.
+function asfOpsAugment(students, curriculum) {
+  const R = window.AP127Reconcile;
+  const flights = (window.FLIGHT_DATA && window.FLIGHT_DATA.flights) || [];
+  if (!R || !Array.isArray(students) || !Array.isArray(curriculum) || !curriculum.length) return students;
+
+  // Build curriculum position index (normalised lesson → 0-based index)
+  const curIdx = {};
+  curriculum.forEach((c, i) => { curIdx[R.normLesson(c.lesson)] = i; });
+
+  // Gather ops-Completed AP-127 flights keyed by ops-normalised student name
+  const comp = {};
+  flights.forEach(f => {
+    if (!f.student || !f.lesson || !R.isAP127(f.batch)) return;
+    const k = R.ccNameNorm(f.student);
+    const nl = R.normLesson(f.lesson);
+    if (f.status === 'Completed' && f.date) (comp[k] = comp[k] || {})[nl] = f;
+  });
+
+  const curNorm = new Set(curriculum.map(c => R.normLesson(c.lesson)));
+
+  return students.map(s => {
+    // Map progress full name → ops key (e.g. "Krit Laohamethanee" → "KRIT L.")
+    const key = R.ccKeyFromFull(s.name);
+    const flownNorm = new Set((s.flown || []).map(f => R.normLesson(f.lesson)));
+
+    // Collect ops-completed lessons not already in NGT flown
+    const extra = [];
+    Object.keys(comp[key] || {}).forEach(nl => {
+      if (!flownNorm.has(nl) && curNorm.has(nl)) {
+        const f = comp[key][nl];
+        extra.push({ lesson: f.lesson, actual_mins: f.durMin || f.actual_mins || 0, actual_ft: f.duration || '', date: f.date, _ops: true });
+      }
+    });
+    if (!extra.length) return s;                       // nothing new — fast-path
+
+    const flown = [...(s.flown || []), ...extra].slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const done  = flown.length;
+    const total = s.total || curriculum.length;
+
+    // "Next from last" by curriculum position
+    let maxPos = -1;
+    flown.forEach(f => {
+      const pos = curIdx[R.normLesson(f.lesson)];
+      if (pos !== undefined && pos > maxPos) maxPos = pos;
+    });
+    const nxLesson = (maxPos >= 0 && maxPos + 1 < curriculum.length)
+      ? curriculum[maxPos + 1].lesson
+      : (maxPos < 0 ? (curriculum[0]?.lesson || s.next_lesson) : 'COMPLETE');
+
+    return {
+      ...s,
+      flown,
+      done,
+      total,
+      remaining: Math.max(0, total - done),
+      pct: total ? +(done / total * 100).toFixed(1) : 0,
+      next_lesson: nxLesson,
+    };
+  });
+}
+
 // ─── Session persistence ──────────────────────────────────────────────────
 // Working session: auto-saved on every state change, restored on mount so
 // switching to another view and back doesn't wipe reservations / blanks.
@@ -1618,12 +1690,19 @@ function AutoSlotFinderBoard() {
   const baseBusyMap         = useM_asf(() => asfBuildBusyMap(dateFlights,    0, includeSoloOverlap), [dateFlights,    includeSoloOverlap]);
   const allBusyMapForRender = useM_asf(() => asfBuildBusyMap(allDateFlights, 0, includeSoloOverlap), [allDateFlights, includeSoloOverlap]);
 
-  const ranked = useM_asf(() => {
+  // Ops-augmented student list: merges any ops-Completed lessons not yet
+  // reflected in the NGT cache so next_lesson / done are always current.
+  const augStudents = useM_asf(() => {
     if (!rankData?.ap127) return [];
+    return asfOpsAugment(rankData.ap127, rankData.cur127 || []);
+  }, [rankData]);
+
+  const ranked = useM_asf(() => {
+    if (!augStudents.length) return [];
     const sortFn = sortMode==='leader' ? asfPaceSort : sortMode==='idle' ? asfIdleSort : asfBehindSort;
-    const sorted = sortFn(rankData.ap127, asfDate);
+    const sorted = sortFn(augStudents, asfDate);
     return sorted.map((s, i) => ({ student:s, rank:i+1, rankCls:asfRankClass(i+1, sorted.length), idle:asfIdleDays(s,asfDate) }));
-  }, [rankData, asfDate, sortMode]);
+  }, [augStudents, asfDate, sortMode]);
 
   const slotsByStudent = useM_asf(() => {
     if (!ranked.length) return {};
