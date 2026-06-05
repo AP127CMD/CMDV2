@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { formatMessage } from '../src/telegram.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { formatMessage, sendTelegram } from '../src/telegram.js';
 
 const ROSTER = [
   { scheduleName: 'SIWAKORN P.', telegramUsername: 'siwakorn_p' },
@@ -59,5 +59,31 @@ describe('formatMessage', () => {
     expect(msg).toContain('10:00');
     expect(msg).toContain('HS-NGT');
     expect(msg).toContain('HS-TPT');
+  });
+});
+
+describe('sendTelegram', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('returns message_id on success', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, result: { message_id: 42 } }),
+    })));
+    const id = await sendTelegram('TOKEN', '-100123', 'hello');
+    expect(id).toBe(42);
+  });
+
+  it('throws on Telegram API error', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: false, description: 'Bad Request' }),
+    })));
+    await expect(sendTelegram('TOKEN', '-100123', 'hello')).rejects.toThrow('Bad Request');
+  });
+
+  it('throws on HTTP error', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 401 })));
+    await expect(sendTelegram('TOKEN', '-100123', 'hello')).rejects.toThrow('401');
   });
 });

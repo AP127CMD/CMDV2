@@ -68,7 +68,8 @@ export async function sendTelegram(token, chatId, text) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, text }),
   });
+  if (!res.ok) throw new Error(`Telegram HTTP ${res.status}`);
   const data = await res.json();
-  if (!data.ok) throw new Error(`Telegram: ${data.description}`);
+  if (!data.ok) throw new Error(`Telegram: ${data.description || 'unknown error'}`);
   return data.result.message_id;
 }
