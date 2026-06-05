@@ -14,6 +14,7 @@
       { id: 'today', label: 'Day Glance', icon: '✈' }, { id: 'board', label: 'Board', icon: '▤' },
       { id: 'gantt', label: 'Gantt', icon: '▭' }, { id: 'weekly', label: 'Weekly', icon: '▦' },
       { id: 'roster', label: 'Roster', icon: '▥' }, { id: 'calendar', label: 'Calendar', icon: '▦' },
+      { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
     ] },
     { label: 'Planning', items: [
       { id: 'autoslotfinder', label: 'Auto Slot Finder', icon: '⚡' },
@@ -258,6 +259,7 @@
       weekly: window.WeeklyBoard, roster: window.RosterBoard, calendar: window.CalendarBoard,
       autoslotfinder: window.AutoSlotFinderBoard,
       analytics: window.SummaryBoard,
+      aircraft: window.AircraftStatusView,
       cohort: window.CohortView,
       plans: window.ProgressDetailView,
       performance: window.SchoolPerformanceView,
