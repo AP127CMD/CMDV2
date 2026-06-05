@@ -60,18 +60,28 @@ async function runWatchdog(env) {
     const events = diffSnapshots(prevSnap, newSnap);
     const filtered = events.filter(e => config.eventTypes?.[e.type] !== false);
 
+    // Save snapshot first — if Telegram fails, next run won't replay the same events
+    await env.KV.put('watchdog:snapshot', JSON.stringify(newSnap));
+
+    const logEntries = [];
     for (const event of filtered) {
       const msg = formatMessage(event, config.roster || []);
-      await sendTelegram(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, msg);
+      try {
+        await sendTelegram(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, msg);
+      } catch (e) {
+        // Log the failure but continue — snapshot is already saved
+        console.error('Telegram send failed:', e.message);
+      }
+      logEntries.push({
+        type: event.type, flightId: event.flight.id, student: event.flight.student,
+        lesson: event.flight.lesson, date: event.flight.date,
+        start: event.flight.start, end: event.flight.end,
+        tail: event.flight.tail, instructor: event.flight.instructor, diff: event.diff,
+      });
+      // Avoid Telegram rate limit (30 msg/sec global, 1 msg/sec per chat)
+      if (filtered.length > 1) await new Promise(r => setTimeout(r, 1000));
     }
-
-    const logEntries = filtered.map(({ type, flight: f, diff }) => ({
-      type, flightId: f.id, student: f.student, lesson: f.lesson,
-      date: f.date, start: f.start, end: f.end,
-      tail: f.tail, instructor: f.instructor, diff,
-    }));
     await appendLog(env.KV, logEntries, ts);
-    await env.KV.put('watchdog:snapshot', JSON.stringify(newSnap));
     await env.KV.put('watchdog:status', JSON.stringify({
       lastRun: ts,
       lastChange: filtered.length > 0 ? ts : (prevStatus.lastChange || null),
