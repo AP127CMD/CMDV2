@@ -14,9 +14,9 @@
       { id: 'today', label: 'Day Glance', icon: '✈' }, { id: 'board', label: 'Board', icon: '▤' },
       { id: 'gantt', label: 'Gantt', icon: '▭' }, { id: 'weekly', label: 'Weekly', icon: '▦' },
       { id: 'roster', label: 'Roster', icon: '▥' }, { id: 'calendar', label: 'Calendar', icon: '▦' },
-      { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
     ] },
     { label: 'Planning', items: [
+      { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
       { id: 'autoslotfinder', label: 'Auto Slot Finder', icon: '⚡' },
     ] },
     { label: 'Progress', items: [
