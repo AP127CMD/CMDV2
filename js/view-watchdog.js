@@ -3,8 +3,7 @@
   const { useState, useEffect } = React;
   const h = React.createElement;
 
-  // Replace after Worker deploy (Task 8)
-  const WATCHDOG_URL = 'https://ap127-watchdog.YOUR_ACCOUNT.workers.dev';
+  const WATCHDOG_URL = 'https://ap127-watchdog.anusorn-tanmetha.workers.dev';
 
   const EVENT_ICONS = { ADDED: '✈️', REMOVED: '❌', CHANGED: '⚠️', STATUS: '🔄' };
   const MONTHS = Array.from({ length: 12 }, (_, i) => {

@@ -8,5 +8,5 @@ crons = ["*/5 * * * *"]
 
 [[kv_namespaces]]
 binding = "KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "b42f3202c5364f91aef3837132d6ccd5"
+preview_id = "b42f3202c5364f91aef3837132d6ccd5"
