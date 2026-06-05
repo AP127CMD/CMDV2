@@ -30,6 +30,7 @@
     ] },
     { label: 'Integrity', items: [{ id: 'crosscheck', label: 'Cross-Check', icon: '⇄' }] },
     { label: 'Help', items: [{ id: 'tutorial', label: 'User Guide', icon: '?' }] },
+    { label: 'System', items: [{ id: 'watchdog', label: 'Watchdog', icon: '◉' }] },
   ];
   const ALL_VIEWS = GROUPS.flatMap(g => g.items);
   const LABEL = Object.fromEntries(ALL_VIEWS.map(v => [v.id, v.label]));
@@ -266,6 +267,7 @@
       simulation: window.SimulationView,
       crosscheck: window.CrossCheckView,
       tutorial: window.TutorialView,
+      watchdog: window.WatchdogView,
     };
   }
 
