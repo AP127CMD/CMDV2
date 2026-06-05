@@ -81,40 +81,57 @@ function asfIdleSort(arr, refDate) {
 }
 
 // ─── Ops augmentation ────────────────────────────────────────────────────
-// Mirror of opsAugment() in view-cohort.js — merges ops-Completed lessons
-// into each student's flown list and recomputes done + next_lesson so the
-// Auto Slot Finder reflects the most-current state even when the NGT cache
-// is a few hours stale.
+// Merges ops-Completed lessons into each student's flown list and recomputes
+// done + next_lesson so the Auto Slot Finder reflects the most-current state.
 //
-// next_lesson strategy: "next from last by curriculum position" — i.e. find
-// the highest curriculum-position lesson the student has completed and take
-// the one immediately after.  This matches the user expectation ("next from
-// their last lesson") and avoids the gap-filling issue that "first not done"
-// can produce when ops records are slightly out-of-order.
+// Slash rule for next_lesson:
+//   last flown has no slash  → advance to next curriculum lesson (normal)
+//   last flown has /1        → same lesson + /2  (one allowed retry shown)
+//   last flown has /2 or higher → advance to next curriculum lesson (done retrying)
 function asfOpsAugment(students, curriculum) {
   const R = window.AP127Reconcile;
   const flights = (window.FLIGHT_DATA && window.FLIGHT_DATA.flights) || [];
   if (!R || !Array.isArray(students) || !Array.isArray(curriculum) || !curriculum.length) return students;
 
+  const normL  = l => String(l||'').trim().toUpperCase().replace(/\s+/g,' ').replace(/\/\d+\s*$/,'');
+  const slashOf = l => { const m = String(l||'').match(/\/(\d+)\s*$/); return m ? parseInt(m[1], 10) : 0; };
+
   // Build curriculum position index (normalised lesson → 0-based index)
   const curIdx = {};
-  curriculum.forEach((c, i) => { curIdx[R.normLesson(c.lesson)] = i; });
+  curriculum.forEach((c, i) => { curIdx[normL(c.lesson)] = i; });
+
+  // Compute next_lesson from a flown array applying the slash rule
+  const computeNext = flown => {
+    if (!flown.length) return curriculum[0]?.lesson || '—';
+    let maxPos = -1;
+    flown.forEach(f => {
+      const pos = curIdx[normL(f.lesson)];
+      if (pos !== undefined && pos > maxPos) maxPos = pos;
+    });
+    if (maxPos < 0) return curriculum[0]?.lesson || '—';
+    if (maxPos + 1 >= curriculum.length) return 'COMPLETE';
+    // Find the highest slash number among all lessons at maxPos
+    let maxSlash = 0;
+    flown.forEach(f => {
+      if (curIdx[normL(f.lesson)] === maxPos) maxSlash = Math.max(maxSlash, slashOf(f.lesson));
+    });
+    if (maxSlash === 1) return curriculum[maxPos].lesson + '/2';   // /1 → show /2 next
+    return curriculum[maxPos + 1].lesson;                          // no slash or /2+ → advance
+  };
 
   // Gather ops-Completed AP-127 flights keyed by ops-normalised student name
   const comp = {};
   flights.forEach(f => {
     if (!f.student || !f.lesson || !R.isAP127(f.batch)) return;
     const k = R.ccNameNorm(f.student);
-    const nl = R.normLesson(f.lesson);
+    const nl = normL(f.lesson);
     if (f.status === 'Completed' && f.date) (comp[k] = comp[k] || {})[nl] = f;
   });
-
-  const curNorm = new Set(curriculum.map(c => R.normLesson(c.lesson)));
+  const curNorm = new Set(curriculum.map(c => normL(c.lesson)));
 
   return students.map(s => {
-    // Map progress full name → ops key (e.g. "Krit Laohamethanee" → "KRIT L.")
-    const key = R.ccKeyFromFull(s.name);
-    const flownNorm = new Set((s.flown || []).map(f => R.normLesson(f.lesson)));
+    const key      = R.ccKeyFromFull(s.name);
+    const flownNorm = new Set((s.flown || []).map(f => normL(f.lesson)));
 
     // Collect ops-completed lessons not already in NGT flown
     const extra = [];
@@ -124,31 +141,18 @@ function asfOpsAugment(students, curriculum) {
         extra.push({ lesson: f.lesson, actual_mins: f.durMin || f.actual_mins || 0, actual_ft: f.duration || '', date: f.date, _ops: true });
       }
     });
-    if (!extra.length) return s;                       // nothing new — fast-path
 
-    const flown = [...(s.flown || []), ...extra].slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const flown    = extra.length
+      ? [...(s.flown || []), ...extra].slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+      : (s.flown || []);
+    const nxLesson = computeNext(flown);
+
+    // Fast-path: nothing changed
+    if (!extra.length && nxLesson === s.next_lesson) return s;
+
     const done  = flown.length;
     const total = s.total || curriculum.length;
-
-    // "Next from last" by curriculum position
-    let maxPos = -1;
-    flown.forEach(f => {
-      const pos = curIdx[R.normLesson(f.lesson)];
-      if (pos !== undefined && pos > maxPos) maxPos = pos;
-    });
-    const nxLesson = (maxPos >= 0 && maxPos + 1 < curriculum.length)
-      ? curriculum[maxPos + 1].lesson
-      : (maxPos < 0 ? (curriculum[0]?.lesson || s.next_lesson) : 'COMPLETE');
-
-    return {
-      ...s,
-      flown,
-      done,
-      total,
-      remaining: Math.max(0, total - done),
-      pct: total ? +(done / total * 100).toFixed(1) : 0,
-      next_lesson: nxLesson,
-    };
+    return { ...s, flown, done, total, remaining: Math.max(0, total - done), pct: total ? +(done / total * 100).toFixed(1) : 0, next_lesson: nxLesson };
   });
 }
 
@@ -243,9 +247,11 @@ const ASF_DEFAULTS = {
   sortMode:     'behind',
   topN:         8,
   onlyOpen:     false,
-  excludedSPs:       [],    // spKey strings to skip in slot-finding
-  excludedTails:     [],    // tail numbers to exclude from candidates
-  includeSoloOverlap:false, // when true, FIs monitoring solo flights are available (slots flagged OVERLAP SOLO)
+  filterSPs:         null,   // null=show all; []=show none; string[]=whitelist
+  filterTails:       null,   // null=all tails; []=no tails; string[]=whitelist
+  defaultGap:        30,     // global default buffer (min) — per-SP row can override
+  includeSoloOverlap:false,
+  multiFlightPerSP:  false,  // when true, SPs with an existing flight can still get slots
 };
 const asfLoadSettings = () => {
   try { return { ...ASF_DEFAULTS, ...JSON.parse(localStorage.getItem(ASF_SETTINGS_LS_KEY) || '{}') }; }
@@ -367,7 +373,7 @@ function asfMergeSlots(rawSlots) {
 }
 
 // Effective overrides: FI/SE from student.fi/student.se (from NGT cache), with fallback to last FLIGHTS entry
-function asfGetOverride(spKey, student, spOverrides) {
+function asfGetOverride(spKey, student, spOverrides, defaultGap = 30) {
   const ovr = spOverrides[spKey];
   const defaultDur = (() => {
     if (!student?.planned?.length || !student?.next_lesson) return 60;
@@ -397,7 +403,7 @@ function asfGetOverride(spKey, student, spOverrides) {
     fi:       (ovr && ovr.fi       != null) ? ovr.fi       : defaultFI,
     seType:   (ovr && ovr.seType   != null) ? ovr.seType   : defaultSeType,
     duration: (ovr && ovr.duration != null) ? ovr.duration : defaultDur,
-    gap:      (ovr && ovr.gap      != null) ? ovr.gap      : 30,
+    gap:      (ovr && ovr.gap      != null) ? ovr.gap      : defaultGap,
   };
 }
 
@@ -1534,9 +1540,11 @@ function AutoSlotFinderBoard() {
   const [hoveredSlot,    setHoveredSlot]    = useS_asf(null);
   const [fiFilter,       setFiFilter]       = useS_asf(saved.fiFilter); // [] = all
   const [fiMatchSp,      setFiMatchSp]      = useS_asf(saved.fiMatchSp);
-  const [excludedSPs,         setExcludedSPs]         = useS_asf(saved.excludedSPs        || []);
-  const [excludedTails,       setExcludedTails]       = useS_asf(saved.excludedTails       || []);
-  const [includeSoloOverlap,  setIncludeSoloOverlap]  = useS_asf(saved.includeSoloOverlap  ?? false);
+  const [filterSPs,          setFilterSPs]          = useS_asf(saved.filterSPs          ?? null);
+  const [filterTails,        setFilterTails]        = useS_asf(saved.filterTails        ?? null);
+  const [defaultGap,         setDefaultGap]         = useS_asf(saved.defaultGap         ?? 30);
+  const [includeSoloOverlap, setIncludeSoloOverlap] = useS_asf(saved.includeSoloOverlap ?? false);
+  const [multiFlightPerSP,   setMultiFlightPerSP]   = useS_asf(saved.multiFlightPerSP   ?? false);
   const [ghostedFlightIds, setGhostedFlightIds] = useS_asf(new Set(workingSession?.ghostedIds || []));
   const [flightPopup,    setFlightPopup]    = useS_asf(null); // { flObj, isGhost, pos }
 
@@ -1555,10 +1563,10 @@ function AutoSlotFinderBoard() {
         acTypeFilter, fiFilter, fiMatchSp,
         windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo,
         sortMode, topN, onlyOpen,
-        excludedSPs, excludedTails, includeSoloOverlap,
+        filterSPs, filterTails, defaultGap, includeSoloOverlap, multiFlightPerSP,
       }));
     } catch (_) { /* localStorage unavailable — silently skip */ }
-  }, [acTypeFilter, fiFilter, fiMatchSp, windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo, sortMode, topN, onlyOpen, excludedSPs, excludedTails, includeSoloOverlap]);
+  }, [acTypeFilter, fiFilter, fiMatchSp, windowFrom, windowTo, rwyEnabled, rwyFrom, rwyTo, sortMode, topN, onlyOpen, filterSPs, filterTails, defaultGap, includeSoloOverlap, multiFlightPerSP]);
 
   // Auto-save working session on every meaningful state change so switching views
   // and returning restores the exact reservation + ghost + override state.
@@ -1665,13 +1673,15 @@ function AutoSlotFinderBoard() {
       typeMatch(n) && !Object.keys(leavesMap).some(k => k.toLowerCase() === n.toLowerCase()) &&
       (fiFilter === null || fiFilter.includes(n))
     );
-    const candTails = RESOURCES.filter(r =>
-      r.tail && !r.isMaint && !/SIM|Classroom/i.test(r.acType || '') &&
-      (acTypeFilter === null || acTypeFilter.includes(r.acType)) &&
-      (excludedTails.length === 0 || !excludedTails.includes(r.tail))
-    ).map(r => r.tail).sort();
+    const candTails = filterTails !== null && filterTails.length === 0
+      ? []   // explicit empty = no tails
+      : RESOURCES.filter(r =>
+          r.tail && !r.isMaint && !/SIM|Classroom/i.test(r.acType || '') &&
+          (acTypeFilter === null || acTypeFilter.includes(r.acType)) &&
+          (filterTails === null || filterTails.includes(r.tail))
+        ).map(r => r.tail).sort();
     return { candFIs, candTails };
-  }, [acTypeFilter, leavesMap, fiFilter, excludedTails]);
+  }, [acTypeFilter, leavesMap, fiFilter, filterTails]);
 
   const rwyBand = useM_asf(() => {
     if (!rwyEnabled) return { rwyStart:null, rwyEnd:null };
@@ -1718,12 +1728,14 @@ function AutoSlotFinderBoard() {
       // SP on leave → zero slots regardless of other availability
       const spOnLeave = Object.keys(leavesMap).some(k => asfShortName(k).toLowerCase() === spKey.toLowerCase());
       if (spOnLeave) { map[spKey] = []; return; }
-      // SP manually excluded → skip (existing flights still block resources for others)
-      if (excludedSPs.length > 0 && excludedSPs.includes(spKey)) { map[spKey] = []; return; }
-      // SP already has a real flight today → no additional slot
-      const spHasFlight = dateFlights.some(f => f.student && f.status !== 'Canceled' && asfShortName(f.student).toLowerCase() === spKey.toLowerCase());
-      if (spHasFlight) { map[spKey] = []; return; }
-      const ovr   = asfGetOverride(spKey, rec.student, spOverrides);
+      // SP filter (whitelist) — null=all, []=none, [items]=only those
+      if (filterSPs !== null && (filterSPs.length === 0 || !filterSPs.includes(spKey))) { map[spKey] = []; return; }
+      // SP already has a real flight today → no additional slot (unless multi-flight is ON)
+      if (!multiFlightPerSP) {
+        const spHasFlight = dateFlights.some(f => f.student && f.status !== 'Canceled' && asfShortName(f.student).toLowerCase() === spKey.toLowerCase());
+        if (spHasFlight) { map[spKey] = []; return; }
+      }
+      const ovr   = asfGetOverride(spKey, rec.student, spOverrides, defaultGap);
       const dur   = ovr.duration;
       const gap   = ovr.gap;
       if (wEnd <= wStart + dur) return;
@@ -1739,7 +1751,7 @@ function AutoSlotFinderBoard() {
       map[spKey] = asfMergeSlots(raw);
     });
     return map;
-  }, [ranked, windowFrom, windowTo, rwyBand, augmentedFlights, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, leavesMap, excludedSPs, includeSoloOverlap]);
+  }, [ranked, windowFrom, windowTo, rwyBand, augmentedFlights, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, leavesMap, filterSPs, filterTails, defaultGap, multiFlightPerSP, includeSoloOverlap]);
 
   // Baseline = same slot computation but using ONLY dateFlights (no activated cascade).
   // Used to detect "you blocked yourself out by reserving for someone else" — the
@@ -1756,11 +1768,12 @@ function AutoSlotFinderBoard() {
       const spKey = asfShortName(rec.student.name);
       const spOnLeave = Object.keys(leavesMap).some(k => asfShortName(k).toLowerCase() === spKey.toLowerCase());
       if (spOnLeave) { map[spKey] = []; return; }
-      if (excludedSPs.length > 0 && excludedSPs.includes(spKey)) { map[spKey] = []; return; }
-      // SP already has a real flight today → no additional slot
-      const spHasFlight = dateFlights.some(f => f.student && f.status !== 'Canceled' && asfShortName(f.student).toLowerCase() === spKey.toLowerCase());
-      if (spHasFlight) { map[spKey] = []; return; }
-      const ovr   = asfGetOverride(spKey, rec.student, spOverrides);
+      if (filterSPs !== null && (filterSPs.length === 0 || !filterSPs.includes(spKey))) { map[spKey] = []; return; }
+      if (!multiFlightPerSP) {
+        const spHasFlight = dateFlights.some(f => f.student && f.status !== 'Canceled' && asfShortName(f.student).toLowerCase() === spKey.toLowerCase());
+        if (spHasFlight) { map[spKey] = []; return; }
+      }
+      const ovr   = asfGetOverride(spKey, rec.student, spOverrides, defaultGap);
       const dur   = ovr.duration;
       const gap   = ovr.gap;
       if (wEnd <= wStart + dur) return;
@@ -1776,7 +1789,7 @@ function AutoSlotFinderBoard() {
       map[spKey] = asfMergeSlots(raw);
     });
     return map;
-  }, [ranked, windowFrom, windowTo, rwyBand, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, activatedSlots, slotsByStudent, leavesMap, excludedSPs, includeSoloOverlap]);
+  }, [ranked, windowFrom, windowTo, rwyBand, dateFlights, candidates, spOverrides, tailTypeMap, fiQuals, fiMatchSp, activatedSlots, slotsByStudent, leavesMap, filterSPs, filterTails, defaultGap, multiFlightPerSP, includeSoloOverlap]);
 
   const finalRecords = useM_asf(() => {
     const out = ranked.map(rec => {
@@ -1793,7 +1806,7 @@ function AutoSlotFinderBoard() {
     return (onlyOpen
       ? out.filter(r => r.slots.length > 0 || !!activatedSlots[asfShortName(r.student.name)])
       : out
-    ).filter(r => excludedSPs.length === 0 || !excludedSPs.includes(asfShortName(r.student.name)))
+    ).filter(r => filterSPs === null || (filterSPs.length > 0 && filterSPs.includes(asfShortName(r.student.name))))
      .slice(0, topN);
   }, [ranked, slotsByStudent, baselineSlotsByStudent, onlyOpen, topN, leavesMap, dateFlights, activatedSlots]);
 
@@ -1845,13 +1858,13 @@ function AutoSlotFinderBoard() {
     return [...s].sort();
   }, [dateFlights, acTypeFilter, tailTypeMap, activatedSlots]);
 
-  // SP options for EXCL SP dropdown (uses full ranked list regardless of current topN)
-  const spExclOpts = useM_asf(() =>
+  // SP options for SP filter dropdown (uses full ranked list regardless of current topN)
+  const spFilterOpts = useM_asf(() =>
     (ranked || []).map(r => ({ v: asfShortName(r.student.name), l: asfShortName(r.student.name) }))
   , [ranked]);
 
-  // Tail options for EXCL A/C dropdown
-  const tailExclOpts = useM_asf(() =>
+  // Tail options for A/C filter dropdown
+  const tailFilterOpts = useM_asf(() =>
     [...new Set([
       ...RESOURCES.filter(r => r.tail && !/SIM|Classroom/i.test(r.acType || '')).map(r => r.tail),
       ...allDateFlights.map(f => f.tail).filter(t => t && !/\(SIM\)/i.test(t)),
@@ -1878,10 +1891,29 @@ function AutoSlotFinderBoard() {
   }, []);
 
   const resetEverything = useC_asf(() => {
+    // Session state
     setActivatedSlots({});
     setGhostedFlightIds(new Set());
     setSpOverrides({});
     setExpanded(new Set());
+    // Settings
+    try { localStorage.removeItem(ASF_SETTINGS_LS_KEY); } catch (_) {}
+    setAcTypeFilter(ASF_DEFAULTS.acTypeFilter);
+    setFiFilter(ASF_DEFAULTS.fiFilter);
+    setFiMatchSp(ASF_DEFAULTS.fiMatchSp);
+    setWindowFrom(ASF_DEFAULTS.windowFrom);
+    setWindowTo(ASF_DEFAULTS.windowTo);
+    setRwyEnabled(ASF_DEFAULTS.rwyEnabled);
+    setRwyFrom(ASF_DEFAULTS.rwyFrom);
+    setRwyTo(ASF_DEFAULTS.rwyTo);
+    setSortMode(ASF_DEFAULTS.sortMode);
+    setTopN(ASF_DEFAULTS.topN);
+    setOnlyOpen(ASF_DEFAULTS.onlyOpen);
+    setFilterSPs(ASF_DEFAULTS.filterSPs);
+    setFilterTails(ASF_DEFAULTS.filterTails);
+    setDefaultGap(ASF_DEFAULTS.defaultGap);
+    setIncludeSoloOverlap(ASF_DEFAULTS.includeSoloOverlap);
+    setMultiFlightPerSP(ASF_DEFAULTS.multiFlightPerSP);
   }, []);
 
   // Toggle a flight's ghost state (blank / restore)
@@ -1948,9 +1980,11 @@ function AutoSlotFinderBoard() {
     setSortMode(ASF_DEFAULTS.sortMode);
     setTopN(ASF_DEFAULTS.topN);
     setOnlyOpen(ASF_DEFAULTS.onlyOpen);
-    setExcludedSPs(ASF_DEFAULTS.excludedSPs);
-    setExcludedTails(ASF_DEFAULTS.excludedTails);
+    setFilterSPs(ASF_DEFAULTS.filterSPs);
+    setFilterTails(ASF_DEFAULTS.filterTails);
+    setDefaultGap(ASF_DEFAULTS.defaultGap);
     setIncludeSoloOverlap(ASF_DEFAULTS.includeSoloOverlap);
+    setMultiFlightPerSP(ASF_DEFAULTS.multiFlightPerSP);
   }, []);
 
   // ── Bulk auto-reserve: earliest matched slot per ranked SP ──────────────
@@ -1971,10 +2005,12 @@ function AutoSlotFinderBoard() {
       // Skip SPs who are on leave or already have a real flight today
       const spOnLeave = Object.keys(leavesMap).some(k => asfShortName(k).toLowerCase() === spKey.toLowerCase());
       if (spOnLeave) continue;
-      const spHasFlight = dateFlights.some(f => f.student && f.status !== 'Canceled' && asfShortName(f.student).toLowerCase() === spKey.toLowerCase());
-      if (spHasFlight) continue;
+      if (!multiFlightPerSP) {
+        const spHasFlight = dateFlights.some(f => f.student && f.status !== 'Canceled' && asfShortName(f.student).toLowerCase() === spKey.toLowerCase());
+        if (spHasFlight) continue;
+      }
 
-      const ovr   = asfGetOverride(spKey, rec.student, spOverrides);
+      const ovr   = asfGetOverride(spKey, rec.student, spOverrides, defaultGap);
       const dur   = ovr.duration;
       const gap   = ovr.gap;
       if (wEnd <= wStart + dur) continue;
@@ -1999,7 +2035,7 @@ function AutoSlotFinderBoard() {
       });
     }
     setActivatedSlots(next);
-  }, [finalRecords, dateFlights, windowFrom, windowTo, spOverrides, candidates, tailTypeMap, fiQuals, fiMatchSp, rwyBand, asfDate, leavesMap]);
+  }, [finalRecords, dateFlights, windowFrom, windowTo, spOverrides, candidates, tailTypeMap, fiQuals, fiMatchSp, rwyBand, asfDate, leavesMap, defaultGap, multiFlightPerSP]);
 
   // ── Export all reservations as a single dispatcher message ──────────────
   // Builds the text in finalRecords order so it matches the on-screen list.
@@ -2089,16 +2125,16 @@ function AutoSlotFinderBoard() {
         <AsfMultiCheck label="TYPE" items={allAcTypes.map(t=>({v:t,l:t}))} selected={acTypeFilter} onChange={setAcTypeFilter} allLabel="Any type" color="var(--col-pending)" />
         <AsfSel label="SHOW" value={topN} onChange={v=>setTopN(+v)} opts={ASF_TOPN_OPTS} minWidth={70} />
         <AsfMultiCheck label="FI FILTER" items={fiAllNames.map(n=>({ v:n, l:n, badge: Object.keys(leavesMap).some(k => k.toLowerCase() === n.toLowerCase()) ? 'LEAVE' : null }))} selected={fiFilter} onChange={setFiFilter} allLabel="Any available" color="var(--col-pending)" />
-        <AsfMultiCheck label="EXCL SP"
-          items={spExclOpts}
-          selected={excludedSPs.length === 0 ? null : excludedSPs}
-          onChange={v => setExcludedSPs(v === null ? [] : v)}
-          allLabel="None excluded" color="var(--col-cancel)" />
-        <AsfMultiCheck label="EXCL A/C"
-          items={tailExclOpts}
-          selected={excludedTails.length === 0 ? null : excludedTails}
-          onChange={v => setExcludedTails(v === null ? [] : v)}
-          allLabel="None excluded" color="var(--col-cancel)" />
+        <AsfMultiCheck label="SP"
+          items={spFilterOpts}
+          selected={filterSPs}
+          onChange={v => setFilterSPs(v)}
+          allLabel="" color="var(--highlight)" />
+        <AsfMultiCheck label="A/C"
+          items={tailFilterOpts}
+          selected={filterTails}
+          onChange={v => setFilterTails(v)}
+          allLabel="" color="var(--highlight)" />
         <div style={{ width:1, height:38, background:'var(--line)', alignSelf:'flex-end', marginBottom:1, flexShrink:0 }}/>
         <AsfTimePicker label="FROM" value={windowFrom} onChange={setWindowFrom} />
         <AsfTimePicker label="TO"   value={windowTo}   onChange={setWindowTo} />
@@ -2118,6 +2154,7 @@ function AutoSlotFinderBoard() {
             <AsfTimePicker label="CLOSED TO"   value={rwyTo}   onChange={setRwyTo}   accent="var(--col-cancel)" />
           </>
         )}
+        <AsfSel label="BUFFER" value={defaultGap} onChange={v => setDefaultGap(+v)} opts={ASF_GAP_OPTS} minWidth={80} />
         <div style={{ display:'flex', flexDirection:'column', gap:3, marginLeft:'auto' }}>
           <span style={{ fontSize:9 }}>&nbsp;</span>
           <div className="mono uc" style={{ padding:'4px 12px', borderRadius:4, fontSize:10, fontWeight:600, height:28, display:'flex', alignItems:'center', border:`1px solid ${stats.openCount>0?'var(--col-done)':'var(--line)'}`, background: stats.openCount>0?'color-mix(in oklch,var(--col-done) 12%,transparent)':'transparent', color: stats.openCount>0?'var(--col-done)':'var(--ink-3)', transition:'all .15s' }}>
@@ -2130,25 +2167,25 @@ function AutoSlotFinderBoard() {
       <div style={{ padding:'5px 12px', background:'var(--bg-2)', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', flexShrink:0 }}>
         {/* SAVES + RESET group */}
         <div ref={saveBtnRef} style={{ display:'flex', gap:4 }}>
-          <button onClick={() => setSavesOpen(v => !v)} className="mono uc"
+          <button onClick={() => setSavesOpen(v => !v)}
             title="Save or restore session (reserved slots, blanked flights, overrides)"
-            style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer',
+            style={{ padding:'3px 9px', fontSize:13, lineHeight:1, borderRadius:3, cursor:'pointer',
               border:`1px solid ${savesOpen ? 'var(--col-pending)' : saves.some(Boolean) ? 'color-mix(in oklch,var(--col-pending) 45%,transparent)' : 'var(--line)'}`,
               background: savesOpen ? 'color-mix(in oklch,var(--col-pending) 14%,transparent)' : 'transparent',
               color: savesOpen ? 'var(--col-pending)' : saves.some(Boolean) ? 'var(--ink-2)' : 'var(--ink-3)',
-              fontWeight: savesOpen ? 600 : 400 }}>
-            SAVES{saves.filter(Boolean).length > 0 ? ` (${saves.filter(Boolean).length})` : ''}
+              display:'flex', alignItems:'center', gap:4 }}>
+            💾{saves.filter(Boolean).length > 0 && (
+              <span className="mono" style={{ fontSize:8, fontWeight:700 }}>({saves.filter(Boolean).length})</span>
+            )}
           </button>
-          {(Object.keys(activatedSlots).length > 0 || ghostedFlightIds.size > 0 || Object.keys(spOverrides).length > 0) && (
-            <button onClick={resetEverything} className="mono uc"
-              title="Clear all reservations, blanked flights, and per-SP overrides"
-              style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer',
-                border:'1px solid color-mix(in oklch,var(--col-cancel) 35%,transparent)',
-                background:'transparent',
-                color:'var(--col-cancel)', fontWeight:500 }}>
-              RESET
-            </button>
-          )}
+          <button onClick={resetEverything} className="mono uc"
+            title="Reset everything: clear all reservations, blanked flights, overrides, and restore default settings"
+            style={{ padding:'3px 9px', fontSize:8, borderRadius:3, cursor:'pointer',
+              border:'1px solid color-mix(in oklch,var(--col-cancel) 35%,transparent)',
+              background:'transparent',
+              color:'var(--col-cancel)', fontWeight:500 }}>
+            RESET
+          </button>
         </div>
         <span style={{ flex:1 }}/>
         {/* AUTO RESERVE — shown only when there are zero active reservations */}
@@ -2194,6 +2231,17 @@ function AutoSlotFinderBoard() {
               background: includeSoloOverlap ? 'var(--col-solo)' : 'var(--line)',
               position:'relative', flexShrink:0 }}>
             <div style={{ position:'absolute', top:2, left: includeSoloOverlap ? 15 : 2, width:11, height:11,
+              borderRadius:999, background:'white', transition:'left .15s', boxShadow:'0 1px 3px oklch(0 0 0 / 0.35)' }}/>
+          </div>
+        </div>
+        {/* MULTI-FLT toggle */}
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <span className="mono uc" style={{ fontSize:8, color: multiFlightPerSP ? 'var(--highlight)' : 'var(--ink-3)' }}>MULTI-FLT</span>
+          <div onClick={() => setMultiFlightPerSP(v => !v)}
+            style={{ width:28, height:15, borderRadius:999, cursor:'pointer', transition:'background .15s',
+              background: multiFlightPerSP ? 'var(--highlight)' : 'var(--line)',
+              position:'relative', flexShrink:0 }}>
+            <div style={{ position:'absolute', top:2, left: multiFlightPerSP ? 15 : 2, width:11, height:11,
               borderRadius:999, background:'white', transition:'left .15s', boxShadow:'0 1px 3px oklch(0 0 0 / 0.35)' }}/>
           </div>
         </div>
