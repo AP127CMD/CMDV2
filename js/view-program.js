@@ -9,9 +9,10 @@
  * ==========================================================================*/
 (function () {
   // ---- module globals + scheduler config (from NGT_001 index.html) ----
-  let G = null, SIM_G = null, EXTRA_BATCHES = [], AB = "ALL";
+  let G = null, SIM_G = null, SIM2_G = null, EXTRA_BATCHES = [], SIM2_EXTRA_BATCHES = [], AB = "ALL";
   const CHARTS = {};
   let CFG = { cap: 25, n129: 13, ap129start: "2026-06-01", horizon: 800, hourMode: false, weekendCap: 13, holidayCap: 13, _weAuto: true, _holAuto: true, recents: 3, upcomings: 8, showRest: true, showNextTag: true, cardH: 220, restReg: false, priority: null };
+  let SIM2_CFG = { cap: 25, n129: 13, ap129start: "2026-06-01", horizon: 800, hourMode: false, weekendCap: 13, holidayCap: 13, _weAuto: true, _holAuto: true, restReg: false, priority: null, schedulingMode: 'balanced', batchWeights: { AP124: 1.0, AP126: 1.0, AP127: 1.0, AP129: 1.0 } };
   function toast(msg) { try { console.log("[program]", msg); } catch (e) {} }
 
   // ======================= begin verbatim NGT_001 logic =======================
@@ -69,8 +70,21 @@ function priorityOrder(p){
   if(p==='ap127')       return['AP127','AP124','AP126'];
   return['AP124','AP126','AP127'];
 }
-function runScheduler(batchData,curricula,extraBatches=[],startDate="",hourMode=false,weekendCap=0,holidayCap=0){
-  const{cap,n129,ap129start,horizon}=CFG;
+function allocateDaySlots(batches,totalSlots,hourMode){
+  const active=batches.filter(b=>b.eligCount>0);
+  if(!active.length)return{};
+  const effW=active.map(b=>(b.weight||1)*b.n);
+  const totalW=effW.reduce((s,w)=>s+w,0);
+  if(!totalW){const share=totalSlots/active.length;const r={};active.forEach(b=>{r[b.key]=hourMode?share:Math.floor(share);});return r;}
+  if(hourMode){const r={};active.forEach((b,i)=>{r[b.key]=(effW[i]/totalW)*totalSlots;});return r;}
+  const exact=active.map((b,i)=>(effW[i]/totalW)*totalSlots);
+  const floors=exact.map(Math.floor);
+  let leftover=totalSlots-floors.reduce((s,f)=>s+f,0);
+  exact.map((e,i)=>[e-floors[i],i]).sort((a,b)=>b[0]-a[0]).forEach(([,i])=>{if(leftover>0){floors[i]++;leftover--;}});
+  const r={};active.forEach((b,i)=>{r[b.key]=floors[i];});return r;
+}
+function runScheduler(batchData,curricula,extraBatches=[],startDate="",hourMode=false,weekendCap=0,holidayCap=0,altCFG){
+  const cfg=altCFG||CFG;const{cap,n129,ap129start,horizon}=cfg;
   const ops=getOpDays(startDate||"2026-05-05",horizon,weekendCap,holidayCap,cap);
   const wds=ops.map(o=>o.ds);
   const w129=wds.findIndex(d=>d>=ap129start);
@@ -105,21 +119,55 @@ function runScheduler(batchData,curricula,extraBatches=[],startDate="",hourMode=
   const wExtra=extraBatches.map(b=>{const i=wds.findIndex(d=>d>=(b.start||"9999"));return i<0?wds.length:i;});
   function elig(b,cur,wi,overN){
     const tot=cur.length,wl=Math.max(horizon-wi,1),n=overN!==undefined?overN:(b==="AP129"?n129:(batchData[b]||[]).length),out=[];
-    for(let i=0;i<n;i++){if(iM[b][i]>=tot)continue;const gap=(CFG.restReg&&lmM[b][i]>=120)?2:1;if((wi-lwM[b][i])<gap)continue;out.push([(tot-iM[b][i])/wl,i]);}
+    for(let i=0;i<n;i++){if(iM[b][i]>=tot)continue;const gap=(cfg.restReg&&lmM[b][i]>=120)?2:1;if((wi-lwM[b][i])<gap)continue;out.push([(tot-iM[b][i])/wl,i]);}
     return out.sort((a,z)=>z[0]-a[0]);
   }
   wds.forEach((ds,wi)=>{
     let slots=ops[wi].cap;
-    priorityOrder(CFG.priority).forEach(b=>{
-      if(slots<=0)return;const cur=curricula[b]||[];
-      for(const[,i]of elig(b,cur,wi)){if(slots<=0)break;const ix=iM[b][i];if(ix>=cur.length)continue;const p=cur[ix];const cost=hourMode?p.planned_mins/60:1;if(slots<cost)continue;schM[b][i].push([ds,p.lesson,p.planned_mins]);lwM[b][i]=wi;lmM[b][i]=p.planned_mins;iM[b][i]=ix+1;slots-=cost;}
-    });
-    if(slots>0&&wi>=w129)for(const[,i]of elig("AP129",cur129,wi)){if(slots<=0)break;const ix=iM.AP129[i];if(ix>=cur129.length)continue;const p=cur129[ix];const cost=hourMode?p.planned_mins/60:1;if(slots<cost)continue;schM.AP129[i].push([ds,p.lesson,p.planned_mins]);lwM.AP129[i]=wi;lmM.AP129[i]=p.planned_mins;iM.AP129[i]=ix+1;slots-=cost;}
-    extraBatches.forEach((b,bi)=>{
-      if(slots<=0||wi<wExtra[bi])return;
-      const k=b.name;
-      for(const[,i]of elig(k,cur129,wi,b.n)){if(slots<=0)break;const ix=iM[k][i];if(ix>=cur129.length)continue;const p=cur129[ix];const cost=hourMode?p.planned_mins/60:1;if(slots<cost)continue;schM[k][i].push([ds,p.lesson,p.planned_mins]);lwM[k][i]=wi;lmM[k][i]=p.planned_mins;iM[k][i]=ix+1;slots-=cost;}
-    });
+    if(cfg.schedulingMode!=='balanced'){
+      // priority mode (original behaviour)
+      priorityOrder(cfg.priority).forEach(b=>{
+        if(slots<=0)return;const cur=curricula[b]||[];
+        for(const[,i]of elig(b,cur,wi)){if(slots<=0)break;const ix=iM[b][i];if(ix>=cur.length)continue;const p=cur[ix];const cost=hourMode?p.planned_mins/60:1;if(slots<cost)continue;schM[b][i].push([ds,p.lesson,p.planned_mins]);lwM[b][i]=wi;lmM[b][i]=p.planned_mins;iM[b][i]=ix+1;slots-=cost;}
+      });
+      if(slots>0&&wi>=w129)for(const[,i]of elig("AP129",cur129,wi)){if(slots<=0)break;const ix=iM.AP129[i];if(ix>=cur129.length)continue;const p=cur129[ix];const cost=hourMode?p.planned_mins/60:1;if(slots<cost)continue;schM.AP129[i].push([ds,p.lesson,p.planned_mins]);lwM.AP129[i]=wi;lmM.AP129[i]=p.planned_mins;iM.AP129[i]=ix+1;slots-=cost;}
+      extraBatches.forEach((b,bi)=>{
+        if(slots<=0||wi<wExtra[bi])return;
+        const k=b.name;
+        for(const[,i]of elig(k,cur129,wi,b.n)){if(slots<=0)break;const ix=iM[k][i];if(ix>=cur129.length)continue;const p=cur129[ix];const cost=hourMode?p.planned_mins/60:1;if(slots<cost)continue;schM[k][i].push([ds,p.lesson,p.planned_mins]);lwM[k][i]=wi;lmM[k][i]=p.planned_mins;iM[k][i]=ix+1;slots-=cost;}
+      });
+    }else{
+      // balanced proportional mode
+      const ab=[];
+      ["AP124","AP126","AP127"].forEach(b=>{const cur=curricula[b]||[];const el=elig(b,cur,wi);if(el.length)ab.push({key:b,cur,weight:cfg.batchWeights[b]||1,n:(batchData[b]||[]).length,eligList:el});});
+      if(wi>=w129){const el=elig("AP129",cur129,wi);if(el.length)ab.push({key:"AP129",cur:cur129,weight:cfg.batchWeights.AP129||1,n:n129,eligList:el});}
+      extraBatches.forEach((b,bi)=>{if(wi<wExtra[bi])return;const k=b.name;const el=elig(k,cur129,wi,b.n);if(el.length)ab.push({key:k,cur:cur129,weight:b.weight||1,n:b.n||0,eligList:el});});
+      const alloc=allocateDaySlots(ab.map(b=>({key:b.key,weight:b.weight,n:b.n,eligCount:b.eligList.length})),slots,hourMode);
+      let unspent=0;
+      ab.forEach(b=>{
+        let quota=alloc[b.key]||0,used=0;
+        for(const[,i]of b.eligList){
+          if(used>=quota)break;
+          const ix=iM[b.key][i];if(ix>=b.cur.length)continue;
+          const p=b.cur[ix];const cost=hourMode?p.planned_mins/60:1;
+          if(cost>quota-used)continue;
+          schM[b.key][i].push([ds,p.lesson,p.planned_mins]);lwM[b.key][i]=wi;lmM[b.key][i]=p.planned_mins;iM[b.key][i]=ix+1;used+=cost;
+        }
+        unspent+=Math.max(0,quota-used);
+      });
+      if(unspent>0){
+        for(const b of ab){
+          if(unspent<=0)break;
+          for(const[,i]of b.eligList){
+            if(unspent<=0)break;
+            const ix=iM[b.key][i];if(ix>=b.cur.length)continue;
+            const p=b.cur[ix];const cost=hourMode?p.planned_mins/60:1;
+            if(cost>unspent)continue;
+            schM[b.key][i].push([ds,p.lesson,p.planned_mins]);lwM[b.key][i]=wi;lmM[b.key][i]=p.planned_mins;iM[b.key][i]=ix+1;unspent-=cost;
+          }
+        }
+      }
+    }
   });
   const dc={},wpm={};wds.forEach(d=>{const m=d.slice(0,7);wpm[m]=(wpm[m]||0)+1;});
   ["AP124","AP126","AP127","AP129"].forEach(b=>{
@@ -366,6 +414,218 @@ function buildSimCapacityChart(){
     title:([ctx])=>{const m=M[ctx.dataIndex]||ctx.label;return `${m} · ${srcMap[m]==="actual"?"ACTUAL":"PROJECTED"}`;},
     afterBody:([ctx])=>{const m=M[ctx.dataIndex];const extra=srcMap[m]==="actual"?` · ${merged[m]?._actualDays||0} flight days`:"";return `Total: ${(totals[ctx.dataIndex]||0).toFixed(1)} ${unit} / Cap: ${cap}${isHour?" hrs":""}/day${extra}`;}
   }}}}});
+}
+/* ===== Simulation 2 — proportional scheduling ===== */
+function addExtraBatch2(){const colorIdx=SIM2_EXTRA_BATCHES.length%EXTRA_COLORS.length;SIM2_EXTRA_BATCHES.push({id:Date.now(),name:"APXXX",n:10,start:"2026-07-01",color:EXTRA_COLORS[colorIdx],weight:1.0});renderSimExtraList2();}
+function removeExtraBatch2(id){SIM2_EXTRA_BATCHES=SIM2_EXTRA_BATCHES.filter(b=>b.id!==id);renderSimExtraList2();}
+function updateExtraBatch2(id,key,val){const b=SIM2_EXTRA_BATCHES.find(x=>x.id===id);if(b)b[key]=(key==='n')?Math.max(1,+val||1):(key==='weight')?Math.max(0.1,Math.min(5,+val||1)):val;}
+function renderSimExtraList2(){
+  const el=document.getElementById("s2-extra-list");if(!el)return;
+  if(!SIM2_EXTRA_BATCHES.length){el.innerHTML="";return;}
+  el.innerHTML=SIM2_EXTRA_BATCHES.map(b=>`<div class="sim-extra-row">
+    <div class="sim-extra-badge" style="background:${b.color}"></div>
+    <input style="width:90px" placeholder="Name" value="${escHtml(b.name)}" oninput="updateExtraBatch2(${b.id},'name',this.value)">
+    <input type="number" style="width:64px" min="1" max="60" placeholder="N" value="${b.n}" oninput="updateExtraBatch2(${b.id},'n',+this.value)">
+    <input style="width:116px" placeholder="YYYY-MM-DD" value="${escHtml(b.start)}" oninput="updateExtraBatch2(${b.id},'start',this.value)">
+    <span style="font-size:9px;color:var(--tx3)">wt</span>
+    <input type="number" style="width:52px" min="0.1" max="5" step="0.1" value="${(b.weight||1).toFixed(1)}" oninput="updateExtraBatch2(${b.id},'weight',+this.value)" title="Weight multiplier">
+    <span style="font-size:9px;color:var(--tx3);flex:1">101 lessons</span>
+    <button class="sim-extra-del" onclick="removeExtraBatch2(${b.id})">✕</button>
+  </div>`).join("");
+}
+function onRestRegChange2(v){SIM2_CFG.restReg=v;}
+function onPriorityChange2(val){SIM2_CFG.priority=(SIM2_CFG.priority===val)?null:val;renderPriorityChips2();}
+function renderPriorityChips2(){
+  ['ap126','ap126_ap127','ap127'].forEach(v=>{
+    const el=document.getElementById('s2-pri-'+v);if(!el)return;
+    const active=SIM2_CFG.priority===v;
+    el.style.border=`1px solid ${active?'var(--c127)':'var(--bd)'}`;
+    el.style.background=active?'color-mix(in oklch,var(--c127) 14%,var(--s1))':'transparent';
+    el.style.color=active?'var(--c127)':'var(--tx3)';
+    el.style.fontWeight=active?'600':'400';
+  });
+  const info=document.getElementById('s2-priority-info');if(!info)return;
+  const labels={'ap126':'AP126 → AP124 → AP127','ap126_ap127':'AP126 → AP127 → AP124','ap127':'AP127 → AP124 → AP126'};
+  if(SIM2_CFG.schedulingMode==='balanced'){
+    const wts=["AP124","AP126","AP127","AP129"].map(b=>`${b}×${(SIM2_CFG.batchWeights[b]||1).toFixed(1)}`).join(' · ');
+    info.textContent=`Balanced — ${wts}`;
+  }else{info.textContent=SIM2_CFG.priority?labels[SIM2_CFG.priority]:'AP124 → AP126 → AP127 (default)';}
+}
+function onModeChange2(mode){SIM2_CFG.schedulingMode=mode;renderSchedulingModeUI2();}
+function onWeightChange2(batch,val){
+  SIM2_CFG.batchWeights[batch]=Math.max(0.5,Math.min(3.0,+val||1.0));
+  document.getElementById('s2-wt-v-'+batch).textContent=SIM2_CFG.batchWeights[batch].toFixed(1);
+}
+function resetWeights2(){
+  SIM2_CFG.batchWeights={AP124:1.0,AP126:1.0,AP127:1.0,AP129:1.0};
+  SIM2_EXTRA_BATCHES.forEach(b=>{b.weight=1.0;});
+  ["AP124","AP126","AP127","AP129"].forEach(b=>{const el=document.getElementById('s2-wt-'+b);if(el){el.value=1.0;document.getElementById('s2-wt-v-'+b).textContent='1.0';}});
+  renderSimExtraList2();
+}
+function renderSchedulingModeUI2(){
+  const isB=SIM2_CFG.schedulingMode==='balanced';
+  ['balanced','priority'].forEach(m=>{
+    const btn=document.getElementById('s2-mode-'+m);if(!btn)return;
+    const active=(m==='balanced')===isB;
+    const col=m==='balanced'?'var(--c126)':'var(--c127)';
+    btn.style.border=`1px solid ${active?col:'var(--bd)'}`;
+    btn.style.background=active?`color-mix(in oklch,${col} 14%,var(--s1))`:'transparent';
+    btn.style.color=active?col:'var(--tx3)';
+    btn.style.fontWeight=active?'600':'400';
+  });
+  const wtPanel=document.getElementById('s2-weight-panel');
+  const priPanel=document.getElementById('s2-priority-panel');
+  if(wtPanel)wtPanel.style.display=isB?'':'none';
+  if(priPanel)priPanel.style.display=!isB?'':'none';
+  renderPriorityChips2();
+}
+function propagateCapToWeHol2(capVal){
+  const cap=+capVal||0;const half=Math.round(cap*0.5);
+  if(SIM2_CFG._weAuto){const el=document.getElementById("s2-wecap");if(el){el.value=half;document.getElementById("s2-wecap-v").textContent=half;SIM2_CFG.weekendCap=half;}}
+  if(SIM2_CFG._holAuto){const el=document.getElementById("s2-holcap");if(el){el.value=half;document.getElementById("s2-holcap-v").textContent=half;SIM2_CFG.holidayCap=half;}}
+}
+function onWeHolCapInput2(kind){
+  if(kind==="we"){const el=document.getElementById("s2-wecap");document.getElementById("s2-wecap-v").textContent=el.value;SIM2_CFG.weekendCap=+el.value;SIM2_CFG._weAuto=false;}
+  else{const el=document.getElementById("s2-holcap");document.getElementById("s2-holcap-v").textContent=el.value;SIM2_CFG.holidayCap=+el.value;SIM2_CFG._holAuto=false;}
+}
+function toggleHourMode2(isHour){
+  SIM2_CFG.hourMode=isHour;
+  document.getElementById("s2-cap-mode-lbl").textContent=isHour?"Daily Hour Cap":"Daily Flight Cap";
+  document.getElementById("s2-cap-mode-desc").textContent=isHour?"Max total flight hours per day across all batches":"Max total flights per day across all batches";
+  document.getElementById("s2-cap-mode-unit").textContent=isHour?"hrs/day":"/day";
+  const capEl=document.getElementById("s2-cap");
+  if(isHour){capEl.max="200";capEl.step="5";capEl.value=40;}
+  else{capEl.max="50";capEl.step="1";capEl.value=25;}
+  document.getElementById("s2-cap-v").textContent=capEl.value;
+  const weEl=document.getElementById("s2-wecap"),holEl=document.getElementById("s2-holcap");
+  if(weEl&&holEl){
+    if(isHour){weEl.max="200";weEl.step="5";holEl.max="200";holEl.step="5";document.getElementById("s2-wecap-unit").textContent="hrs/day";document.getElementById("s2-holcap-unit").textContent="hrs/day";}
+    else{weEl.max="50";weEl.step="1";holEl.max="50";holEl.step="1";document.getElementById("s2-wecap-unit").textContent="/day";document.getElementById("s2-holcap-unit").textContent="/day";}
+    SIM2_CFG._weAuto=true;SIM2_CFG._holAuto=true;propagateCapToWeHol2(capEl.value);
+  }
+}
+function renderSim2Finish(){
+  if(!SIM2_G)return;
+  const grid=document.getElementById("s2-finish-grid");if(!grid)return;
+  const today=new Date().toISOString().slice(0,10);
+  function fcard(name,col,students,startDate){
+    const fins=students.map(s=>s.finish).filter(f=>f&&f!=="COMPLETE"&&f!=="N/A").sort();
+    const last=fins.at(-1)||null;
+    const done=students.reduce((a,s)=>a+(s.done||0),0);
+    const tot=students.reduce((a,s)=>a+(s.total||0),0);
+    const remaining=tot-done;
+    const pct=tot?done/tot*100:0;
+    const n=students.length;
+    const sub=startDate?`${n} students · starts ${escHtml(startDate)}`:`${n} students · active`;
+    const daysLeft=last?ap127DateDiff(last,today):null;
+    const moLeft=daysLeft!==null?Math.ceil(daysLeft/30.4):null;
+    const moTxt=moLeft!==null?(moLeft>0?moLeft+"mo":"done"):"—";
+    return `<div class="sim-fcard" style="border-top-color:${col}">
+      <div class="sim-fcard-name" style="color:${col}">${escHtml(name)}</div>
+      <div class="sim-fcard-sub">${sub}</div>
+      <div class="sim-fcard-lbl">PROJECTED LAST FINISH</div>
+      <div class="sim-fcard-finish" style="color:${col}">${last?fm(last):"—"}</div>
+      <div class="sim-fcard-bar"><div class="sim-fcard-barf" style="width:${pct.toFixed(1)}%;background:${col}"></div></div>
+      <div class="sim-fcard-stats">
+        <div class="sim-fcard-stat"><div class="sim-fcard-stat-v" style="color:${col}">${pct.toFixed(0)}%</div><div class="sim-fcard-stat-l">Done</div></div>
+        <div class="sim-fcard-stat"><div class="sim-fcard-stat-v">${last?fm(last):"—"}</div><div class="sim-fcard-stat-l">Last SP finish</div></div>
+        <div class="sim-fcard-stat"><div class="sim-fcard-stat-v" style="color:${col}">${moTxt}</div><div class="sim-fcard-stat-l">Months to go</div></div>
+        <div class="sim-fcard-stat"><div class="sim-fcard-stat-v">${remaining.toLocaleString()}</div><div class="sim-fcard-stat-l">Lessons left</div></div>
+      </div>
+    </div>`;
+  }
+  let html=fcard("AP124",BC.AP124,SIM2_G.ap124||[],null);
+  html+=fcard("AP126",BC.AP126,SIM2_G.ap126||[],null);
+  html+=fcard("AP127",BC.AP127,SIM2_G.ap127||[],null);
+  html+=fcard("AP129",BC.AP129,SIM2_G.ap129||[],SIM2_CFG.ap129start);
+  (SIM2_G.extra_batches||[]).forEach(b=>{html+=fcard(b.name,b.color,SIM2_G["extra_"+b.name]||[],b.start);});
+  grid.innerHTML=html;
+}
+function buildSim2CapacityChart(){
+  if(!SIM2_G)return;
+  const isHour=SIM2_G.hourMode||false;
+  const proj=SIM2_G.monthly||{};
+  const hist=buildHistoricalMonthly(isHour);
+  const todayM=ap127TodayBKK().slice(0,7);
+  const merged={};const srcMap={};
+  Object.keys(hist).forEach(m=>{if(m<=todayM){merged[m]=hist[m];srcMap[m]="actual";}});
+  Object.keys(proj).forEach(m=>{if(m>todayM&&!merged[m]){merged[m]=proj[m];srcMap[m]="projected";}});
+  if(!merged[todayM]&&proj[todayM]){merged[todayM]=proj[todayM];srcMap[todayM]="projected";}
+  const M=Object.keys(merged).sort();if(!M.length)return;
+  const cap=SIM2_CFG.cap;
+  const unit=isHour?"hrs":"flights";
+  const lbl=M.map(m=>{const[y,mo]=m.split("-");return["","J","F","M","A","M","J","J","A","S","O","N","D"][+mo]+"'"+y.slice(2);});
+  const v=k=>M.map(m=>(merged[m]||{})[k]||0);
+  const extras=SIM2_G.extra_batches||[];
+  const totals=M.map(m=>(merged[m]||{}).t||0);
+  const datasets=[
+    {label:"AP124",data:v("124"),backgroundColor:"rgba(75,163,247,.75)",stack:"s"},
+    {label:"AP126",data:v("126"),backgroundColor:"rgba(122,207,126,.75)",stack:"s"},
+    {label:"AP127",data:v("127"),backgroundColor:"rgba(232,138,255,.75)",stack:"s"},
+    {label:"AP129",data:v("129"),backgroundColor:"rgba(233,189,99,.75)",stack:"s"},
+    ...extras.map(b=>({label:b.name,data:v(b.name),backgroundColor:b.color+"bb",stack:"s"})),
+    {label:"Cap",data:Array(lbl.length).fill(cap),type:"line",borderColor:"#f59e0b",borderWidth:1.5,borderDash:[5,3],pointRadius:0,fill:false}
+  ];
+  const todayIdx=M.indexOf(todayM);
+  const titleEl=document.getElementById("s2-cap-title");
+  if(titleEl)titleEl.textContent=isHour?"Monthly Flight Hours — actual past + projected future":"Monthly Flight Capacity — actual past + projected future";
+  const subEl=document.getElementById("s2-cap-sub");
+  if(subEl)subEl.textContent=`Past months = actual flights · Future = projection · WE cap ${SIM2_G.weekendCap||0} · Hol cap ${SIM2_G.holidayCap||0} · dashed = ${cap} ${isHour?"hrs":""}/day weekday cap${extras.length?" · "+extras.map(b=>b.name).join(", "):""}`;
+  CHARTS.sim2Cap=mkC("c-s2-cap",{type:"bar",data:{labels:lbl,datasets},options:{...copts(
+    {stacked:true,grid:{color:"#21262d"}},
+    {stacked:true,max:Math.max(cap+5,Math.max(...totals,0)+3),grid:{color:"#21262d"},title:{display:true,text:isHour?"avg hrs / operating day":"avg flights / operating day",color:"#8b949e",font:{size:9,family:"JetBrains Mono, monospace"}}}
+  ),plugins:{...copts().plugins,catcNowLine:{enabled:true,idx:todayIdx},tooltip:{callbacks:{
+    title:([ctx])=>{const m=M[ctx.dataIndex]||ctx.label;return `${m} · ${srcMap[m]==="actual"?"ACTUAL":"PROJECTED"}`;},
+    afterBody:([ctx])=>{const m=M[ctx.dataIndex];const extra=srcMap[m]==="actual"?` · ${merged[m]?._actualDays||0} flight days`:"";return `Total: ${(totals[ctx.dataIndex]||0).toFixed(1)} ${unit} / Cap: ${cap}${isHour?" hrs":""}/day${extra}`;}
+  }}}}});
+}
+function runSimulation2(){
+  if(!G){toast("No data — load cache first");return;}
+  const capEl=document.getElementById("s2-cap"),horEl=document.getElementById("s2-hor"),s129El=document.getElementById("s2-129s");
+  SIM2_CFG.cap=+(capEl?.value)||25;
+  SIM2_CFG.horizon=+(horEl?.value)||800;
+  SIM2_CFG.ap129start=s129El?.value||"2026-06-01";
+  SIM2_CFG.n129=13;
+  const weEl=document.getElementById("s2-wecap"),holEl=document.getElementById("s2-holcap");
+  SIM2_CFG.weekendCap=Math.max(0,+(weEl?.value)||0);
+  SIM2_CFG.holidayCap=Math.max(0,+(holEl?.value)||0);
+  const bd={AP124:G.ap124||[],AP126:G.ap126||[],AP127:G.ap127||[]};
+  const cur={AP124:G.cur124||[],AP126:G.cur126||[],AP127:G.cur127||[]};
+  const t0=Date.now();
+  const _d=new Date(Date.now()+7*3600000);_d.setUTCDate(_d.getUTCDate()+1);
+  const tomorrowBKK=_d.toISOString().slice(0,10);
+  SIM2_G=runScheduler(bd,cur,SIM2_EXTRA_BATCHES,tomorrowBKK,SIM2_CFG.hourMode||false,SIM2_CFG.weekendCap,SIM2_CFG.holidayCap,SIM2_CFG);
+  SIM2_G.ap127?.forEach((s,i)=>{s.nick=AP127_NICKS[i]||"";s.fi=AP127_FI[i]||"";s.se=AP127_SE[i]||"";});
+  const ms=Date.now()-t0;
+  const statusEl=document.getElementById("s2-status");
+  if(statusEl){
+    const modeStr=SIM2_CFG.schedulingMode==='balanced'
+      ?`balanced · wt ${["AP124","AP126","AP127","AP129"].map(b=>(SIM2_CFG.batchWeights[b]||1).toFixed(1)).join('/')}`
+      :`priority · ${SIM2_CFG.priority?({'ap126':'AP126 first','ap126_ap127':'AP126+AP127','ap127':'AP127 first'}[SIM2_CFG.priority]):'default'}`;
+    statusEl.textContent=`Done in ${ms}ms · cap ${SIM2_CFG.cap}/day · WE ${SIM2_CFG.weekendCap} · Hol ${SIM2_CFG.holidayCap} · ${SIM2_CFG.horizon}wd · ${modeStr}`;
+  }
+  renderSim2Finish();
+  buildSim2CapacityChart();
+  toast("Simulation 2 complete");
+}
+function renderSimulation2(){
+  if(!G)return;
+  const capEl=document.getElementById("s2-cap"),horEl=document.getElementById("s2-hor"),s129El=document.getElementById("s2-129s");
+  if(capEl){capEl.value=SIM2_CFG.cap;document.getElementById("s2-cap-v").textContent=SIM2_CFG.cap;}
+  if(horEl){horEl.value=SIM2_CFG.horizon;document.getElementById("s2-hor-v").textContent=SIM2_CFG.horizon;}
+  if(s129El)s129El.value=SIM2_CFG.ap129start;
+  const weEl=document.getElementById("s2-wecap"),holEl=document.getElementById("s2-holcap");
+  if(weEl){weEl.value=SIM2_CFG.weekendCap;document.getElementById("s2-wecap-v").textContent=SIM2_CFG.weekendCap;}
+  if(holEl){holEl.value=SIM2_CFG.holidayCap;document.getElementById("s2-holcap-v").textContent=SIM2_CFG.holidayCap;}
+  const rrEl=document.getElementById("s2-rest-reg");if(rrEl)rrEl.checked=SIM2_CFG.restReg;
+  renderSimExtraList2();
+  renderSchedulingModeUI2();
+  ["AP124","AP126","AP127","AP129"].forEach(b=>{
+    const el=document.getElementById('s2-wt-'+b);
+    const w=SIM2_CFG.batchWeights[b]||1.0;
+    if(el){el.value=w;document.getElementById('s2-wt-v-'+b).textContent=w.toFixed(1);}
+  });
+  if(!SIM2_G)runSimulation2();
 }
 /* ===== renderTimeline ===== */
 function renderTimeline(){
@@ -755,7 +1015,8 @@ function resetPerformanceFilters(){
   }
 
   // Expose inline-handler targets referenced by the embedded markup + generated rows.
-  Object.assign(window, { renderPerformance, resetPerformanceFilters, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch, onRestRegChange, onPriorityChange, renderPriorityChips });
+  Object.assign(window, { renderPerformance, resetPerformanceFilters, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch, onRestRegChange, onPriorityChange, renderPriorityChips,
+    runSimulation2, renderSimulation2, addExtraBatch2, removeExtraBatch2, updateExtraBatch2, toggleHourMode2, onWeHolCapInput2, propagateCapToWeHol2, onRestRegChange2, onPriorityChange2, renderPriorityChips2, onModeChange2, onWeightChange2, resetWeights2, renderSchedulingModeUI2 });
 
   // ---- page markups (verbatim from NGT_001 index.html) ----
 const MK_OVERVIEW = `
@@ -1023,6 +1284,187 @@ const MK_SIM = `
 <!-- ##AP127PAGE_START## -->
 `;
 
+const MK_SIM2 = `
+<div id="page-sim2" class="page">
+  <div class="sim-wrap">
+    <div class="sim-controls">
+      <div class="sim-ctrl-title">Scheduler Parameters <span style="font-size:10px;color:var(--c126);font-weight:400;margin-left:6px">⚖ Simulation 2</span></div>
+      <div class="sim-ctrl-row">
+        <div class="sim-ctrl-item">
+          <div class="sim-ctrl-lbl" id="s2-cap-mode-lbl">Daily Flight Cap</div>
+          <div class="sim-ctrl-desc" id="s2-cap-mode-desc">Max total flights per day across all batches</div>
+          <div class="sim-ctrl-val">
+            <input type="range" id="s2-cap" min="5" max="50" value="25" oninput="document.getElementById('s2-cap-v').textContent=this.value;propagateCapToWeHol2(this.value)">
+            <span class="sim-rv" id="s2-cap-v">25</span>
+            <span style="font-size:10px;color:var(--tx3)" id="s2-cap-mode-unit">/day</span>
+          </div>
+        </div>
+        <div class="sim-ctrl-item">
+          <div class="sim-ctrl-lbl">Cap Mode</div>
+          <div class="sim-ctrl-desc">How daily capacity is measured</div>
+          <div class="sim-ctrl-val" style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:10px;color:var(--tx3)">Flights</span>
+            <label class="tsw"><input type="checkbox" id="s2-hour-mode" onchange="toggleHourMode2(this.checked)"><span class="tsw-track"></span></label>
+            <span style="font-size:10px;color:var(--tx3)">Hours</span>
+          </div>
+        </div>
+        <div class="sim-ctrl-item">
+          <div class="sim-ctrl-lbl">AP129 Start Date</div>
+          <div class="sim-ctrl-desc">13 students (fixed) · uses AP127 curriculum</div>
+          <div class="sim-ctrl-val">
+            <input type="text" id="s2-129s" value="2026-06-01" placeholder="YYYY-MM-DD">
+          </div>
+        </div>
+        <div class="sim-ctrl-item">
+          <div class="sim-ctrl-lbl">Planning Horizon</div>
+          <div class="sim-ctrl-desc">Workdays to project forward from today</div>
+          <div class="sim-ctrl-val">
+            <input type="range" id="s2-hor" min="200" max="1200" step="50" value="800" oninput="document.getElementById('s2-hor-v').textContent=this.value">
+            <span class="sim-rv" id="s2-hor-v">800</span>
+            <span style="font-size:10px;color:var(--tx3)">days</span>
+          </div>
+        </div>
+        <div class="sim-ctrl-item">
+          <div class="sim-ctrl-lbl">Weekend Cap</div>
+          <div class="sim-ctrl-desc">Max flights/day on Sat &amp; Sun · 0 disables weekend flying</div>
+          <div class="sim-ctrl-val">
+            <input type="range" id="s2-wecap" min="0" max="50" value="13" oninput="onWeHolCapInput2('we')">
+            <span class="sim-rv" id="s2-wecap-v">13</span>
+            <span style="font-size:10px;color:var(--tx3)" id="s2-wecap-unit">/day</span>
+          </div>
+        </div>
+        <div class="sim-ctrl-item">
+          <div class="sim-ctrl-lbl">Holiday Cap</div>
+          <div class="sim-ctrl-desc">Max flights/day on Thai public holidays · 0 disables holiday flying</div>
+          <div class="sim-ctrl-val">
+            <input type="range" id="s2-holcap" min="0" max="50" value="13" oninput="onWeHolCapInput2('hol')">
+            <span class="sim-rv" id="s2-holcap-v">13</span>
+            <span style="font-size:10px;color:var(--tx3)" id="s2-holcap-unit">/day</span>
+          </div>
+        </div>
+        <div class="sim-ctrl-item">
+          <div class="sim-ctrl-lbl">Resting Regulation</div>
+          <div class="sim-ctrl-desc">After a flight ≥ 2 hrs, student skips 1 extra workday before next flight</div>
+          <div class="sim-ctrl-val" style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:10px;color:var(--tx3)">Off</span>
+            <label class="tsw"><input type="checkbox" id="s2-rest-reg" onchange="onRestRegChange2(this.checked)"><span class="tsw-track"></span></label>
+            <span style="font-size:10px;color:var(--tx3)">On</span>
+          </div>
+        </div>
+      </div>
+      <div class="sim-ctrl-title" style="margin-top:4px">Scheduling Mode</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <button id="s2-mode-balanced" class="bt" onclick="onModeChange2('balanced')">⚖ Balanced</button>
+        <button id="s2-mode-priority" class="bt" onclick="onModeChange2('priority')">▶ Priority</button>
+        <span style="font-size:9px;color:var(--tx3);margin-left:4px">Balanced: proportional by weight × students · Priority: strict fill order</span>
+      </div>
+      <div id="s2-weight-panel">
+        <div style="font-size:10px;color:var(--tx3);margin-bottom:8px;line-height:1.5">Weight multiplier per batch. Effective share = weight × student count / total. Default 1.0 = proportional to batch size.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+          <div class="sim-ctrl-item">
+            <div class="sim-ctrl-lbl" style="color:var(--c124)">AP124 weight</div>
+            <div class="sim-ctrl-val">
+              <input type="range" id="s2-wt-AP124" min="0.5" max="3.0" step="0.1" value="1.0" oninput="onWeightChange2('AP124',this.value)">
+              <span class="sim-rv" id="s2-wt-v-AP124">1.0</span><span style="font-size:10px;color:var(--tx3)">×</span>
+            </div>
+          </div>
+          <div class="sim-ctrl-item">
+            <div class="sim-ctrl-lbl" style="color:var(--c126)">AP126 weight</div>
+            <div class="sim-ctrl-val">
+              <input type="range" id="s2-wt-AP126" min="0.5" max="3.0" step="0.1" value="1.0" oninput="onWeightChange2('AP126',this.value)">
+              <span class="sim-rv" id="s2-wt-v-AP126">1.0</span><span style="font-size:10px;color:var(--tx3)">×</span>
+            </div>
+          </div>
+          <div class="sim-ctrl-item">
+            <div class="sim-ctrl-lbl" style="color:var(--c127)">AP127 weight</div>
+            <div class="sim-ctrl-val">
+              <input type="range" id="s2-wt-AP127" min="0.5" max="3.0" step="0.1" value="1.0" oninput="onWeightChange2('AP127',this.value)">
+              <span class="sim-rv" id="s2-wt-v-AP127">1.0</span><span style="font-size:10px;color:var(--tx3)">×</span>
+            </div>
+          </div>
+          <div class="sim-ctrl-item">
+            <div class="sim-ctrl-lbl" style="color:var(--c129)">AP129 weight</div>
+            <div class="sim-ctrl-val">
+              <input type="range" id="s2-wt-AP129" min="0.5" max="3.0" step="0.1" value="1.0" oninput="onWeightChange2('AP129',this.value)">
+              <span class="sim-rv" id="s2-wt-v-AP129">1.0</span><span style="font-size:10px;color:var(--tx3)">×</span>
+            </div>
+          </div>
+        </div>
+        <button class="sim-add-btn" style="margin-bottom:10px" onclick="resetWeights2()">↺ Reset weights</button>
+      </div>
+      <div id="s2-priority-panel" style="display:none">
+        <div style="font-size:10px;color:var(--tx3);margin-bottom:10px;line-height:1.5">Override default batch priority. Select one option, or none for default order.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+          <button id="s2-pri-ap126" class="bt" onclick="onPriorityChange2('ap126')">AP126 first</button>
+          <button id="s2-pri-ap126_ap127" class="bt" onclick="onPriorityChange2('ap126_ap127')">AP126 + AP127 first</button>
+          <button id="s2-pri-ap127" class="bt" onclick="onPriorityChange2('ap127')">AP127 first</button>
+        </div>
+      </div>
+      <div class="sim-ctrl-title" style="margin-top:4px">Additional Batches</div>
+      <div style="font-size:10px;color:var(--tx3);margin-bottom:10px;line-height:1.5">Additional batches use the AP127 curriculum (101 lessons). Add a weight multiplier per batch for balanced mode.</div>
+      <div id="s2-extra-list" class="sim-extra-list"></div>
+      <button class="sim-add-btn" onclick="addExtraBatch2()">+ Add Batch</button>
+      <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+        <button class="btn-p" style="background:var(--c126);border:none;font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:700;padding:7px 18px;border-radius:5px;color:#000;cursor:pointer" onclick="runSimulation2()">▶ Run Simulation 2</button>
+        <span id="s2-status" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3)"></span>
+      </div>
+    </div>
+    <details class="sim-info-panel">
+      <summary>How Simulation 2 Works</summary>
+      <div class="sim-info-grid">
+        <div class="sim-info-item">
+          <div class="sim-info-lbl">Schedule start</div>
+          <div class="sim-info-val">Today (Bangkok time) — only future workdays are scheduled</div>
+        </div>
+        <div class="sim-info-item">
+          <div class="sim-info-lbl">Scheduling mode</div>
+          <div class="sim-info-val" id="s2-priority-info">Balanced — AP124×1.0 · AP126×1.0 · AP127×1.0 · AP129×1.0</div>
+        </div>
+        <div class="sim-info-item">
+          <div class="sim-info-lbl">Daily cap</div>
+          <div class="sim-info-val">Max N flights/day shared across active batches. In <b>balanced</b> mode, each batch gets slots proportional to weight × student count — no batch starves another. In <b>priority</b> mode, higher-priority batches fill first (same as Simulation).</div>
+        </div>
+        <div class="sim-info-item">
+          <div class="sim-info-lbl">Student eligibility</div>
+          <div class="sim-info-val">Must wait <b>1 workday</b> after a lesson &lt; 120 min · <b>2 workdays</b> after a lesson ≥ 120 min. Within a batch, the student furthest behind their plan fills next.</div>
+        </div>
+        <div class="sim-info-item">
+          <div class="sim-info-lbl">Workdays</div>
+          <div class="sim-info-val">Monday–Friday only · Thai public holidays excluded · weekend/holiday caps configurable</div>
+        </div>
+        <div class="sim-info-item">
+          <div class="sim-info-lbl">Curriculum</div>
+          <div class="sim-info-val"><span style="color:var(--c124)">AP124</span>: 97 lessons · <span style="color:var(--c126)">AP126</span> / <span style="color:var(--c127)">AP127</span> / <span style="color:var(--c129)">AP129</span> / Extra: 101 lessons (AP127 curriculum)</div>
+        </div>
+        <div class="sim-info-item">
+          <div class="sim-info-lbl">ETC basis</div>
+          <div class="sim-info-val">Projected finish = date of the last student's last planned lesson.</div>
+        </div>
+        <div class="sim-info-item">
+          <div class="sim-info-lbl">AP124 / AP126 / AP127</div>
+          <div class="sim-info-val">Actual flights already completed are locked in; only remaining lessons are scheduled forward</div>
+        </div>
+        <div class="sim-info-item">
+          <div class="sim-info-lbl">AP129 &amp; Extra batches</div>
+          <div class="sim-info-val">Start from zero — all 101 lessons scheduled from the batch start date onward</div>
+        </div>
+      </div>
+    </details>
+    <div>
+      <div class="sim-ctrl-title" style="margin-bottom:10px">Estimated Finish Dates</div>
+      <div class="sim-finish-grid" id="s2-finish-grid">
+        <div class="sim-hint">Click ▶ Run Simulation 2 to see finish date projections.</div>
+      </div>
+    </div>
+    <div class="cb">
+      <div class="ch" id="s2-cap-title">Monthly Flight Capacity — avg flights/workday per batch</div>
+      <div class="cs" id="s2-cap-sub">Stacked by batch · dashed = daily cap · run simulation to update</div>
+      <div style="position:relative;height:310px"><canvas id="c-s2-cap"></canvas></div>
+    </div>
+  </div>
+</div>
+`;
+
   function initG() { if (!G && window.NGT_CACHE) G = window.NGT_CACHE; return G; }
   function destroy() {
     try { Object.values(CHARTS).forEach(c => { try { c && c.destroy?.(); } catch (e) {} }); } catch (e) {}
@@ -1055,6 +1497,10 @@ const MK_SIM = `
   window.SimulationView = makeView(MK_SIM, () => {
     renderSimulation();
     if (SIM_G) { renderSimFinish(); buildSimCapacityChart(); }
+  });
+  window.Simulation2View = makeView(MK_SIM2, () => {
+    renderSimulation2();
+    if (SIM2_G) { renderSim2Finish(); buildSim2CapacityChart(); }
   });
   window.ProgressDetailView = makeView(MK_PLANS, () => { AB = "ALL"; renderPlans(); });
 })();

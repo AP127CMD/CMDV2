@@ -27,6 +27,7 @@
       { id: 'plans', label: 'Progress Detail', icon: '▤' },
       { id: 'performance', label: "School Perf.", icon: '◷' },
       { id: 'simulation', label: 'Simulation', icon: '◈' },
+      { id: 'sim2', label: 'Simulation 2', icon: '⚖' },
     ] },
     { label: 'Integrity', items: [{ id: 'crosscheck', label: 'Cross-Check', icon: '⇄' }] },
     { label: 'Help', items: [{ id: 'tutorial', label: 'User Guide', icon: '?' }] },
@@ -34,6 +35,17 @@
   ];
   const ALL_VIEWS = GROUPS.flatMap(g => g.items);
   const LABEL = Object.fromEntries(ALL_VIEWS.map(v => [v.id, v.label]));
+
+  // Share presets — map ?g=<key> to an array of allowed view IDs.
+  // Main site (no ?g= param) always shows all tabs unchanged.
+  const SHARE_PRESETS = {
+    // students: Home + Progress + Training Program + Help
+    students: ['overview', 'cohort', 'student', 'plans', 'tutorial'],
+    // instructors: Home + Operations + Planning + Progress + Help
+    instructors: ['overview', 'today', 'board', 'gantt', 'weekly', 'roster', 'calendar', 'aircraft', 'autoslotfinder', 'cohort', 'analytics', 'student', 'tutorial'],
+  };
+  const _shareParam = new URLSearchParams(location.search).get('g') || '';
+  const _sharePreset = _shareParam ? (SHARE_PRESETS[_shareParam.toLowerCase()] || null) : null;
 
   function FreshnessDot({ kind, fresh }) {
     const cls = fresh.source === 'live' ? 'live' : fresh.at ? 'snap' : 'err';
@@ -83,7 +95,8 @@
     return h('div', { style: { width: rail ? 58 : 224, flexShrink: 0, background: 'var(--bg-2)', borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', height: mobile ? '100vh' : '100%', position: mobile ? 'fixed' : 'relative', top: 0, left: 0, zIndex: mobile ? 200 : 'auto', boxShadow: mobile ? '6px 0 24px oklch(0 0 0 / 0.45)' : 'none', overflowY: 'auto', transition: 'width .15s ease' } },
       mobile && h('div', { style: { padding: '12px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, h('span', { className: 'head', style: { fontWeight: 700 } }, 'AP127 V2'), h('button', { onClick: onClose, style: { background: 'none', border: 'none', color: 'var(--ink-3)', fontSize: 18, cursor: 'pointer' } }, '✕')),
       h('nav', { style: { padding: rail ? '8px 6px' : 8, display: 'flex', flexDirection: 'column', gap: 2 } },
-        GROUPS.map((g, gi) => h('div', { key: gi, style: { marginTop: g.label ? 10 : 0 } },
+        (_sharePreset ? GROUPS.map(g => ({ ...g, items: g.items.filter(i => _sharePreset.includes(i.id)) })).filter(g => g.items.length > 0) : GROUPS)
+        .map((g, gi) => h('div', { key: gi, style: { marginTop: g.label ? 10 : 0 } },
           g.label && !rail && h('div', { className: 'mono uc', style: { fontSize: 8, color: 'var(--ink-3)', padding: '2px 12px 4px', letterSpacing: '0.1em' } }, g.label),
           g.label && rail && gi > 0 && h('div', { style: { height: 1, background: 'var(--line)', margin: '6px 6px' } }),
           g.items.map(Item)))));
@@ -265,6 +278,7 @@
       plans: window.ProgressDetailView,
       performance: window.SchoolPerformanceView,
       simulation: window.SimulationView,
+      sim2: window.Simulation2View,
       crosscheck: window.CrossCheckView,
       tutorial: window.TutorialView,
       watchdog: window.WatchdogView,
@@ -273,15 +287,19 @@
 
   function Shell() {
     const d = window.useData();
-    const [view, setView] = useState(() => (location.hash || '').replace('#/', '').replace('#', '') || localStorage.getItem('ap127v2-view') || 'overview');
+    const [view, setView] = useState(() => {
+      const raw = (location.hash || '').replace('#/', '').replace('#', '') || localStorage.getItem('ap127v2-view') || 'overview';
+      if (_sharePreset && !_sharePreset.includes(raw)) return _sharePreset[0];
+      return raw;
+    });
     const [menu, setMenu] = useState(false);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('ap127v2-collapsed') === '1');
     const mobile = d.isMobile;
     useEffect(() => {
-      const onGo = e => { setView(e.detail); setMenu(false); };
+      const onGo = e => { if (_sharePreset && !_sharePreset.includes(e.detail)) return; setView(e.detail); setMenu(false); };
       window.addEventListener('ap127-go', onGo); return () => window.removeEventListener('ap127-go', onGo);
     }, []);
-    useEffect(() => { localStorage.setItem('ap127v2-view', view); try { history.replaceState(null, '', '#/' + view); } catch (e) {} }, [view]);
+    useEffect(() => { localStorage.setItem('ap127v2-view', view); try { history.replaceState(null, '', location.search + '#/' + view); } catch (e) {} }, [view]);
     useEffect(() => { localStorage.setItem('ap127v2-collapsed', collapsed ? '1' : '0'); }, [collapsed]);
     // Burger: mobile opens the drawer; desktop toggles the icon-rail collapse.
     const onBurger = () => mobile ? setMenu(m => !m) : setCollapsed(c => !c);
