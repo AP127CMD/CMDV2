@@ -4,13 +4,11 @@ import { appendLog, getLog } from './log.js';
 
 const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flight-data.js';
 
-// Sites allowed to call this Worker. ap127-cmdv2-ngt-imp1 is the new primary
-// URL; the legacy ap127-cmdv2 stays in the allowlist for the cutover window.
+// Sites allowed to call this Worker.
 const ALLOWED_ORIGINS = new Set([
-  'https://ap127-cmdv2-ngt-imp1.pages.dev',
-  'https://ap127-cmdv2.pages.dev',
+  'https://ap127-ngt2.pages.dev',
 ]);
-const DEFAULT_ORIGIN = 'https://ap127-cmdv2-ngt-imp1.pages.dev';
+const DEFAULT_ORIGIN = 'https://ap127-ngt2.pages.dev';
 
 // Reflect the caller's Origin when it's in the allowlist (an Access-Control-
 // Allow-Origin header can only carry one value), else fall back to the primary.
