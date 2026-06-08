@@ -224,7 +224,7 @@ Stored in `watchdog:config`:
 
 ## 9. HTTP API
 
-All endpoints are on the `ap127-watchdog` Worker URL. CORS headers allow requests from `ap127-cmdv2.pages.dev`.
+All endpoints are on the `ap127-watchdog` Worker URL. CORS uses an allowlist that reflects the request Origin — `ap127-cmdv2-ngt-imp1.pages.dev` (primary) and the legacy `ap127-cmdv2.pages.dev`.
 
 | Method | Path | Auth | Response |
 |---|---|---|---|
