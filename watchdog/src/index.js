@@ -4,24 +4,31 @@ import { appendLog, getLog } from './log.js';
 
 const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flight-data.js';
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': 'https://ap127-cmdv2.pages.dev',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
-};
+// Sites allowed to call this Worker. ap127-cmdv2-ngt-imp1 is the new primary
+// URL; the legacy ap127-cmdv2 stays in the allowlist for the cutover window.
+const ALLOWED_ORIGINS = new Set([
+  'https://ap127-cmdv2-ngt-imp1.pages.dev',
+  'https://ap127-cmdv2.pages.dev',
+]);
+const DEFAULT_ORIGIN = 'https://ap127-cmdv2-ngt-imp1.pages.dev';
+
+// Reflect the caller's Origin when it's in the allowlist (an Access-Control-
+// Allow-Origin header can only carry one value), else fall back to the primary.
+function corsHeaders(request) {
+  const origin = request.headers.get('Origin');
+  return {
+    'Access-Control-Allow-Origin': ALLOWED_ORIGINS.has(origin) ? origin : DEFAULT_ORIGIN,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
+    'Vary': 'Origin',
+  };
+}
 
 const DEFAULT_CONFIG = {
   enabled: true,
   roster: [],
   eventTypes: { ADDED: true, REMOVED: true, CHANGED: true, STATUS: true },
 };
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
-}
 
 async function fetchFlights() {
   const res = await fetch(FLIGHT_SRC, { headers: { 'cache-control': 'no-cache' } });
@@ -101,10 +108,16 @@ async function runWatchdog(env) {
 
 async function handleFetch(request, env) {
   const url = new URL(request.url);
+  const cors = corsHeaders(request);
+  const json = (data, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
 
   // CORS preflight
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, { status: 204, headers: cors });
   }
 
   // GET /status
