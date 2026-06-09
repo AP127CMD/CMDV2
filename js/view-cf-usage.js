@@ -3,7 +3,7 @@
   const { useState, useEffect, useCallback } = React;
   const h = React.createElement;
 
-  const WATCHDOG_URL = 'https://ap127-watchdog.ap127cmd.workers.dev';
+  const WATCHDOG_URL = 'https://ap127-watchdog.anusorn-tanmetha.workers.dev';
 
   const LIMITS = {
     kvReads:        100000,
