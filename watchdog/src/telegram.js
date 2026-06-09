@@ -62,11 +62,13 @@ export function formatMessage(event, roster) {
   return lines.join('\n');
 }
 
-export async function sendTelegram(token, chatId, text) {
+export async function sendTelegram(token, chatId, text, threadId) {
+  const body = { chat_id: chatId, text };
+  if (threadId) body.message_thread_id = threadId;
   const res = await fetch(`${TELEGRAM_BASE}${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Telegram HTTP ${res.status}`);
   const data = await res.json();

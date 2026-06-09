@@ -70,14 +70,24 @@ async function runWatchdog(env) {
       await env.KV.put('watchdog:snapshot', JSON.stringify(newSnap));
     }
 
+    // Destinations: from config, or fall back to env var (legacy single-chat)
+    const destinations = config.destinations?.length
+      ? config.destinations
+      : [{ label: 'Default', chatId: env.TELEGRAM_CHAT_ID, threadId: null, mention: true }];
+
     const logEntries = [];
     for (const event of filtered) {
-      const msg = formatMessage(event, config.roster || []);
-      try {
-        await sendTelegram(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, msg);
-      } catch (e) {
-        // Log the failure but continue — snapshot is already saved
-        console.error('Telegram send failed:', e.message);
+      for (const dest of destinations) {
+        // mention:true → pass roster for @username lookup; false → plain name only
+        const roster = dest.mention !== false ? (config.roster || []) : [];
+        const msg = formatMessage(event, roster);
+        try {
+          await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, msg, dest.threadId);
+        } catch (e) {
+          console.error(`Telegram send to "${dest.label}" failed:`, e.message);
+        }
+        // Avoid Telegram rate limit (1 msg/sec per chat)
+        await new Promise(r => setTimeout(r, 1000));
       }
       logEntries.push({
         type: event.type, flightId: event.flight.id, student: event.flight.student,
@@ -85,8 +95,6 @@ async function runWatchdog(env) {
         start: event.flight.start, end: event.flight.end,
         tail: event.flight.tail, instructor: event.flight.instructor, diff: event.diff,
       });
-      // Avoid Telegram rate limit (30 msg/sec global, 1 msg/sec per chat)
-      if (filtered.length > 1) await new Promise(r => setTimeout(r, 1000));
     }
     await appendLog(env.KV, logEntries, ts);
     await env.KV.put('watchdog:status', JSON.stringify({
@@ -153,12 +161,20 @@ async function handleFetch(request, env) {
     if (request.headers.get('X-API-Key') !== env.WATCHDOG_API_KEY) {
       return json({ error: 'Unauthorized' }, 401);
     }
-    const msgId = await sendTelegram(
-      env.TELEGRAM_BOT_TOKEN,
-      env.TELEGRAM_CHAT_ID,
-      '✅ AP127 Watchdog test message — bot is connected.',
-    );
-    return json({ ok: true, messageId: msgId });
+    const config = await loadConfig(env.KV);
+    const destinations = config.destinations?.length
+      ? config.destinations
+      : [{ chatId: env.TELEGRAM_CHAT_ID, threadId: null }];
+    const results = [];
+    for (const dest of destinations) {
+      const msgId = await sendTelegram(
+        env.TELEGRAM_BOT_TOKEN, dest.chatId,
+        `✅ AP127 Watchdog test — ${dest.label || 'Default'} is connected.`,
+        dest.threadId,
+      );
+      results.push({ label: dest.label, messageId: msgId });
+    }
+    return json({ ok: true, results });
   }
 
   return json({ error: 'Not found' }, 404);
