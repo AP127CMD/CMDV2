@@ -75,13 +75,18 @@ async function runWatchdog(env) {
     }
 
     // Destinations: from config, or fall back to env var (legacy single-chat)
-    const destinations = config.destinations?.length
+    const allDests = config.destinations?.length
       ? config.destinations
-      : [{ label: 'Default', chatId: env.TELEGRAM_CHAT_ID, threadId: null, mention: true }];
+      : [{ label: 'Default', chatId: env.TELEGRAM_CHAT_ID, threadId: null, mention: true, enabled: true, batchFilter: '*' }];
 
     const logEntries = [];
     for (const event of filtered) {
-      for (const dest of destinations) {
+      const flightBatch = event.flight.batch || 'AP-127';
+      for (const dest of allDests) {
+        // Skip disabled destinations
+        if (dest.enabled === false) continue;
+        // Skip if batch filter doesn't match ('*' = all, 'AP-127' = AP127 only)
+        if (dest.batchFilter && dest.batchFilter !== '*' && dest.batchFilter !== flightBatch) continue;
         // mention:true → pass roster for @username lookup; false → plain name only
         const roster = dest.mention !== false ? (config.roster || []) : [];
         const msg = formatMessage(event, roster);

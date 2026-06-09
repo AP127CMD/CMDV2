@@ -106,6 +106,84 @@
             results[dest.label] && h('span', { style: { fontSize: 11, flexShrink: 0 } }, results[dest.label])))));
   }
 
+  // ── Destinations panel ───────────────────────────────────────────────────────
+  function Toggle({ on, onChange }) {
+    const track = {
+      display: 'inline-flex', alignItems: 'center', width: 36, height: 20,
+      borderRadius: 10, background: on ? 'var(--col-done)' : 'var(--ink-3)',
+      cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0, position: 'relative',
+    };
+    const knob = {
+      width: 16, height: 16, borderRadius: 8, background: '#fff',
+      position: 'absolute', top: 2, left: on ? 18 : 2, transition: 'left 0.15s',
+    };
+    return h('div', { style: track, onClick: onChange }, h('div', { style: knob }));
+  }
+
+  function DestinationsPanel({ config, apiKey, onConfigSaved, onNeedKey }) {
+    const [saving, setSaving] = useState(false);
+    const [saveMsg, setSaveMsg] = useState('');
+    const destinations = config?.destinations || [];
+
+    async function saveDestinations(newDests) {
+      if (!apiKey) { onNeedKey(); return; }
+      setSaving(true);
+      const newConfig = { ...config, destinations: newDests };
+      try {
+        const res = await fetch(`${WATCHDOG_URL}/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+          body: JSON.stringify(newConfig),
+        });
+        if (res.status === 401) { setSaveMsg('❌ Wrong API key'); onNeedKey(); return; }
+        if (!res.ok) throw new Error('Save failed');
+        onConfigSaved(newConfig);
+        setSaveMsg('Saved ✓');
+      } catch (e) {
+        setSaveMsg('Error: ' + e.message);
+      } finally {
+        setSaving(false);
+        setTimeout(() => setSaveMsg(''), 3000);
+      }
+    }
+
+    function toggleEnabled(idx) {
+      const updated = destinations.map((d, i) =>
+        i === idx ? { ...d, enabled: d.enabled === false ? true : false } : d);
+      saveDestinations(updated);
+    }
+
+    if (!destinations.length) return null;
+
+    const FILTER_LABEL = { '*': 'All batches', 'AP-127': 'AP127 only' };
+
+    return h('div', { className: 'panel', style: { marginBottom: 12 } },
+      h('div', { className: 'ph' },
+        h('span', { className: 'pt' }, 'Destinations'),
+        h('span', { className: 'ps' }, 'Toggle topics on or off'),
+        saveMsg && h('span', { style: { fontSize: 11, marginLeft: 8,
+          color: saveMsg.startsWith('Error') || saveMsg.startsWith('❌') ? 'var(--col-cancel)' : 'var(--col-done)' } }, saveMsg)),
+      h('div', { style: { overflowX: 'auto' } },
+        h('table', { className: 'tb' },
+          h('thead', null,
+            h('tr', null,
+              h('th', null, ''),
+              h('th', null, 'Topic'),
+              h('th', null, 'Filter'),
+              h('th', null, '@Mention'))),
+          h('tbody', null,
+            destinations.map((dest, i) => {
+              const on = dest.enabled !== false;
+              return h('tr', { key: i, style: { opacity: on ? 1 : 0.45 } },
+                h('td', null, h(Toggle, { on, onChange: () => !saving && toggleEnabled(i) })),
+                h('td', { className: 'mono', style: { fontSize: 11 } }, dest.label),
+                h('td', { className: 'muted', style: { fontSize: 11 } },
+                  FILTER_LABEL[dest.batchFilter] || dest.batchFilter || '—'),
+                h('td', { className: 'muted', style: { fontSize: 11 } },
+                  dest.mention !== false ? '✓' : '—'));
+            })))));
+  }
+
   // ── Roster table ─────────────────────────────────────────────────────────────
   function RosterTable({ config, apiKey, onConfigSaved, onNeedKey }) {
     const [editing, setEditing] = useState(null);
@@ -297,6 +375,7 @@
             : h('button', { className: 'chip', onClick: () => setShowKeyModal(true) }, 'Set Key'))),
 
       h(StatusStrip, { status }),
+      config && h(DestinationsPanel, { config, apiKey, onConfigSaved: setConfig, onNeedKey: () => setShowKeyModal(true) }),
       h(TestPanel, { config, apiKey, onNeedKey: () => setShowKeyModal(true) }),
       config
         ? h(RosterTable, { config, apiKey, onConfigSaved: setConfig, onNeedKey: () => setShowKeyModal(true) })
