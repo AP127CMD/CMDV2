@@ -189,6 +189,100 @@ async function handleFetch(request, env) {
     return json({ ok: true, results });
   }
 
+  // GET /cf-usage
+  if (url.pathname === '/cf-usage' && request.method === 'GET') {
+    if (request.headers.get('X-API-Key') !== env.WATCHDOG_API_KEY) {
+      return json({ error: 'Unauthorized' }, 401);
+    }
+    if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) {
+      return json({ error: 'CF_API_TOKEN and CF_ACCOUNT_ID secrets not configured' }, 503);
+    }
+
+    // 5-minute KV cache to avoid hammering CF Analytics API
+    const cacheKey = 'watchdog:cf-usage-cache';
+    const cachedRaw = await env.KV.get(cacheKey, 'text');
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      if (Date.now() - cached._cachedAt < 5 * 60 * 1000) {
+        return json({ ...cached, _cached: true });
+      }
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const KV_NS_ID = 'b42f3202c5364f91aef3837132d6ccd5';
+
+    const query = `{
+      viewer {
+        accounts(filter: {accountTag: "${env.CF_ACCOUNT_ID}"}) {
+          kvOperationsAdaptiveGroups(
+            filter: {date_geq: "${today}", date_leq: "${today}", namespaceId: "${KV_NS_ID}"}
+            limit: 100
+          ) {
+            dimensions { actionType }
+            sum { requests }
+          }
+          workersInvocationsAdaptive(
+            filter: {date_geq: "${today}", date_leq: "${today}", scriptName: "ap127-watchdog"}
+            limit: 10
+          ) {
+            sum { requests subrequests }
+          }
+        }
+      }
+    }`;
+
+    let gqlData;
+    try {
+      const gqlRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${env.CF_API_TOKEN}`,
+        },
+        body: JSON.stringify({ query }),
+      });
+      if (!gqlRes.ok) throw new Error(`CF GraphQL HTTP ${gqlRes.status}`);
+      gqlData = await gqlRes.json();
+    } catch (e) {
+      return json({ error: `CF API error: ${e.message}` }, 502);
+    }
+
+    if (gqlData.errors?.length) {
+      return json({ error: gqlData.errors[0].message }, 502);
+    }
+
+    const account = gqlData.data?.viewer?.accounts?.[0] || {};
+    const kvGroups = account.kvOperationsAdaptiveGroups || [];
+    const workerGroups = account.workersInvocationsAdaptive || [];
+
+    const kvByType = {};
+    for (const g of kvGroups) {
+      const t = g.dimensions.actionType;
+      kvByType[t] = (kvByType[t] || 0) + (g.sum.requests || 0);
+    }
+
+    const result = {
+      date: today,
+      kv: {
+        reads:   kvByType.read   || 0,
+        writes:  kvByType.write  || 0,
+        deletes: kvByType.delete || 0,
+        lists:   kvByType.list   || 0,
+      },
+      worker: {
+        requests: workerGroups.reduce((s, g) => s + (g.sum.requests || 0), 0),
+      },
+      limits: {
+        kvReads: 100000, kvWrites: 1000, kvDeletes: 1000, kvLists: 1000,
+        workerRequests: 100000,
+      },
+      _cachedAt: Date.now(),
+    };
+
+    await env.KV.put(cacheKey, JSON.stringify(result), { expirationTtl: 600 });
+    return json(result);
+  }
+
   return json({ error: 'Not found' }, 404);
 }
 
