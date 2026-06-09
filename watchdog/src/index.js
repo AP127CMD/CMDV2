@@ -161,17 +161,20 @@ async function handleFetch(request, env) {
     if (request.headers.get('X-API-Key') !== env.WATCHDOG_API_KEY) {
       return json({ error: 'Unauthorized' }, 401);
     }
+    const body = request.headers.get('Content-Type')?.includes('application/json')
+      ? await request.json().catch(() => ({})) : {};
+    const { message, destLabel } = body;
     const config = await loadConfig(env.KV);
     const destinations = config.destinations?.length
       ? config.destinations
-      : [{ chatId: env.TELEGRAM_CHAT_ID, threadId: null }];
+      : [{ chatId: env.TELEGRAM_CHAT_ID, threadId: null, label: 'Default' }];
+    const targets = destLabel
+      ? destinations.filter(d => d.label === destLabel)
+      : destinations;
     const results = [];
-    for (const dest of destinations) {
-      const msgId = await sendTelegram(
-        env.TELEGRAM_BOT_TOKEN, dest.chatId,
-        `✅ AP127 Watchdog test — ${dest.label || 'Default'} is connected.`,
-        dest.threadId,
-      );
+    for (const dest of targets) {
+      const text = message || `✅ AP127 Watchdog test — ${dest.label || 'Default'} is connected.`;
+      const msgId = await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, text, dest.threadId);
       results.push({ label: dest.label, messageId: msgId });
     }
     return json({ ok: true, results });
