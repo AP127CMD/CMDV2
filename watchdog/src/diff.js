@@ -41,3 +41,26 @@ export function diffSnapshots(prev, next) {
 
   return events;
 }
+
+// When a flight is recorded as complete the system cancels the planned entry and
+// adds a new ACTUAL_ONLY entry. Keep the ADDED(Completed) as "Flight completed",
+// suppress the paired cancel (REMOVED or status → Canceled for same SP + lesson).
+export function suppressActualPairs(events) {
+  const completedKeys = new Set(
+    events
+      .filter(e => e.type === 'ADDED' && e.flight.status === 'Completed')
+      .map(e => `${e.flight.student}|${e.flight.lesson}`)
+  );
+  if (!completedKeys.size) return events;
+
+  return events.filter(e => {
+    const key = `${e.flight.student}|${e.flight.lesson}`;
+    if (!completedKeys.has(key)) return true;
+    // Always keep the ADDED(Completed) — shown as "Flight completed"
+    if (e.type === 'ADDED' && e.flight.status === 'Completed') return true;
+    // Suppress the paired cancel
+    if (e.type === 'REMOVED') return false;
+    if (e.diff?.status?.to === 'Canceled') return false;
+    return true;
+  });
+}

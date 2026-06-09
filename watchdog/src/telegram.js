@@ -17,16 +17,30 @@ function spMention(student, roster) {
 export function formatMessage(event, roster) {
   const { type, flight: f, diff } = event;
   const sp = spMention(f.student, roster);
+  const fi = f.instructor || '—';
   const d = fmtDate(f.date);
   const t = f.start && f.end ? `${f.start}–${f.end}` : (f.start || '—');
+
+  // ADDED with Completed status = actual flight recorded
+  if (type === 'ADDED' && f.status === 'Completed') {
+    return [
+      `✅ Flight completed`,
+      `SP: ${sp}`,
+      `FI: ${fi}`,
+      `📅 ${d}  ${t}`,
+      `📖 Lesson: ${f.lesson || '—'}`,
+      `🛩 ${f.tail || '—'}`,
+    ].join('\n');
+  }
 
   if (type === 'ADDED') {
     return [
       `✈️ New flight scheduled`,
       `SP: ${sp}`,
+      `FI: ${fi}`,
       `📅 ${d}  ${t}`,
       `📖 Lesson: ${f.lesson || '—'}`,
-      `🛩 ${f.tail || '—'}  |  FI: ${f.instructor || '—'}`,
+      `🛩 ${f.tail || '—'}`,
     ].join('\n');
   }
 
@@ -34,22 +48,34 @@ export function formatMessage(event, roster) {
     return [
       `❌ Flight cancelled`,
       `SP: ${sp}`,
+      `FI: ${fi}`,
       `📅 ${d}  ${t}`,
       `📖 Lesson: ${f.lesson || '—'}`,
     ].join('\n');
   }
 
   if (type === 'STATUS') {
+    if (diff.status?.to === 'Completed') {
+      return [
+        `✅ Flight completed`,
+        `SP: ${sp}`,
+        `FI: ${fi}`,
+        `📅 ${d}  ${t}`,
+        `📖 Lesson: ${f.lesson || '—'}`,
+        `🛩 ${f.tail || '—'}`,
+      ].join('\n');
+    }
     return [
       `🔄 Status update`,
       `SP: ${sp}`,
+      `FI: ${fi}`,
       `📅 ${d}  ${t}`,
       `📖 ${f.lesson || '—'}  ${diff.status?.from || '—'} → ${diff.status?.to || '—'}`,
     ].join('\n');
   }
 
   // CHANGED
-  const lines = [`⚠️ Flight updated`, `SP: ${sp}`, `📅 ${d}`];
+  const lines = [`⚠️ Flight updated`, `SP: ${sp}`, `FI: ${fi}`, `📅 ${d}`];
   if (diff.start || diff.end) {
     const fromT = `${diff.start?.from ?? f.start}–${diff.end?.from ?? f.end}`;
     const toT   = `${diff.start?.to   ?? f.start}–${diff.end?.to   ?? f.end}`;

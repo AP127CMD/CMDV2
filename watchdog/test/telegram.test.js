@@ -13,52 +13,82 @@ const BASE_FLIGHT = {
 };
 
 describe('formatMessage', () => {
-  it('ADDED uses @mention when username mapped', () => {
+  it('ADDED: SP on line 1, FI on line 2, date/time on line 3', () => {
     const msg = formatMessage({ type: 'ADDED', flight: BASE_FLIGHT, diff: {} }, ROSTER);
-    expect(msg).toContain('@siwakorn_p');
-    expect(msg).toContain('✈️');
+    const lines = msg.split('\n');
+    expect(lines[0]).toBe('✈️ New flight scheduled');
+    expect(lines[1]).toContain('@siwakorn_p');
+    expect(lines[2]).toContain('ITTIPOL P.');
+    expect(lines[3]).toContain('08:00–09:30');
     expect(msg).toContain('CDGL 04');
     expect(msg).toContain('HS-NGT');
-    expect(msg).toContain('ITTIPOL P.');
-    expect(msg).toContain('08:00–09:30');
   });
 
-  it('ADDED uses plain name when no username', () => {
+  it('ADDED: plain name when no username', () => {
     const flight = { ...BASE_FLIGHT, student: 'AKARAVIT K.' };
     const msg = formatMessage({ type: 'ADDED', flight, diff: {} }, ROSTER);
     expect(msg).toContain('AKARAVIT K.');
     expect(msg).not.toContain('@');
   });
 
-  it('REMOVED shows cancel emoji and lesson', () => {
-    const msg = formatMessage({ type: 'REMOVED', flight: BASE_FLIGHT, diff: {} }, ROSTER);
-    expect(msg).toContain('❌');
-    expect(msg).toContain('CDGL 04');
-    expect(msg).toContain('@siwakorn_p');
+  it('ADDED with Completed status shows ✅ Flight completed', () => {
+    const flight = { ...BASE_FLIGHT, status: 'Completed' };
+    const msg = formatMessage({ type: 'ADDED', flight, diff: {} }, ROSTER);
+    const lines = msg.split('\n');
+    expect(lines[0]).toBe('✅ Flight completed');
+    expect(lines[1]).toContain('@siwakorn_p');
+    expect(lines[2]).toContain('ITTIPOL P.');
+    expect(msg).not.toContain('✈️');
   });
 
-  it('STATUS shows old and new status', () => {
+  it('REMOVED: FI on line 2', () => {
+    const msg = formatMessage({ type: 'REMOVED', flight: BASE_FLIGHT, diff: {} }, ROSTER);
+    const lines = msg.split('\n');
+    expect(lines[0]).toBe('❌ Flight cancelled');
+    expect(lines[1]).toContain('@siwakorn_p');
+    expect(lines[2]).toContain('ITTIPOL P.');
+    expect(msg).toContain('CDGL 04');
+  });
+
+  it('STATUS → Completed shows ✅ Flight completed', () => {
     const msg = formatMessage(
       { type: 'STATUS', flight: { ...BASE_FLIGHT, status: 'Completed' },
         diff: { status: { from: 'Pending', to: 'Completed' } } },
       ROSTER,
     );
-    expect(msg).toContain('🔄');
-    expect(msg).toContain('Pending');
-    expect(msg).toContain('Completed');
+    const lines = msg.split('\n');
+    expect(lines[0]).toBe('✅ Flight completed');
+    expect(lines[1]).toContain('@siwakorn_p');
+    expect(lines[2]).toContain('ITTIPOL P.');
+    expect(msg).not.toContain('🔄');
   });
 
-  it('CHANGED shows changed fields', () => {
+  it('STATUS → Canceled shows 🔄 status update', () => {
+    const msg = formatMessage(
+      { type: 'STATUS', flight: BASE_FLIGHT,
+        diff: { status: { from: 'Pending', to: 'Canceled' } } },
+      ROSTER,
+    );
+    const lines = msg.split('\n');
+    expect(lines[0]).toBe('🔄 Status update');
+    expect(lines[2]).toContain('ITTIPOL P.');
+    expect(msg).toContain('Pending');
+    expect(msg).toContain('Canceled');
+    expect(msg).not.toContain('✅');
+  });
+
+  it('CHANGED: FI on line 2', () => {
     const msg = formatMessage(
       { type: 'CHANGED', flight: { ...BASE_FLIGHT, start: '10:00', tail: 'HS-TPT' },
         diff: { start: { from: '08:00', to: '10:00' }, tail: { from: 'HS-NGT', to: 'HS-TPT' } } },
       ROSTER,
     );
-    expect(msg).toContain('⚠️');
+    const lines = msg.split('\n');
+    expect(lines[0]).toBe('⚠️ Flight updated');
+    expect(lines[1]).toContain('@siwakorn_p');
+    expect(lines[2]).toContain('ITTIPOL P.');
     expect(msg).toContain('08:00');
     expect(msg).toContain('10:00');
-    expect(msg).toContain('HS-NGT');
-    expect(msg).toContain('HS-TPT');
   });
 });
 

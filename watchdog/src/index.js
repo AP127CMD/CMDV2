@@ -1,4 +1,4 @@
-import { buildSnapshot, diffSnapshots } from './diff.js';
+import { buildSnapshot, diffSnapshots, suppressActualPairs } from './diff.js';
 import { formatMessage, sendTelegram } from './telegram.js';
 import { appendLog, getLog } from './log.js';
 
@@ -48,6 +48,7 @@ async function loadStatus(kv) {
   return raw ? JSON.parse(raw) : { lastRun: null, lastChange: null, lastError: null, runCount: 0 };
 }
 
+
 async function runWatchdog(env) {
   const ts = new Date().toISOString();
   const prevStatus = await loadStatus(env.KV);
@@ -63,7 +64,10 @@ async function runWatchdog(env) {
     const prevSnap = prevRaw ? JSON.parse(prevRaw) : {};
 
     const events = diffSnapshots(prevSnap, newSnap);
-    const filtered = events.filter(e => config.eventTypes?.[e.type] !== false);
+    const typeFiltered = events.filter(e => config.eventTypes?.[e.type] !== false);
+    // Suppress "record actual" pairs: when a flight is completed, the system cancels
+    // the planned entry and adds a new ACTUAL_ONLY entry. Don't notify either half.
+    const filtered = suppressActualPairs(typeFiltered);
 
     // Only write snapshot when something changed (or first run) — saves KV write quota
     if (filtered.length > 0 || !prevRaw) {

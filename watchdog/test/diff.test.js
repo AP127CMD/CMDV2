@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSnapshot, diffSnapshots } from '../src/diff.js';
+import { buildSnapshot, diffSnapshots, suppressActualPairs } from '../src/diff.js';
 
 const SAMPLE_FLIGHTS = [
   { id: '100', batch: 'AP-127', date: '2026-06-10', start: '08:00', end: '09:30',
@@ -75,5 +75,41 @@ describe('diffSnapshots', () => {
   it('returns empty array when nothing changed', () => {
     const events = diffSnapshots(base, { ...base });
     expect(events).toHaveLength(0);
+  });
+});
+
+describe('suppressActualPairs', () => {
+  const completed = { type: 'ADDED', flight: { id: 'ACTUAL_ONLY_200', status: 'Completed',
+    student: 'SIWAKORN P.', lesson: 'CDGL 04' }, diff: {} };
+  const removed  = { type: 'REMOVED', flight: { id: '100', status: 'Pending',
+    student: 'SIWAKORN P.', lesson: 'CDGL 04' }, diff: {} };
+  const canceled = { type: 'STATUS', flight: { id: '100', student: 'SIWAKORN P.',
+    lesson: 'CDGL 04' }, diff: { status: { from: 'Pending', to: 'Canceled' } } };
+
+  it('keeps ADDED(Completed) and suppresses paired REMOVED', () => {
+    const result = suppressActualPairs([completed, removed]);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('ADDED');
+    expect(result[0].flight.status).toBe('Completed');
+  });
+
+  it('keeps ADDED(Completed) and suppresses paired STATUS→Canceled', () => {
+    const result = suppressActualPairs([completed, canceled]);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('ADDED');
+  });
+
+  it('keeps standalone ADDED(Completed) with no paired cancel', () => {
+    const result = suppressActualPairs([completed]);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('ADDED');
+  });
+
+  it('does not suppress unrelated events', () => {
+    const other = { type: 'ADDED', flight: { id: '300', status: 'Pending',
+      student: 'AKARAVIT K.', lesson: 'CDGL 05' }, diff: {} };
+    const result = suppressActualPairs([completed, removed, other]);
+    expect(result).toHaveLength(2);
+    expect(result.find(e => e.flight.id === '300')).toBeTruthy();
   });
 });
