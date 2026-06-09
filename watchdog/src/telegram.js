@@ -11,7 +11,8 @@ function fmtDate(dateStr) {
 
 function spMention(student, roster) {
   const entry = (roster || []).find(r => r.scheduleName === student);
-  return entry?.telegramUsername ? `@${entry.telegramUsername}` : (student || '—');
+  const name = student || '—';
+  return entry?.telegramUsername ? `${name} (@${entry.telegramUsername})` : name;
 }
 
 export function formatMessage(event, roster) {

@@ -17,6 +17,7 @@ describe('formatMessage', () => {
     const msg = formatMessage({ type: 'ADDED', flight: BASE_FLIGHT, diff: {} }, ROSTER);
     const lines = msg.split('\n');
     expect(lines[0]).toBe('✈️ New flight');
+    expect(lines[1]).toContain('SIWAKORN P.');
     expect(lines[1]).toContain('@siwakorn_p');
     expect(lines[2]).toContain('ITTIPOL P.');
     expect(lines[3]).toContain('08:00–09:30');
@@ -36,6 +37,7 @@ describe('formatMessage', () => {
     const msg = formatMessage({ type: 'ADDED', flight, diff: {} }, ROSTER);
     const lines = msg.split('\n');
     expect(lines[0]).toBe('✅ Flight completed');
+    expect(lines[1]).toContain('SIWAKORN P.');
     expect(lines[1]).toContain('@siwakorn_p');
     expect(lines[2]).toContain('ITTIPOL P.');
     expect(msg).not.toContain('✈️');
@@ -45,6 +47,7 @@ describe('formatMessage', () => {
     const msg = formatMessage({ type: 'REMOVED', flight: BASE_FLIGHT, diff: {} }, ROSTER);
     const lines = msg.split('\n');
     expect(lines[0]).toBe('❌ Flight cancelled');
+    expect(lines[1]).toContain('SIWAKORN P.');
     expect(lines[1]).toContain('@siwakorn_p');
     expect(lines[2]).toContain('ITTIPOL P.');
     expect(msg).toContain('CDGL 04');
@@ -58,6 +61,7 @@ describe('formatMessage', () => {
     );
     const lines = msg.split('\n');
     expect(lines[0]).toBe('✅ Flight completed');
+    expect(lines[1]).toContain('SIWAKORN P.');
     expect(lines[1]).toContain('@siwakorn_p');
     expect(lines[2]).toContain('ITTIPOL P.');
     expect(msg).not.toContain('🔄');
@@ -85,6 +89,7 @@ describe('formatMessage', () => {
     );
     const lines = msg.split('\n');
     expect(lines[0]).toBe('⚠️ Flight updated');
+    expect(lines[1]).toContain('SIWAKORN P.');
     expect(lines[1]).toContain('@siwakorn_p');
     expect(lines[2]).toContain('ITTIPOL P.');
     expect(msg).toContain('08:00');
