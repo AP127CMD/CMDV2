@@ -74,17 +74,25 @@ export function formatMessage(event, roster) {
     ].join('\n');
   }
 
-  // CHANGED
-  const lines = [`⚠️ Flight updated`, `SP: ${sp}`, `FI: ${fi}`, `📅 ${d}`];
+  // CHANGED — show current full details, then separator, then what changed
+  const lines = [
+    `⚠️ Flight updated`,
+    `SP: ${sp}`,
+    `FI: ${fi}`,
+    `📅 ${d}  ${t}`,
+    `📖 ${f.lesson || '—'}`,
+    `🛩 ${f.tail || '—'}`,
+    `—————————————`,
+  ];
   if (diff.start || diff.end) {
     const fromT = `${diff.start?.from ?? f.start}–${diff.end?.from ?? f.end}`;
     const toT   = `${diff.start?.to   ?? f.start}–${diff.end?.to   ?? f.end}`;
-    lines.push(`⏰ Time: ${fromT} → ${toT}`);
+    lines.push(`⏰ ${fromT} → ${toT}`);
   }
-  if (diff.date)       lines.push(`📅 Date: ${diff.date.from} → ${diff.date.to}`);
-  if (diff.tail)       lines.push(`🛩 Aircraft: ${diff.tail.from} → ${diff.tail.to}`);
-  if (diff.instructor) lines.push(`👨‍✈️ FI: ${diff.instructor.from} → ${diff.instructor.to}`);
-  if (diff.lesson)     lines.push(`📖 Lesson: ${diff.lesson.from} → ${diff.lesson.to}`);
+  if (diff.date)       lines.push(`📅 ${diff.date.from} → ${diff.date.to}`);
+  if (diff.tail)       lines.push(`🛩 ${diff.tail.from} → ${diff.tail.to}`);
+  if (diff.instructor) lines.push(`👨‍✈️ ${diff.instructor.from} → ${diff.instructor.to}`);
+  if (diff.lesson)     lines.push(`📖 ${diff.lesson.from} → ${diff.lesson.to}`);
   return lines.join('\n');
 }
 
