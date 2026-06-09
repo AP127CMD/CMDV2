@@ -16,7 +16,7 @@ describe('formatMessage', () => {
   it('ADDED: SP on line 1, FI on line 2, date/time on line 3', () => {
     const msg = formatMessage({ type: 'ADDED', flight: BASE_FLIGHT, diff: {} }, ROSTER);
     const lines = msg.split('\n');
-    expect(lines[0]).toBe('✈️ New flight scheduled');
+    expect(lines[0]).toBe('✈️ New flight');
     expect(lines[1]).toContain('@siwakorn_p');
     expect(lines[2]).toContain('ITTIPOL P.');
     expect(lines[3]).toContain('08:00–09:30');

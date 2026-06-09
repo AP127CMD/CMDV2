@@ -28,18 +28,18 @@ export function formatMessage(event, roster) {
       `SP: ${sp}`,
       `FI: ${fi}`,
       `📅 ${d}  ${t}`,
-      `📖 Lesson: ${f.lesson || '—'}`,
+      `📖 ${f.lesson || '—'}`,
       `🛩 ${f.tail || '—'}`,
     ].join('\n');
   }
 
   if (type === 'ADDED') {
     return [
-      `✈️ New flight scheduled`,
+      `✈️ New flight`,
       `SP: ${sp}`,
       `FI: ${fi}`,
       `📅 ${d}  ${t}`,
-      `📖 Lesson: ${f.lesson || '—'}`,
+      `📖 ${f.lesson || '—'}`,
       `🛩 ${f.tail || '—'}`,
     ].join('\n');
   }
@@ -50,7 +50,7 @@ export function formatMessage(event, roster) {
       `SP: ${sp}`,
       `FI: ${fi}`,
       `📅 ${d}  ${t}`,
-      `📖 Lesson: ${f.lesson || '—'}`,
+      `📖 ${f.lesson || '—'}`,
     ].join('\n');
   }
 
@@ -61,7 +61,7 @@ export function formatMessage(event, roster) {
         `SP: ${sp}`,
         `FI: ${fi}`,
         `📅 ${d}  ${t}`,
-        `📖 Lesson: ${f.lesson || '—'}`,
+        `📖 ${f.lesson || '—'}`,
         `🛩 ${f.tail || '—'}`,
       ].join('\n');
     }
