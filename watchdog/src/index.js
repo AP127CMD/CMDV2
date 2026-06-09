@@ -106,12 +106,20 @@ async function runWatchdog(env) {
       });
     }
     await appendLog(env.KV, logEntries, ts);
-    await env.KV.put('watchdog:status', JSON.stringify({
-      lastRun: ts,
-      lastChange: filtered.length > 0 ? ts : (prevStatus.lastChange || null),
-      lastError: null,
-      runCount: (prevStatus.runCount || 0) + 1,
-    }));
+
+    // Skip status write on quiet runs — only write when something happened,
+    // on first run, on error, or if > 25 min since last status update.
+    // This cuts idle KV writes from 288/day to ~58/day.
+    const lastRunMs = prevStatus.lastRun ? new Date(prevStatus.lastRun).getTime() : 0;
+    const staleSince = Date.now() - lastRunMs;
+    if (filtered.length > 0 || !prevStatus.lastRun || staleSince > 25 * 60 * 1000) {
+      await env.KV.put('watchdog:status', JSON.stringify({
+        lastRun: ts,
+        lastChange: filtered.length > 0 ? ts : (prevStatus.lastChange || null),
+        lastError: null,
+        runCount: (prevStatus.runCount || 0) + 1,
+      }));
+    }
   } catch (err) {
     await env.KV.put('watchdog:status', JSON.stringify({
       ...prevStatus,
