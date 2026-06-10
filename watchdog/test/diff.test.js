@@ -11,18 +11,24 @@ const SAMPLE_FLIGHTS = [
 ];
 
 describe('buildSnapshot', () => {
-  it('includes only AP-127 flights', () => {
+  it('includes all flights regardless of batch', () => {
     const snap = buildSnapshot(SAMPLE_FLIGHTS);
-    expect(Object.keys(snap)).toEqual(['100']);
+    expect(Object.keys(snap).sort()).toEqual(['100', '101']);
   });
 
-  it('maps by id and extracts tracked fields', () => {
+  it('maps by id and extracts tracked fields including batch', () => {
     const snap = buildSnapshot(SAMPLE_FLIGHTS);
     expect(snap['100']).toEqual({
-      id: '100', date: '2026-06-10', start: '08:00', end: '09:30',
+      id: '100', batch: 'AP-127',
+      date: '2026-06-10', start: '08:00', end: '09:30',
       status: 'Pending', student: 'SIWAKORN P.', instructor: 'ITTIPOL P.',
       lesson: 'CDGL 04', tail: 'HS-NGT', type: 'DA40TDI',
     });
+  });
+
+  it('includes AP-126 batch flight', () => {
+    const snap = buildSnapshot(SAMPLE_FLIGHTS);
+    expect(snap['101'].batch).toBe('AP-126');
   });
 });
 

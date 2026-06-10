@@ -155,7 +155,7 @@
 
     if (!destinations.length) return null;
 
-    const FILTER_LABEL = { '*': 'All batches', 'AP-127': 'AP127 only' };
+    const FILTER_LABEL = { '*': 'All batches', 'AP-127': 'AP127 only', '!AP-127': 'All except AP127' };
 
     return h('div', { className: 'panel', style: { marginBottom: 12 } },
       h('div', { className: 'ph' },

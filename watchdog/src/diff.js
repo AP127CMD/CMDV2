@@ -3,9 +3,10 @@ const TRACKED = ['date', 'start', 'end', 'status', 'instructor', 'tail', 'lesson
 export function buildSnapshot(flights) {
   const snap = {};
   for (const f of flights) {
-    if (!f.id || f.batch !== 'AP-127') continue;
+    if (!f.id) continue;
     snap[String(f.id)] = {
-      id: String(f.id), date: f.date, start: f.start, end: f.end,
+      id: String(f.id), batch: f.batch || '',
+      date: f.date, start: f.start, end: f.end,
       status: f.status, student: f.student, instructor: f.instructor,
       lesson: f.lesson, tail: f.tail, type: f.type,
     };

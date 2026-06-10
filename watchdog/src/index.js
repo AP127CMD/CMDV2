@@ -85,8 +85,17 @@ async function runWatchdog(env) {
       for (const dest of allDests) {
         // Skip disabled destinations
         if (dest.enabled === false) continue;
-        // Skip if batch filter doesn't match ('*' = all, 'AP-127' = AP127 only)
-        if (dest.batchFilter && dest.batchFilter !== '*' && dest.batchFilter !== flightBatch) continue;
+        // batchFilter routing:
+        //   '*'      → all flights
+        //   'AP-127' → AP-127 only
+        //   '!AP-127'→ all except AP-127
+        if (dest.batchFilter && dest.batchFilter !== '*') {
+          if (dest.batchFilter.startsWith('!')) {
+            if (flightBatch === dest.batchFilter.slice(1)) continue;
+          } else {
+            if (flightBatch !== dest.batchFilter) continue;
+          }
+        }
         // mention:true → pass roster for @username lookup; false → plain name only
         const roster = dest.mention !== false ? (config.roster || []) : [];
         const msg = formatMessage(event, roster);
