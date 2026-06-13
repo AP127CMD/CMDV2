@@ -14,6 +14,7 @@
       { id: 'schedule', label: 'Schedule', icon: '▦' },
     ] },
     { label: 'Operations', items: [
+      { id: 'today', label: 'Day Glance', icon: '✈' },
       { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
       { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
     ] },

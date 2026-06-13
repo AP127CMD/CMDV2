@@ -24,7 +24,7 @@ into one place for students and leaders to monitor everything, timely and effort
 ```
 HOME ◎
 SCHEDULE      one screen · layout switch: Day ▦ · Gantt ▭ · Week ▦ · Month ▦ · Roster ▥
-OPERATIONS    Ops Analytics ◫ · Aircraft Status ✦
+OPERATIONS    Day Glance ✈ · Ops Analytics ◫ · Aircraft Status ✦
 PLANNING      Slot Finder ⚡
 PROGRESS      AP127 Detail ▰ · Student Lens 👤
 TRAINING PGM  Curriculum Plans ▤ · School Perf. ◷ · Simulation ◈ / ⚖ / ◆
@@ -33,9 +33,11 @@ HELP          User Guide ?
 SYSTEM        Watchdog ◉ · CF Usage ☁
 ```
 
-The six former Operations pages (Day Glance, Board, Gantt, Weekly, Roster, Calendar) are
-now **layout modes of the single Schedule screen** — selected from a chip-bar, sharing one
-filter/date/focus state. Old hash routes (`#/board`, `#/gantt`, …) still resolve for bookmarks.
+Five former Operations pages (Board, Gantt, Weekly, Calendar, Roster) are now **layout modes
+of the single Schedule screen** — selected from a chip-bar, sharing one filter/date/focus
+state (Schedule's "Day" layout = the sortable Board). **Day Glance** keeps its own tab under
+Operations as the single-day overview dashboard. Old hash routes (`#/board`, `#/gantt`, …)
+still resolve for bookmarks.
 
 It's one shared React context — no iframes, no CSS/JS collisions. The top bar carries the
 Student-Lens picker, unified PROG/OPS freshness dots, the Cross-Check ⇄ chip, a theme
