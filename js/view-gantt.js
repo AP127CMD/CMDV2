@@ -201,17 +201,31 @@ function GanttBoard() {
 
             // Overlap lanes: pack flights into sub-rows so overlapping schedules are
             // all visible and individually clickable (no stacked, unreachable bars).
-            const laneEnds = [];                    // last end-minute per lane
+            // When grouping by instructor, solo flights get their own lane band BELOW
+            // the instructor's dual flights (they never share a lane with dual sorties).
+            const isSoloRow = f => isSoloFlt(f) && !f._asFiStudent;
+            const packLanes = list => {
+              const ends = []; const map = new Map();
+              [...list].sort((a,b)=>(minutesOf(a.start)||0)-(minutesOf(b.start)||0)).forEach(f=>{
+                const s = minutesOf(f.start)||0;
+                const e = minutesOf(f.end) || (s + (f.durMin||60));
+                let lane = ends.findIndex(end => end <= s);
+                if (lane === -1) { lane = ends.length; ends.push(e); }
+                else ends[lane] = e;
+                map.set(f, lane);
+              });
+              return { map, count: ends.length };
+            };
+            const splitSolo = groupBy === 'instructor';
+            const dualList  = splitSolo ? r.flights.filter(f => !isSoloRow(f)) : r.flights;
+            const soloList  = splitSolo ? r.flights.filter(f =>  isSoloRow(f)) : [];
+            const dualPack  = packLanes(dualList);
+            const soloPack  = packLanes(soloList);
+            const dualLaneN = Math.max(splitSolo ? 0 : 1, dualPack.count);
             const flightLane = new Map();
-            [...r.flights].sort((a,b)=>(minutesOf(a.start)||0)-(minutesOf(b.start)||0)).forEach(f=>{
-              const s = minutesOf(f.start)||0;
-              const e = minutesOf(f.end) || (s + (f.durMin||60));
-              let lane = laneEnds.findIndex(end => end <= s);
-              if (lane === -1) { lane = laneEnds.length; laneEnds.push(e); }
-              else laneEnds[lane] = e;
-              flightLane.set(f, lane);
-            });
-            const laneCount = Math.max(1, laneEnds.length);
+            dualPack.map.forEach((lane, f) => flightLane.set(f, lane));
+            soloPack.map.forEach((lane, f) => flightLane.set(f, dualLaneN + lane)); // offset below dual
+            const laneCount = Math.max(1, dualLaneN + soloPack.count);
             const LANE_H = isMobile ? 30 : 48;
             const rowH   = Math.max(54, laneCount*LANE_H + 6);
 
