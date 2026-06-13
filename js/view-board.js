@@ -159,6 +159,7 @@ function OpsBoard() {
                   borderBottom:'1px solid var(--line-soft)',
                   background: i%2?'transparent':'color-mix(in oklch,var(--ink) 1.5%,transparent)',
                   borderLeft:`3px solid ${color}`,
+                  boxShadow: f.batch===HIGHLIGHT_BATCH ? 'inset 7px 0 0 -4px var(--highlight)' : 'none',
                   cursor:'pointer', opacity:dim?alpha*0.5:alpha,
                   transition:'opacity .15s, background .12s',
                 }}
