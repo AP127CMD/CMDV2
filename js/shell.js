@@ -10,21 +10,22 @@
   // Nav model — groups → views. `ready` flips true as each view is ported.
   const GROUPS = [
     { items: [{ id: 'overview', label: 'Home', icon: '◎', ready: true }] },
+    { label: 'Schedule', items: [
+      { id: 'schedule', label: 'Schedule', icon: '▦' },
+    ] },
     { label: 'Operations', items: [
-      { id: 'today', label: 'Day Glance', icon: '✈' }, { id: 'board', label: 'Board', icon: '▤' },
-      { id: 'gantt', label: 'Gantt', icon: '▭' }, { id: 'weekly', label: 'Weekly', icon: '▦' },
-      { id: 'roster', label: 'Roster', icon: '▥' }, { id: 'calendar', label: 'Calendar', icon: '▦' },
+      { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
+      { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
     ] },
     { label: 'Planning', items: [
-      { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
-      { id: 'autoslotfinder', label: 'Auto Slot Finder', icon: '⚡' },
+      { id: 'autoslotfinder', label: 'Slot Finder', icon: '⚡' },
     ] },
     { label: 'Progress', items: [
-      { id: 'cohort', label: 'AP127 Detail', icon: '▰' }, { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
+      { id: 'cohort', label: 'AP127 Detail', icon: '▰' },
       { id: 'student', label: 'Student Lens', icon: '👤' },
     ] },
     { label: 'Training Program', items: [
-      { id: 'plans', label: 'Progress Detail', icon: '▤' },
+      { id: 'plans', label: 'Curriculum Plans', icon: '▤' },
       { id: 'performance', label: "School Perf.", icon: '◷' },
       { id: 'simulation', label: 'Simulation', icon: '◈' },
       { id: 'sim2', label: 'Simulation 2', icon: '⚖' },
