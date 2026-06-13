@@ -273,6 +273,7 @@
   // Ops views come from the reused Command Center files (window.*Board).
   function registry() {
     return {
+      schedule: window.ScheduleView,
       today: window.DailyBoard, board: window.OpsBoard, gantt: window.GanttBoard,
       weekly: window.WeeklyBoard, roster: window.RosterBoard, calendar: window.CalendarBoard,
       autoslotfinder: window.AutoSlotFinderBoard,
