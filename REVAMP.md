@@ -416,6 +416,28 @@ charts, stacked by batch. **Gantt**: responsive px/hour (fits viewport, sticky r
 instructor/student breakdowns. New **User Guide** view (Help group) documenting every view +
 the logic. All 17 routes verified error-free.
 
+### Perf + mobile-table round (2026-06-13, code `?v=p44`)
+Audit-driven, safe in-place wins — **no build step** (the whole 5-site ecosystem is deliberately
+no-build; see `AP127_Docs`). Three perf changes + one mobile polish:
+- **React production builds**: `index.html` now loads `react.production.min.js` /
+  `react-dom.production.min.js` instead of the `*.development.js` bundles — sheds a few hundred KB
+  and the dev-mode warning/validation overhead on every load. Babel Standalone stays (11 JSX views +
+  the inline boot script still need it); Chart.js + plugins were already minified.
+- **Skip Babel for non-JSX files**: `shell.js`, `view-watchdog.js`, `view-cf-usage.js`,
+  `view-crosscheck.js`, `view-overview.js` use `React.createElement`/`h()` only (verified zero JSX),
+  so they're now plain `<script>` instead of `type="text/babel"` — they execute directly instead of
+  being transpiled on every load. (`view-program.js`/`view-tutorial.js` were already plain.)
+- **Boot loading indicator**: a themed spinner placeholder inside `#root` (inherits
+  `body[data-theme]` via CSS vars) that React overwrites on first paint — no more blank white screen
+  during the Babel-compile window.
+- **Mobile Progress table** (`css/progress.css`): the `@media(max-width:900px)` rule perversely
+  *raised* `.d127-table` min-width to 900px (wider than the desktop 760px), forcing off-screen scroll
+  on phones with no cue. Lowered the mobile override to 640px and added a CSS-only scroll-shadow
+  affordance on `.d127-table-wrap` (edge shadows show only when more content is scrollable, fade at
+  the ends). No other table had the bump.
+- **Cache token**: all code-asset `?v=` tokens unified from the drifted p39–p43 spread to **p44**.
+  Data files stay un-pinned (hourly-refresh design — untouched).
+
 ## 13. GOTCHAS / NOTES
 - No-build React: load order matters (CDNs → data → shared → ui → views → shell boot). Use `type="text/babel"` + per-file hook aliasing.
 - Babel Standalone is slow on huge files; auto-slot-finder is 1842 lines — consider splitting when porting.

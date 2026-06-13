@@ -8,16 +8,24 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="css/theme.css?v=p39"/>
-<link rel="stylesheet" href="css/progress.css?v=p39"/>
-<link rel="stylesheet" href="css/program.css?v=p39"/>
+<link rel="stylesheet" href="css/theme.css?v=p44"/>
+<link rel="stylesheet" href="css/progress.css?v=p44"/>
+<link rel="stylesheet" href="css/program.css?v=p44"/>
 </head>
 <body data-theme="cockpit">
-<div id="root"></div>
+<div id="root">
+  <!-- Boot placeholder: replaced by React on first render. Inherits body[data-theme] via CSS vars. -->
+  <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg,#0b1120);color:var(--ink-2,#9fb3c8);font-family:'Rajdhani','Inter',system-ui,sans-serif;">
+    <div style="width:34px;height:34px;border-radius:50%;border:3px solid var(--bd,#243042);border-top-color:var(--c127,#e88aff);animation:ap127spin 0.8s linear infinite;"></div>
+    <div style="letter-spacing:.18em;font-size:13px;font-weight:600;text-transform:uppercase;">AP127 Command Center</div>
+    <div style="font-size:11px;letter-spacing:.1em;opacity:.7;">loading…</div>
+  </div>
+  <style>@keyframes ap127spin{to{transform:rotate(360deg)}}</style>
+</div>
 
 <!-- React + Babel (views use JSX) -->
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
 
 <!-- Chart.js (progress views) -->
@@ -30,42 +38,43 @@
 <!-- data: cross-check engine + bundled snapshots (progress also fetched live).
      Snapshots carry NO ?v= pin so the hourly refresh workflow propagates to
      clients via the Pages ~10-min cache (code assets stay version-pinned). -->
-<script src="assets/reconcile.js?v=p39"></script>
+<script src="assets/reconcile.js?v=p44"></script>
 <script src="flight-data.js"></script>
 <script src="progress-data.js"></script>
 <script src="ngt-data.js"></script>
 
 <!-- shared context + atoms (augmented Command Center app-shared) -->
-<script type="text/babel" src="js/shared.js?v=p39"></script>
+<script type="text/babel" src="js/shared.js?v=p44"></script>
 
 <!-- Operations views (reused from Command Center) -->
-<script type="text/babel" src="js/view-daily.js?v=p39"></script>
-<script type="text/babel" src="js/view-board.js?v=p39"></script>
-<script type="text/babel" src="js/view-gantt.js?v=p39"></script>
-<script type="text/babel" src="js/view-weekly.js?v=p39"></script>
-<script type="text/babel" src="js/view-summary.js?v=p39"></script>
-<script type="text/babel" src="js/view-roster.js?v=p39"></script>
-<script type="text/babel" src="js/view-autoslotfinder.js?v=p41"></script>
-<script type="text/babel" src="js/view-calendar.js?v=p39"></script>
-<script type="text/babel" src="js/view-aircraft.js?v=p39"></script>
+<script type="text/babel" src="js/view-daily.js?v=p44"></script>
+<script type="text/babel" src="js/view-board.js?v=p44"></script>
+<script type="text/babel" src="js/view-gantt.js?v=p44"></script>
+<script type="text/babel" src="js/view-weekly.js?v=p44"></script>
+<script type="text/babel" src="js/view-summary.js?v=p44"></script>
+<script type="text/babel" src="js/view-roster.js?v=p44"></script>
+<script type="text/babel" src="js/view-autoslotfinder.js?v=p44"></script>
+<script type="text/babel" src="js/view-calendar.js?v=p44"></script>
+<script type="text/babel" src="js/view-aircraft.js?v=p44"></script>
 
 <!-- Progress (AP127 Detail, ported from DashboardR1 into React — full dashboard) -->
-<script type="text/babel" src="js/view-cohort.js?v=p39"></script>
+<script type="text/babel" src="js/view-cohort.js?v=p44"></script>
 
 <!-- Training Program (full NGT_001 parity: Overview, Performance, Simulation).
      Pure JS (no JSX) embedding NGT_001's scheduler/render logic verbatim — loaded
      as a plain script so it skips Babel and is defined before the shell renders. -->
-<script src="js/view-program.js?v=p43"></script>
+<script src="js/view-program.js?v=p44"></script>
 
 <!-- Tutorial / user guide (pure JS, plain script) -->
-<script src="js/view-tutorial.js?v=p39"></script>
-<script type="text/babel" src="js/view-watchdog.js?v=p42"></script>
-<script type="text/babel" src="js/view-cf-usage.js?v=p41"></script>
+<script src="js/view-tutorial.js?v=p44"></script>
+<!-- These views use React.createElement only (no JSX) — loaded as plain scripts so they skip Babel. -->
+<script src="js/view-watchdog.js?v=p44"></script>
+<script src="js/view-cf-usage.js?v=p44"></script>
 
-<!-- Integrity + Home + Shell -->
-<script type="text/babel" src="js/view-crosscheck.js?v=p39"></script>
-<script type="text/babel" src="js/view-overview.js?v=p39"></script>
-<script type="text/babel" src="js/shell.js?v=p40"></script>
+<!-- Integrity + Home + Shell (no JSX — plain scripts, skip Babel) -->
+<script src="js/view-crosscheck.js?v=p44"></script>
+<script src="js/view-overview.js?v=p44"></script>
+<script src="js/shell.js?v=p44"></script>
 
 <!-- boot -->
 <script type="text/babel" data-presets="env,react">
