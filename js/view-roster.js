@@ -14,7 +14,7 @@ const LOAD_OPACITY = n => n === 0 ? 0 : Math.min(0.9, 0.35 + n * 0.14);
 function RosterBoard() {
   const app = useApp();
   const { isMobile } = app;
-  const [groupBy,    setGroupBy]    = useS_r('instructor'); // 'instructor' | 'batch' | 'student'
+  const [groupBy,    setGroupBy]    = useS_r('student'); // 'student'(SP/day, default) | 'instructor' | 'batch'
   const [ap127Only,  setAp127Only]  = useS_r(false);
   // cellDetail: { key, date } | null — the cell whose flight list is shown in the overlay
   const [cellDetail, setCellDetail] = useS_r(null);
