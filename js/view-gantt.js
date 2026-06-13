@@ -6,7 +6,10 @@ const HOUR_END_MIN   = 18; // minimum end — extends dynamically if flights run
 
 // Helper: detect non-flight activities (meetings, briefings, ground school)
 const isMeetingFlt = f => /meeting|briefing|debrief|ground.school/i.test(f.lesson || '') || /meeting|recurrent/i.test(f.batch || '');
-const isSoloFlt = f => /\bsolo\b/i.test(f.lesson || '');
+// Solo = any flight whose CONDITION (or lesson, as fallback) contains "solo"
+// anywhere — covers "Solo", "Solo/Nav", "Night Solo", etc. The marker lives in
+// f.cond in the flight feed (lesson rarely carries it).
+const isSoloFlt = f => /solo/i.test(f.cond || '') || /solo/i.test(f.lesson || '');
 
 // Set of all instructor names across full dataset (computed once)
 const ALL_GANTT_FI_NAMES = new Set(FLIGHTS.map(f => f.instructor).filter(Boolean));
