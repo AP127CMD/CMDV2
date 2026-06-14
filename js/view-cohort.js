@@ -92,9 +92,8 @@
       <div class="d127-h" style="flex-wrap:wrap;gap:6px">
         <span class="d127-t">Combined Progress vs Plan</span>
         <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
-          <button class="cpv-btn" data-f="today"   onclick="setCPVFilter('today')">To Today</button>
-          <button class="cpv-btn" data-f="plan"    onclick="setCPVFilter('plan')">To Plan End</button>
-          <button class="cpv-btn sel" data-f="proj" onclick="setCPVFilter('proj')">To Proj. End</button>
+          <button class="cpv-btn sel" data-f="today" onclick="setCPVFilter('today')">To Today</button>
+          <button class="cpv-btn" data-f="proj"    onclick="setCPVFilter('proj')">To Proj. End</button>
           <span style="width:1px;height:14px;background:var(--bd);display:inline-block;margin:0 2px"></span>
           <button class="cpv-btn cpv-mode sel" data-m="lessons" onclick="setCPVMode('lessons')">Lessons</button>
           <button class="cpv-btn cpv-mode"     data-m="hours"   onclick="setCPVMode('hours')">Hours</button>
@@ -856,14 +855,16 @@ function buildAP127OverallChart(all,curriculum,maxDate){
     }
   });
 }
-let CPV_FILTER='proj';
+let CPV_FILTER='today';
 let CPV_MODE='lessons';
 function setCPVFilter(f){
+  CHARTS.ap127combined?.resetZoom?.();
   CPV_FILTER=f;
   document.querySelectorAll('.cpv-btn[data-f]').forEach(b=>b.classList.toggle('sel',b.dataset.f===f));
   buildAP127CombinedChart();
 }
 function setCPVMode(m){
+  CHARTS.ap127combined?.resetZoom?.();
   CPV_MODE=m;
   document.querySelectorAll('.cpv-mode').forEach(b=>b.classList.toggle('sel',b.dataset.m===m));
   buildAP127CombinedChart();
@@ -917,7 +918,7 @@ function buildAP127CombinedChart(){
   const variance=totalDone-planByToday;
 
   /* ── End date ── */
-  const endDate=CPV_FILTER==='today'?today:CPV_FILTER==='plan'?planEnd:[planEnd,projEndDate].sort().at(-1);
+  const endDate=CPV_FILTER==='today'?today:[planEnd,projEndDate].sort().at(-1);
 
   /* ── Plan series (step-cumulative point objects) ── */
   const planSeries=[];let rPlan=0;
