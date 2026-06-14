@@ -17,7 +17,18 @@ into one place for students and leaders to monitor everything, timely and effort
 - **Cross-Check** — reconciles the two *independent* data sources and flags **conflicts**
   (a lesson present in one system but missing in the other) and **review** items
   (matched lesson where flight time or date disagrees beyond tolerance).
-- **Student Lens** (top bar) — one student's Operations schedule ⇄ Progress lessons ⇄ plan.
+- **Student Lens** (top bar) — one student across everything. A single cumulative-progress
+  chart overlays the student's **Actual** vs **Plan** vs forward **Projection** (ETC), plus the
+  **batch-average** curve and the **most-advanced SP** for context (responsive on mobile). Below
+  it, a single **Lesson Log** table reconciles Operations + Progress into one sortable row-per-lesson
+  view (canceled flights hidden); a coloured dot flags whether each lesson agrees in both sources,
+  differs, or exists in only one (Ops-only / Progress-only / Scheduled / Planned-TBC).
+- **Curriculum Plans** (Training Program) — per-student plan cards (all batches). Cards carry no
+  rank edge-colour and no finish-date badge (finish projection lives only in the Simulation views).
+  Click any card for a modal with **all** records: for **AP127** the reconciled OPS+PROG view with
+  source dots and a "how this is processed" note; for other batches plain Progress-only records.
+  AP127 upcoming dates come from the live Operations schedule (TBC = not yet scheduled); other
+  batches show their projected plan dates.
 - **User Guide** — explains every view and the logic behind it.
 
 ## Navigation

@@ -122,44 +122,102 @@
           h('p', { className: 'muted', style: { fontSize: 11, marginTop: 10 } }, 'If you reached this from a bookmark, the route may have been renamed in the unified app.'))));
   }
 
-  // Per-student progress line chart: plan vs actual vs projected (ETC).
-  function StudentProgressChart({ student, curriculum, today }) {
+  // Resolve a CSS custom property to its computed colour string (Chart.js can't
+  // read var(--…) directly). Falls back if unavailable.
+  function cssVar(name, fallback) {
+    try { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fallback; } catch (e) { return fallback; }
+  }
+
+  // Per-student progress chart: the student's Actual vs Plan vs forward Projection,
+  // overlaid with the batch-average curve and the most-advanced SP — so a student
+  // sees where they stand against the cohort and the leader. Presentational only;
+  // the comparison series are computed in StudentLensView and passed in.
+  function StudentProgressChart({ student, curriculum, today, etcDate, mobile, batchAvg, leader, leaderNick }) {
     const ref = React.useRef(null);
     React.useEffect(() => {
       const ctx = ref.current; if (!ctx || !window.Chart) return;
       try { const ex = window.Chart.getChart(ctx); if (ex) ex.destroy(); } catch (e) {}
+      const ink2 = cssVar('--ink-2', '#8b949e'), ink3 = cssVar('--ink-3', '#6e7681'), line = cssVar('--line', '#21262d');
+      const accent = cssVar('--highlight', '#e88aff'), done = cssVar('--col-done', '#7acf7e'), pend = cssVar('--col-pending', '#e9bd63');
       const flown = (student.flown || []).filter(f => f.date).slice().sort((a, b) => a.date.localeCompare(b.date));
       let acc = 0; const actual = flown.map(f => ({ x: f.date, y: ++acc }));
       const planDates = (curriculum || []).filter(c => c.planned_date).slice().sort((a, b) => a.planned_date.localeCompare(b.planned_date));
       let pacc = 0; const plan = planDates.map(c => ({ x: c.planned_date, y: ++pacc }));
       const total = student.total || (curriculum || []).length || 101;
-      const done = student.done || 0;
-      const firstDate = flown[0]?.date || today;
-      const days = Math.max(1, Math.round((new Date(today) - new Date(firstDate)) / 86400000));
-      const pace = done / days;
-      const remaining = Math.max(total - done, 0);
+      const doneN = student.done || actual.length || 0;
+      // Forward projection: today's standing → ETC at current pace.
+      const projection = (etcDate && etcDate > today) ? [{ x: today, y: doneN }, { x: etcDate, y: total }] : [];
+      const ds = [
+        { label: 'Plan', data: plan, borderColor: ink3, borderDash: [6, 4], borderWidth: 1.4, pointRadius: 0, tension: 0, order: 5 },
+        { label: 'Batch avg', data: batchAvg || [], borderColor: ink2, borderWidth: 1.4, pointRadius: 0, tension: .25, order: 4 },
+      ];
+      if (leader && leader.length) ds.push({ label: 'Leader' + (leaderNick ? ' · ' + leaderNick : ''), data: leader, borderColor: done, borderWidth: 1.4, borderDash: [2, 3], pointRadius: 0, tension: 0, order: 3 });
+      if (projection.length) ds.push({ label: 'Projection', data: projection, borderColor: pend, borderWidth: 2, borderDash: [3, 3], pointRadius: 3, pointStyle: 'rectRot', tension: 0, order: 2 });
+      ds.push({ label: 'You', data: actual, borderColor: accent, backgroundColor: accent + '22', borderWidth: 2.6, pointRadius: mobile ? 0 : 2, pointHoverRadius: 4, tension: 0, fill: false, order: 1 });
       let chart;
       try {
         chart = new window.Chart(ctx, {
           type: 'line',
-          data: { datasets: [
-            { label: 'Plan', data: plan, borderColor: '#cbd5e1', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, tension: 0 },
-            { label: 'Actual', data: actual, borderColor: '#e88aff', borderWidth: 2.5, pointRadius: 2, tension: 0 },
-          ] },
+          data: { datasets: ds },
           options: {
             responsive: true, maintainAspectRatio: false, parsing: { xAxisKey: 'x', yAxisKey: 'y' },
             interaction: { mode: 'index', intersect: false },
-            plugins: { datalabels: { display: false }, legend: { labels: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 14, padding: 8 } },
+            plugins: { datalabels: { display: false },
+              legend: { labels: { color: ink2, usePointStyle: true, pointStyle: 'line', font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, boxWidth: 16, padding: mobile ? 6 : 8 } },
               tooltip: { callbacks: { title: c => { const r = c[0]?.raw; try { return r ? new Date(r.x + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''; } catch { return r?.x || ''; } },
                 label: c => `${c.dataset.label}: ${Math.round(c.raw?.y || 0)} lessons` } } },
-            scales: { x: { type: 'time', time: { unit: 'month', displayFormats: { month: 'MMM yy' } }, ticks: { color: '#6e7681', font: { family: 'JetBrains Mono', size: 8 }, maxTicksLimit: 10 }, grid: { color: '#21262d' } },
-              y: { beginAtZero: true, ticks: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 9 } }, grid: { color: '#21262d' } } },
+            scales: { x: { type: 'time', time: { unit: 'month', displayFormats: { month: 'MMM yy' } }, ticks: { color: ink3, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, maxTicksLimit: mobile ? 5 : 9 }, grid: { color: line } },
+              y: { beginAtZero: true, suggestedMax: total, ticks: { color: ink2, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, precision: 0 }, grid: { color: line } } },
           },
         });
       } catch (e) {}
       return () => { try { chart && chart.destroy(); } catch (e) {} };
-    }, [student, curriculum, today]);
-    return h('div', { style: { position: 'relative', height: 260 } }, h('canvas', { ref }));
+    }, [student, curriculum, today, etcDate, mobile, batchAvg, leader, leaderNick]);
+    return h('div', { style: { position: 'relative', height: mobile ? 220 : 290 } }, h('canvas', { ref }));
+  }
+
+  // Combined, sortable OPS+PROG table for one student. One row per lesson;
+  // canceled flights excluded; a coloured dot encodes how the two sources line up.
+  const LENS_SRC = {
+    both:   { c: 'var(--col-done)',    t: 'Confirmed in both Operations & Progress' },
+    review: { c: 'var(--col-pending)',  t: 'In both, but date/duration differ — review' },
+    ops:    { c: 'var(--col-solo)',     t: 'Flown in Operations, not yet posted to Progress' },
+    prog:   { c: 'var(--col-stby)',     t: 'Logged in Progress, no matching Operations flight' },
+    sched:  { c: 'var(--col-pending)',  t: 'Scheduled in Operations (upcoming)' },
+    plan:   { c: 'var(--ink-3)',        t: 'Planned only — not yet scheduled (TBC)' },
+  };
+  function LensCombinedTable({ rows, mobile, onRow, fd, hm }) {
+    const [sortKey, setSortKey] = React.useState('date');
+    const [sortDir, setSortDir] = React.useState('desc');
+    const click = k => { if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(k); setSortDir(k === 'lesson' ? 'asc' : 'desc'); } };
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const sorted = rows.slice().sort((a, b) => {
+      let av = a[sortKey], bv = b[sortKey];
+      if (sortKey === 'mins') { av = av || 0; bv = bv || 0; }
+      else { av = (av == null ? '' : '' + av); bv = (bv == null ? '' : '' + bv); }
+      return av < bv ? -1 * dir : av > bv ? 1 * dir : 0;
+    });
+    const SC = { Completed: 'var(--col-done)', Pending: 'var(--col-pending)', Scheduled: 'var(--col-pending)', Planned: 'var(--ink-3)', Canceled: 'var(--col-cancel)' };
+    const arrow = k => sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    const th = (k, label, extra) => h('th', { onClick: () => click(k), style: { cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', ...(extra || {}) }, title: 'Sort by ' + label }, label, arrow(k));
+    return h('div', { style: { overflowX: 'auto' } }, h('table', { className: 'tb', style: { width: '100%' } },
+      h('thead', null, h('tr', null,
+        h('th', { style: { width: 22 }, title: 'Data source' }, '●'),
+        th('date', 'Date'),
+        th('lesson', 'Lesson'),
+        th('mins', 'Hrs', { textAlign: 'right' }),
+        !mobile && th('fi', 'FI'),
+        th('status', 'Status'))),
+      h('tbody', null, sorted.length ? sorted.map((r, i) => {
+        const src = LENS_SRC[r.src] || LENS_SRC.plan;
+        return h('tr', { key: r.key + i, onClick: r.opsId ? () => onRow(r.opsId) : undefined, style: { cursor: r.opsId ? 'pointer' : 'default' } },
+          h('td', null, h('span', { title: src.t, style: { display: 'inline-block', width: 9, height: 9, borderRadius: '50%', background: src.c } })),
+          h('td', { className: 'mono', style: { whiteSpace: 'nowrap' } }, r.date ? fd(r.date) : '—'),
+          h('td', { className: 'mono' }, r.lesson || '—'),
+          h('td', { className: 'mono', style: { textAlign: 'right' } }, r.mins ? hm(r.mins) : '—'),
+          !mobile && h('td', { className: 'muted mono', style: { fontSize: 9 } }, r.fi || ''),
+          h('td', null, h('span', { className: 'pill', style: { background: `color-mix(in oklch,${SC[r.status] || 'var(--ink-3)'} 16%,transparent)`, color: SC[r.status] || 'var(--ink-3)' } }, (r.status || '').slice(0, 4))));
+      }) : h('tr', null, h('td', { colSpan: mobile ? 5 : 6 }, h('div', { className: 'empty' }, 'No lesson records'))))));
   }
 
   // Student Lens — the unifying view: one student's Operations schedule linked to
@@ -169,6 +227,24 @@
     const { useState: useSlQ } = React;
     const [q, setQ] = useSlQ('');
     const s = d.studentLens;
+
+    // Cohort comparison series for the chart: the batch-average cumulative curve
+    // and the most-advanced SP's curve. Memoised so the chart isn't rebuilt every
+    // render. Kept above the early return to preserve hook order.
+    const compare = React.useMemo(() => {
+      const all = d.students || [];
+      const perStudentDates = all.map(st => (st.flown || []).filter(x => x.date).map(x => x.date).sort());
+      const allDates = [...new Set(perStudentDates.flat())].sort();
+      const batchAvg = all.length ? allDates.map(dt => {
+        let sum = 0; perStudentDates.forEach(ds => { let c = 0; for (const x of ds) { if (x <= dt) c++; else break; } sum += c; });
+        return { x: dt, y: sum / all.length };
+      }) : [];
+      const leaderSt = all.reduce((a, b) => !a ? b : (((b.done || 0) > (a.done || 0)) || ((b.done || 0) === (a.done || 0) && (b.pct || 0) > (a.pct || 0)) ? b : a), null);
+      const isSelfLeader = leaderSt && s && leaderSt.catc_id === s.catc_id;
+      let lacc = 0;
+      const leader = (leaderSt && !isSelfLeader) ? (leaderSt.flown || []).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date)).map(f => ({ x: f.date, y: ++lacc })) : [];
+      return { batchAvg, leader, leaderNick: isSelfLeader ? '' : (leaderSt ? (leaderSt.nick || leaderSt.name) : ''), isSelfLeader: !!isSelfLeader };
+    }, [d.students, s]);
 
     // No student selected — show inline picker
     if (!s) {
@@ -229,6 +305,50 @@
     const pace = (s.done || 0) / paceDays;
     const etcDate = pace > 0 ? new Date(new Date(today).getTime() + (Math.max(total - (s.done || 0), 0) / pace) * 86400000).toISOString().slice(0, 10) : null;
 
+    // ── Combined OPS+PROG rows (one per lesson, canceled excluded) ──
+    const R = window.AP127Reconcile;
+    const nl = l => R ? R.normLesson(l) : String(l || '').toUpperCase().trim();
+    const progFlownBy = {}; (s.flown || []).forEach(f => { if (f.lesson) progFlownBy[nl(f.lesson)] = f; });
+    const progPlanBy = {}; (s.planned || []).forEach(p => { if (p.lesson) progPlanBy[nl(p.lesson)] = p; });
+    const curBy = {}; curriculum.forEach(c => { if (c.lesson) curBy[nl(c.lesson)] = c; });
+    // Non-canceled ops flights for this student, one per lesson (prefer Completed, else earliest).
+    const opsBy = {};
+    opsFlights.filter(f => f.status !== 'Canceled' && f.lesson).forEach(f => {
+      const k = nl(f.lesson); const prev = opsBy[k];
+      if (!prev) { opsBy[k] = f; return; }
+      const better = (f.status === 'Completed' && prev.status !== 'Completed') ||
+        (f.status === prev.status && (f.date || '') < (prev.date || ''));
+      if (better) opsBy[k] = f;
+    });
+    const lessonKeys = [...new Set([...Object.keys(progFlownBy), ...Object.keys(progPlanBy), ...Object.keys(opsBy)])];
+    const mergedRows = lessonKeys.map(k => {
+      const pf = progFlownBy[k], pp = progPlanBy[k], cu = curBy[k], op = opsBy[k];
+      const opsDone = op && op.status === 'Completed';
+      const lesson = (pf && pf.lesson) || (op && op.lesson) || (pp && pp.lesson) || k;
+      let src, status, date, mins;
+      if (pf || opsDone) {
+        // Completed domain
+        status = 'Completed';
+        date = (pf && pf.date) || (op && op.date) || '';
+        mins = (pf && pf.actual_mins) || (op && (R ? R.hmToMin(op.duration) : null)) || op?.durMin || (cu && cu.planned_mins) || 0;
+        if (pf && opsDone) {
+          const dd = R ? R.dateDiff(op.date, pf.date) : 0;
+          const oM = R ? R.hmToMin(op.duration) : null; const pM = pf.actual_mins;
+          const dateBad = dd != null && Math.abs(dd) > 1;
+          const durBad = oM != null && pM != null && Math.abs(oM - pM) > 20;
+          src = (dateBad || durBad) ? 'review' : 'both';
+        } else if (pf) src = 'prog';
+        else src = 'ops';
+      } else {
+        // Future / not-yet-flown domain
+        date = (op && op.date) || (pp && pp.date) || (cu && cu.planned_date) || '';
+        mins = (pp && (pp.mins || pp.planned_mins)) || (cu && cu.planned_mins) || (op && op.durMin) || 0;
+        if (op) { status = 'Scheduled'; src = 'sched'; }
+        else { status = 'Planned'; src = 'plan'; }
+      }
+      return { key: k, lesson, date, mins, status, src, fi: op ? op.instructor : '', opsId: op ? op.id : null };
+    });
+
     const SC = { Completed: 'var(--col-done)', Pending: 'var(--col-pending)', Canceled: 'var(--col-cancel)', Scheduled: 'var(--col-pending)' };
     const listPanel = (title, sub, children) => h('div', { className: 'panel' }, h('div', { className: 'ph' }, h('span', { className: 'pt' }, title), h('span', { className: 'ps' }, sub)), h('div', { style: { overflow: 'auto', maxHeight: 380 } }, children));
     const rowsOrEmpty = (arr, fn, empty) => arr.length ? arr.map(fn) : h('div', { className: 'empty' }, empty);
@@ -254,25 +374,17 @@
           h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Instructor'), h('div', { className: 'kv', style: { fontSize: 15 } }, (d.FI_FULL[s.fi] || s.fi || '—')), h('div', { className: 'ks' }, (s.se || '—') + ' · ' + opsFlights.length + ' ops')),
         ))),
       h('div', { className: 'panel' },
-        h('div', { className: 'ph' }, h('span', { className: 'pt' }, 'Progress · Plan vs Actual'), h('span', { className: 'ps' }, etcDate ? 'projected finish ' + fd(etcDate) : 'cumulative lessons over time')),
-        h('div', { className: 'pb' }, h(StudentProgressChart, { student: s, curriculum, today }))),
-      h('div', { style: { display: 'grid', gridTemplateColumns: d.isMobile ? '1fr' : '1.2fr 1fr 1fr', gap: 14 } },
-        listPanel('Operations Schedule', 'from flight ops', h('table', { className: 'tb' },
-          h('thead', null, h('tr', null, h('th', null, 'Date'), h('th', null, 'Lesson'), h('th', null, 'FI'), h('th', null, 'Status'))),
-          h('tbody', null, rowsOrEmpty(opsFlights.slice(0, 40), (f, i) => h('tr', { key: i, onClick: () => d.setDrawer(f.id), style: { cursor: 'pointer' } },
-            h('td', { className: 'mono' }, fd(f.date), ' ', h('span', { className: 'muted', style: { fontSize: 9 } }, f.start || '')),
-            h('td', { className: 'mono' }, f.lesson || '—'),
-            h('td', { className: 'muted mono', style: { fontSize: 9 } }, f.instructor || ''),
-            h('td', null, h('span', { className: 'pill', style: { background: `color-mix(in oklch,${SC[f.status] || 'var(--ink-3)'} 16%,transparent)`, color: SC[f.status] || 'var(--ink-3)' } }, (f.status || '').slice(0, 4)))),
-            'No operations flights found for this student')))),
-        listPanel('Completed (Progress)', flown.length + ' flown', h('div', { style: { padding: 10 } },
-          rowsOrEmpty(flown.slice(0, 30), (f, i) => h('div', { key: i, style: { display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 11 } },
-            h('span', { className: 'mono muted', style: { width: 56, fontSize: 9 } }, fd(f.date)), h('span', { className: 'mono', style: { flex: 1 } }, f.lesson || '—'), h('span', { className: 'muted', style: { fontSize: 10 } }, hm(f.actual_mins))),
-            'No completed flights'))),
-        listPanel('Upcoming Scheduled', upcomingOps.length + ' in ops', h('div', { style: { padding: 10 } },
-          rowsOrEmpty(upcomingOps, (f, i) => h('div', { key: i, onClick: () => d.setDrawer(f.id), style: { display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 11, cursor: 'pointer' } },
-            h('span', { className: 'mono muted', style: { width: 56, fontSize: 9 } }, fd(f.date), ' ', f.start || ''), h('span', { className: 'mono', style: { flex: 1 } }, f.lesson || '—'), h('span', { className: 'muted mono', style: { fontSize: 9 } }, f.instructor || '')),
-            'No scheduled flights in Operations')))));
+        h('div', { className: 'ph' }, h('span', { className: 'pt' }, 'Progress · You vs Batch'), h('span', { className: 'ps' }, etcDate ? 'projected finish ' + fd(etcDate) + (compare.isSelfLeader ? ' · you lead the batch' : '') : 'cumulative lessons over time')),
+        h('div', { className: 'pb' }, h(StudentProgressChart, { student: s, curriculum, today, etcDate, mobile: d.isMobile, batchAvg: compare.batchAvg, leader: compare.leader, leaderNick: compare.leaderNick }))),
+      h('div', { className: 'panel' },
+        h('div', { className: 'ph' },
+          h('span', { className: 'pt' }, 'Lesson Log · Operations + Progress'),
+          h('span', { className: 'ps' }, mergedRows.length + ' lessons · canceled flights hidden')),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12, padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', fontSize: 10 } },
+          ...[['both', 'Both agree'], ['review', 'Differ — review'], ['ops', 'Ops only'], ['prog', 'Progress only'], ['sched', 'Scheduled'], ['plan', 'Planned/TBC']].map(([k, lbl]) =>
+            h('span', { key: k, title: LENS_SRC[k].t, style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ink-2)' } },
+              h('span', { style: { width: 8, height: 8, borderRadius: '50%', background: LENS_SRC[k].c } }), lbl))),
+        h('div', { className: 'pb', style: { padding: 0 } }, h(LensCombinedTable, { rows: mergedRows, mobile: d.isMobile, onRow: id => d.setDrawer(id), fd, hm }))));
   }
 
   // Maps view id → component. Resolved at render time (after all view scripts load).

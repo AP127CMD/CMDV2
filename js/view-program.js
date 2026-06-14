@@ -1703,23 +1703,117 @@ function resetPerformanceFilters(){
   // projected date is replaced by the real Operations-scheduled date, or "TBC".
   function makeCard(s, rankClass = "") {
     const col = BC[s.batch], bg = BB[s.batch];
+    // Only AP127 reconciles future dates against the live Operations schedule.
+    // Other batches use their scheduler-projected plan dates as-is.
+    const isAp127 = !!(window.AP127Reconcile && window.AP127Reconcile.isAP127(s.batch));
     const nick = s.nick ? `<span style="font-family:'JetBrains Mono',monospace;font-size:8px;padding:1px 3px;border-radius:2px;background:${bg};color:${col};margin-left:3px">${s.nick}</span>` : "";
     const fRows = (s.flown || []).slice(-CFG.recents).map(f => `<div class="lr"><div class="ld" style="background:var(--done)"></div><div class="ldate" style="color:var(--done)">${fd(f.date)}</div><div class="lname" style="color:var(--done)">${f.lesson}</div><div class="ldur">${f.actual_ft || hm(f.actual_mins)}</div></div>`).join("");
     let prev = (s.flown || []).at(-1)?.actual_mins || 60;
     const tbc = `<span style="color:var(--tx3);font-style:italic">TBC</span>`;
     const pRows = (s.planned || []).slice(0, CFG.upcomings).map(p => {
       const rest = CFG.showRest && prev >= 120; const lv = p.mins || p.planned_mins || 60; prev = lv;
-      const sd = scheduledDateFor(s.name, p.lesson);
+      const sd = isAp127 ? scheduledDateFor(s.name, p.lesson) : p.date;
       const dCell = sd ? `<div class="ldate">${fd(sd)}</div>` : `<div class="ldate">${tbc}</div>`;
       return `<div class="lr"><div class="ld" style="background:${col};opacity:.5"></div>${dCell}<div class="lname" style="color:${col}">${p.lesson}</div><div class="ldur">${hm(lv)}${rest ? `<span class="lrest">+r</span>` : ""}</div></div>`;
     }).join("");
-    const sep = (s.flown?.length && s.planned?.length) ? `<div class="lsep">▸ ${s.remaining} remaining · next ${Math.min(CFG.upcomings, s.remaining)} shown · dates from Operations schedule (TBC = not yet scheduled)</div>` : "";
+    const sep = (s.flown?.length && s.planned?.length) ? `<div class="lsep">▸ ${s.remaining} remaining · next ${Math.min(CFG.upcomings, s.remaining)} shown · ${isAp127 ? 'dates from Operations schedule (TBC = not yet scheduled)' : 'projected plan dates'}</div>` : "";
     const more = (s.planned_total || 0) > CFG.upcomings ? `<div class="moret">+${s.planned_total - CFG.upcomings} more</div>` : "";
-    const fin = s.finish === "COMPLETE" ? "COMPLETED" : fd(s.finish);
-    const nextSched = s.next_lesson && s.next_lesson !== "COMPLETE" ? scheduledDateFor(s.name, s.next_lesson) : null;
+    const nextSched = s.next_lesson && s.next_lesson !== "COMPLETE" ? (isAp127 ? scheduledDateFor(s.name, s.next_lesson) : (s.planned && s.planned[0] && s.planned[0].date)) : null;
     const ntag = CFG.showNextTag && s.next_lesson ? `<b style="color:${col}">${s.next_lesson}</b>` : "";
     const ndateTag = s.next_lesson && s.next_lesson !== "COMPLETE" ? `<span style="color:${nextSched ? 'var(--tx2)' : 'var(--tx3)'};margin-left:3px${nextSched ? '' : ';font-style:italic'}">${nextSched ? fd(nextSched) : 'TBC'}</span>` : "";
-    return `<div class="scard${rankClass ? " status-" + rankClass : ""}"><div class="sh"><div><div class="sname">${s.name}${nick}</div><div class="smeta">${s.batch} · ${s.done}/${s.total}</div></div><div><div class="spct" style="color:${col}">${s.pct.toFixed(1)}%</div><div class="spct2">${s.remaining} left</div></div></div><div class="pb"><div class="pf" style="width:${Math.max(s.pct, .3)}%;background:${col}"></div></div><div class="sb2" style="max-height:${CFG.cardH}px">${fRows}${sep}${pRows}${more}</div><div class="sf2"><span style="font-size:10px;color:var(--tx3)">Next:${ntag ? ` ${ntag}${ndateTag}` : ""}</span><span class="ftag" style="background:${bg};color:${col};border:1px solid ${col}33">Finish: ${fin}</span></div></div>`;
+    return `<div class="scard" data-catc="${s.catc_id}" data-batch="${s.batch}" title="Click for all records"><div class="sh"><div><div class="sname">${s.name}${nick}</div><div class="smeta">${s.batch} · ${s.done}/${s.total}</div></div><div><div class="spct" style="color:${col}">${s.pct.toFixed(1)}%</div><div class="spct2">${s.remaining} left</div></div></div><div class="pb"><div class="pf" style="width:${Math.max(s.pct, .3)}%;background:${col}"></div></div><div class="sb2" style="max-height:${CFG.cardH}px">${fRows}${sep}${pRows}${more}</div><div class="sf2"><span style="font-size:10px;color:var(--tx3)">Next:${ntag ? ` ${ntag}${ndateTag}` : ""}</span><span class="ftag" style="background:${bg};color:${col};border:1px solid ${col}33">View all ›</span></div></div>`;
+  }
+
+  // ── SP detail modal — all records for one student ──
+  // AP127: reconciled OPS+PROG view with source dots + processing note.
+  // Other batches: plain PROG records (flown + scheduler-planned), no OPS merge.
+  const SP_SRC = {
+    both:   { c: "#22c55e", t: "Confirmed in both Operations & Progress" },
+    review: { c: "#fbbf24", t: "In both, but date/duration differ — review" },
+    ops:    { c: "#fb923c", t: "Flown in Operations, not yet posted to Progress" },
+    prog:   { c: "#60a5fa", t: "Logged in Progress, no matching Operations flight" },
+    sched:  { c: "#38bdf8", t: "Scheduled in Operations (upcoming)" },
+    plan:   { c: "#6e7681", t: "Planned only — not yet scheduled (TBC)" },
+  };
+  function closeSpModal() {
+    const m = document.getElementById("sp-modal"); if (m) m.remove();
+    document.removeEventListener("keydown", spModalKey);
+  }
+  function spModalKey(e) { if (e.key === "Escape") closeSpModal(); }
+  function buildSpRowsAP127(s) {
+    const R = window.AP127Reconcile;
+    const norm = l => R ? R.normLesson(l) : String(l || "").toUpperCase().trim();
+    const flights = ((window.FLIGHT_DATA && window.FLIGHT_DATA.flights) || [])
+      .filter(f => f.student && f.lesson && f.status !== "Canceled" && R && R.isAP127(f.batch) && R.ccNameNorm(f.student) === R.ccKeyFromFull(s.name));
+    const opsBy = {};
+    flights.forEach(f => {
+      const k = norm(f.lesson); const prev = opsBy[k];
+      if (!prev || ((f.status === "Completed" && prev.status !== "Completed") || (f.status === prev.status && (f.date || "") < (prev.date || "")))) opsBy[k] = f;
+    });
+    const flownBy = {}; (s.flown || []).forEach(f => { if (f.lesson) flownBy[norm(f.lesson)] = f; });
+    const planBy = {}; (s.planned || []).forEach(p => { if (p.lesson) planBy[norm(p.lesson)] = p; });
+    const keys = [...new Set([...Object.keys(flownBy), ...Object.keys(planBy), ...Object.keys(opsBy)])];
+    return keys.map(k => {
+      const pf = flownBy[k], pp = planBy[k], op = opsBy[k], opsDone = op && op.status === "Completed";
+      const lesson = (pf && pf.lesson) || (op && op.lesson) || (pp && pp.lesson) || k;
+      let src, status, date, mins;
+      if (pf || opsDone) {
+        status = "Completed";
+        date = (pf && pf.date) || (op && op.date) || "";
+        mins = (pf && pf.actual_mins) || (op && R && R.hmToMin(op.duration)) || (op && op.durMin) || 0;
+        if (pf && opsDone) {
+          const dd = R ? R.dateDiff(op.date, pf.date) : 0;
+          const oM = R ? R.hmToMin(op.duration) : null, pM = pf.actual_mins;
+          src = ((dd != null && Math.abs(dd) > 1) || (oM != null && pM != null && Math.abs(oM - pM) > 20)) ? "review" : "both";
+        } else src = pf ? "prog" : "ops";
+      } else {
+        date = (op && op.date) || (pp && pp.date) || "";
+        mins = (pp && (pp.mins || pp.planned_mins)) || (op && op.durMin) || 0;
+        if (op) { status = "Scheduled"; src = "sched"; } else { status = "Planned"; src = "plan"; }
+      }
+      return { lesson, date, mins, status, src };
+    });
+  }
+  function openSpModal(s) {
+    closeSpModal();
+    const col = BC[s.batch] || "#888", bg = BB[s.batch] || "rgba(255,255,255,.06)";
+    const ap127 = window.AP127Reconcile && window.AP127Reconcile.isAP127(s.batch);
+    let rows;
+    if (ap127) rows = buildSpRowsAP127(s);
+    else rows = [
+      ...(s.flown || []).map(f => ({ lesson: f.lesson, date: f.date, mins: f.actual_mins, status: "Completed", src: null })),
+      ...(s.planned || []).map(p => ({ lesson: p.lesson, date: p.date, mins: p.mins || p.planned_mins, status: "Planned", src: null })),
+    ];
+    rows.sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+    const SC = { Completed: "var(--done)", Scheduled: "#38bdf8", Planned: "var(--tx3)" };
+    const rowHtml = rows.map(r => {
+      const dotCell = ap127 ? `<td style="text-align:center">${r.src ? `<span title="${SP_SRC[r.src].t}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SP_SRC[r.src].c}"></span>` : ""}</td>` : "";
+      return `<tr>${dotCell}<td style="white-space:nowrap;color:var(--tx2)">${r.date ? fd(r.date) : "—"}</td><td style="font-family:'JetBrains Mono',monospace">${r.lesson || "—"}</td><td style="text-align:right;color:var(--tx2)">${r.mins ? hm(r.mins) : "—"}</td><td><span style="font-size:9px;padding:1px 5px;border-radius:3px;color:${SC[r.status] || "var(--tx3)"};background:${(SC[r.status] || "var(--tx3)")}22">${r.status}</span></td></tr>`;
+    }).join("");
+    const legend = ap127 ? `<div class="sp-legend">${["both", "review", "ops", "prog", "sched", "plan"].map(k => `<span title="${SP_SRC[k].t}"><span class="sp-dot" style="background:${SP_SRC[k].c}"></span>${({ both: "Both agree", review: "Differ", ops: "Ops only", prog: "Prog only", sched: "Scheduled", plan: "Planned/TBC" })[k]}</span>`).join("")}</div>` : "";
+    const note = ap127
+      ? `<div class="sp-note"><b>How this is processed:</b> Progress (PROG) lesson records are the source of truth for completed lessons; upcoming dates are pulled from the live Operations schedule. Dots flag where the two systems agree, differ, or have data in only one. <i>TBC</i> = not yet scheduled in Operations.</div>`
+      : `<div class="sp-note">${s.batch} uses <b>Progress data only</b> (no Operations cross-check). Dates for upcoming lessons are scheduler projections.</div>`;
+    const colW = ap127 ? 5 : 4;
+    const ov = document.createElement("div");
+    ov.id = "sp-modal"; ov.className = "sp-modal-ov";
+    ov.innerHTML = `<div class="sp-modal" onclick="event.stopPropagation()">
+      <div class="sp-modal-h" style="border-bottom:2px solid ${col}">
+        <div><div class="sp-modal-name">${s.name}${s.nick ? ` <span style="font-size:10px;color:${col};background:${bg};padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace">${s.nick}</span>` : ""}</div>
+        <div class="sp-modal-meta">${s.batch} · ${s.done}/${s.total} lessons · ${s.pct.toFixed(1)}% · ${s.remaining} remaining</div></div>
+        <button class="sp-modal-x" aria-label="Close">✕</button>
+      </div>
+      ${note}${legend}
+      <div class="sp-modal-body">
+        <table class="sp-table"><thead><tr>${ap127 ? "<th style='width:24px'>●</th>" : ""}<th>Date</th><th>Lesson</th><th style="text-align:right">Hrs</th><th>Status</th></tr></thead>
+        <tbody>${rowHtml || `<tr><td colspan="${colW}" style="text-align:center;color:var(--tx3);padding:18px">No records</td></tr>`}</tbody></table>
+      </div>
+    </div>`;
+    ov.addEventListener("click", closeSpModal);
+    ov.querySelector(".sp-modal-x").addEventListener("click", closeSpModal);
+    // Append inside the .ngt-prog container so the scoped CSS variables resolve.
+    (document.querySelector(".ngt-prog") || document.body).appendChild(ov);
+    document.addEventListener("keydown", spModalKey);
   }
 
   // renderPlans — verbatim from NGT_001.
@@ -1727,16 +1821,21 @@ function resetPerformanceFilters(){
     const q = document.getElementById("si").value.toLowerCase(); const srt = document.getElementById("ss-sel").value;
     let arr = filtSt();
     if (q) arr = arr.filter(s => s.name.toLowerCase().includes(q) || (s.nick || "").toLowerCase().includes(q));
-    if (srt === "finish") arr = [...arr].sort((a, b) => ((a.finish || "Z") < (b.finish || "Z") ? -1 : 1));
-    else if (srt === "pct") arr = [...arr].sort((a, b) => b.pct - a.pct);
+    if (srt === "pct") arr = [...arr].sort((a, b) => b.pct - a.pct);
     else if (srt === "name") arr = [...arr].sort((a, b) => a.name.localeCompare(b.name));
-    const rankMap = new Map();
-    ["AP124", "AP126", "AP127", "AP129"].forEach(b => {
-      const grp = arr.filter(s => s.batch === b).sort((a, z) => z.pct - a.pct);
-      grp.forEach((s, i) => rankMap.set(s.catc_id, ap127RankClass(i + 1, grp.length)));
-    });
-    document.getElementById("sg").innerHTML = arr.map(s => makeCard(s, rankMap.get(s.catc_id) || "")).join("");
+    const sg = document.getElementById("sg");
+    sg.innerHTML = arr.map(s => makeCard(s)).join("");
     document.getElementById("pc").textContent = arr.length + " students" + (AB === "ALL" ? "" : " · " + AB);
+    // Delegate card clicks → full-record modal (attached once).
+    if (!sg._spBound) {
+      sg.addEventListener("click", e => {
+        const card = e.target.closest(".scard"); if (!card) return;
+        const id = card.getAttribute("data-catc");
+        const st = allSt().find(s => String(s.catc_id) === String(id));
+        if (st) openSpModal(st);
+      });
+      sg._spBound = true;
+    }
   }
   function setPlansBatch(b) { AB = b || "ALL"; renderPlans(); }
 
@@ -1799,11 +1898,11 @@ const MK_PLANS = `
         <option value="AP127">AP127</option><option value="AP129">AP129</option>
       </select>
       <select id="ss-sel" onchange="renderPlans()">
-        <option value="batch">Batch order</option><option value="finish">Finish date</option>
+        <option value="batch">Batch order</option>
         <option value="pct">Progress %</option><option value="name">Name A–Z</option>
       </select>
       <span id="pc" class="d127-meta"></span>
-      <span class="d127-meta" style="margin-left:auto">Upcoming dates = Operations schedule · TBC = not yet scheduled</span>
+      <span class="d127-meta" style="margin-left:auto">AP127 upcoming = Operations schedule (TBC = not yet scheduled) · other batches = projected plan · click a card for all records</span>
     </div>
   </div>
   <div class="sg" id="sg"></div>
