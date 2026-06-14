@@ -6,7 +6,10 @@ const HOUR_END_MIN   = 18; // minimum end — extends dynamically if flights run
 
 // Helper: detect non-flight activities (meetings, briefings, ground school)
 const isMeetingFlt = f => /meeting|briefing|debrief|ground.school/i.test(f.lesson || '') || /meeting|recurrent/i.test(f.batch || '');
-const isSoloFlt = f => /\bsolo\b/i.test(f.lesson || '');
+// Solo = any flight whose CONDITION (or lesson, as fallback) contains "solo"
+// anywhere — covers "Solo", "Solo/Nav", "Night Solo", etc. The marker lives in
+// f.cond in the flight feed (lesson rarely carries it).
+const isSoloFlt = f => /solo/i.test(f.cond || '') || /solo/i.test(f.lesson || '');
 
 // Set of all instructor names across full dataset (computed once)
 const ALL_GANTT_FI_NAMES = new Set(FLIGHTS.map(f => f.instructor).filter(Boolean));
@@ -201,17 +204,31 @@ function GanttBoard() {
 
             // Overlap lanes: pack flights into sub-rows so overlapping schedules are
             // all visible and individually clickable (no stacked, unreachable bars).
-            const laneEnds = [];                    // last end-minute per lane
+            // When grouping by instructor, solo flights get their own lane band BELOW
+            // the instructor's dual flights (they never share a lane with dual sorties).
+            const isSoloRow = f => isSoloFlt(f) && !f._asFiStudent;
+            const packLanes = list => {
+              const ends = []; const map = new Map();
+              [...list].sort((a,b)=>(minutesOf(a.start)||0)-(minutesOf(b.start)||0)).forEach(f=>{
+                const s = minutesOf(f.start)||0;
+                const e = minutesOf(f.end) || (s + (f.durMin||60));
+                let lane = ends.findIndex(end => end <= s);
+                if (lane === -1) { lane = ends.length; ends.push(e); }
+                else ends[lane] = e;
+                map.set(f, lane);
+              });
+              return { map, count: ends.length };
+            };
+            const splitSolo = groupBy === 'instructor';
+            const dualList  = splitSolo ? r.flights.filter(f => !isSoloRow(f)) : r.flights;
+            const soloList  = splitSolo ? r.flights.filter(f =>  isSoloRow(f)) : [];
+            const dualPack  = packLanes(dualList);
+            const soloPack  = packLanes(soloList);
+            const dualLaneN = Math.max(splitSolo ? 0 : 1, dualPack.count);
             const flightLane = new Map();
-            [...r.flights].sort((a,b)=>(minutesOf(a.start)||0)-(minutesOf(b.start)||0)).forEach(f=>{
-              const s = minutesOf(f.start)||0;
-              const e = minutesOf(f.end) || (s + (f.durMin||60));
-              let lane = laneEnds.findIndex(end => end <= s);
-              if (lane === -1) { lane = laneEnds.length; laneEnds.push(e); }
-              else laneEnds[lane] = e;
-              flightLane.set(f, lane);
-            });
-            const laneCount = Math.max(1, laneEnds.length);
+            dualPack.map.forEach((lane, f) => flightLane.set(f, lane));
+            soloPack.map.forEach((lane, f) => flightLane.set(f, dualLaneN + lane)); // offset below dual
+            const laneCount = Math.max(1, dualLaneN + soloPack.count);
             const LANE_H = isMobile ? 30 : 48;
             const rowH   = Math.max(54, laneCount*LANE_H + 6);
 

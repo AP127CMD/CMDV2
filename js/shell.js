@@ -10,21 +10,22 @@
   // Nav model — groups → views. `ready` flips true as each view is ported.
   const GROUPS = [
     { items: [{ id: 'overview', label: 'Home', icon: '◎', ready: true }] },
+    { label: 'Schedule', items: [
+      { id: 'schedule', label: 'Schedule', icon: '▦' },
+    ] },
     { label: 'Operations', items: [
-      { id: 'today', label: 'Day Glance', icon: '✈' }, { id: 'board', label: 'Board', icon: '▤' },
-      { id: 'gantt', label: 'Gantt', icon: '▭' }, { id: 'weekly', label: 'Weekly', icon: '▦' },
-      { id: 'roster', label: 'Roster', icon: '▥' }, { id: 'calendar', label: 'Calendar', icon: '▦' },
+      { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
+      { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
     ] },
     { label: 'Planning', items: [
-      { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
-      { id: 'autoslotfinder', label: 'Auto Slot Finder', icon: '⚡' },
+      { id: 'autoslotfinder', label: 'Slot Finder', icon: '⚡' },
     ] },
     { label: 'Progress', items: [
-      { id: 'cohort', label: 'AP127 Detail', icon: '▰' }, { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
+      { id: 'cohort', label: 'AP127 Detail', icon: '▰' },
       { id: 'student', label: 'Student Lens', icon: '👤' },
     ] },
     { label: 'Training Program', items: [
-      { id: 'plans', label: 'Progress Detail', icon: '▤' },
+      { id: 'plans', label: 'Curriculum Plans', icon: '▤' },
       { id: 'performance', label: "School Perf.", icon: '◷' },
       { id: 'simulation', label: 'Simulation', icon: '◈' },
       { id: 'sim2', label: 'Simulation 2', icon: '⚖' },
@@ -98,6 +99,11 @@
     };
     return h('div', { style: { width: rail ? 58 : 224, flexShrink: 0, background: 'var(--bg-2)', borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', height: mobile ? '100vh' : '100%', position: mobile ? 'fixed' : 'relative', top: 0, left: 0, zIndex: mobile ? 200 : 'auto', boxShadow: mobile ? '6px 0 24px oklch(0 0 0 / 0.45)' : 'none', overflowY: 'auto', transition: 'width .15s ease' } },
       mobile && h('div', { style: { padding: '12px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, h('span', { className: 'head', style: { fontWeight: 700 } }, 'AP127 V2'), h('button', { onClick: onClose, style: { background: 'none', border: 'none', color: 'var(--ink-3)', fontSize: 18, cursor: 'pointer' } }, '✕')),
+      // Mobile-only: surface the PROG/OPS data freshness (SYNC times) hidden from the top bar on small screens.
+      mobile && h('div', { style: { padding: '8px 16px', borderBottom: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 6 } },
+        h('div', { className: 'mono uc', style: { fontSize: 8, color: 'var(--ink-3)', letterSpacing: '0.1em' } }, 'DATA FRESHNESS'),
+        h(FreshnessDot, { kind: 'PROG', fresh: d.freshness.progress }),
+        h(FreshnessDot, { kind: 'OPS', fresh: d.freshness.ops })),
       h('nav', { style: { padding: rail ? '8px 6px' : 8, display: 'flex', flexDirection: 'column', gap: 2 } },
         (_sharePreset ? GROUPS.map(g => ({ ...g, items: g.items.filter(i => _sharePreset.includes(i.id)) })).filter(g => g.items.length > 0) : GROUPS)
         .map((g, gi) => h('div', { key: gi, style: { marginTop: g.label ? 10 : 0 } },
@@ -273,7 +279,8 @@
   // Ops views come from the reused Command Center files (window.*Board).
   function registry() {
     return {
-      today: window.DailyBoard, board: window.OpsBoard, gantt: window.GanttBoard,
+      schedule: window.ScheduleView,
+      board: window.OpsBoard, gantt: window.GanttBoard,
       weekly: window.WeeklyBoard, roster: window.RosterBoard, calendar: window.CalendarBoard,
       autoslotfinder: window.AutoSlotFinderBoard,
       analytics: window.SummaryBoard,
@@ -293,16 +300,17 @@
 
   function Shell() {
     const d = window.useData();
+    const ALIAS = { today: 'overview' };
     const [view, setView] = useState(() => {
       const raw = (location.hash || '').replace('#/', '').replace('#', '') || localStorage.getItem('ap127v2-view') || 'overview';
       if (_sharePreset && !_sharePreset.includes(raw)) return _sharePreset[0];
-      return raw;
+      return ALIAS[raw] || raw;
     });
     const [menu, setMenu] = useState(false);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('ap127v2-collapsed') === '1');
     const mobile = d.isMobile;
     useEffect(() => {
-      const onGo = e => { if (_sharePreset && !_sharePreset.includes(e.detail)) return; setView(e.detail); setMenu(false); };
+      const onGo = e => { const v = ALIAS[e.detail] || e.detail; if (_sharePreset && !_sharePreset.includes(v)) return; setView(v); setMenu(false); };
       window.addEventListener('ap127-go', onGo); return () => window.removeEventListener('ap127-go', onGo);
     }, []);
     useEffect(() => { localStorage.setItem('ap127v2-view', view); try { history.replaceState(null, '', location.search + '#/' + view); } catch (e) {} }, [view]);

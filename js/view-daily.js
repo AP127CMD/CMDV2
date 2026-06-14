@@ -119,7 +119,7 @@ function StackBar({ pending = 0, completed = 0, canceled = 0, standby = 0, max =
   );
 }
 
-function DailyBoard() {
+function DayGlancePanels() {
   const app = useApp();
   const { isMobile } = app;
   const date = app.date;
@@ -288,53 +288,28 @@ function DailyBoard() {
 
   const gridCols = isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))';
 
+  // AP-127 Spotlight table — Board-style sortable columns (Schedule Day parity)
+  const [spotSort, setSpotSort] = useS_d('start');
+  const [spotDir, setSpotDir] = useS_d('asc');
+  const SPOT_SORT = {
+    start: f => minutesOf(f.start) ?? 9999, end: f => minutesOf(f.end) ?? 9999,
+    dur: f => f.durMin ?? 0, batch: f => f.batch ?? '', student: f => f.student ?? '',
+    instructor: f => f.instructor ?? '', type: f => f.type ?? '', tail: f => f.tail ?? '',
+    lesson: f => f.lesson ?? '', status: f => f.status ?? '',
+  };
+  const spotSortBy = col => {
+    if (spotSort === col) { if (spotDir === 'asc') setSpotDir('desc'); else { setSpotSort('start'); setSpotDir('asc'); } }
+    else { setSpotSort(col); setSpotDir('asc'); }
+  };
+  const ap127Sorted = (() => {
+    const arr = [...ap127.list];
+    const fn = SPOT_SORT[spotSort] || SPOT_SORT.start;
+    arr.sort((a, b) => { const va = fn(a), vb = fn(b); const cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb)); return spotDir === 'asc' ? cmp : -cmp; });
+    return arr;
+  })();
+
   return (
-    <ArtboardShell style={{ display: 'flex', flexDirection: 'column' }}>
-      <ThemeStyle/>
-
-      {/* Top bar */}
-      <div style={{
-        minHeight: 38, padding: '0 16px', borderBottom: '1px solid var(--line)',
-        background: 'var(--bg-2)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--col-done)', boxShadow: '0 0 8px var(--col-done)', animation: 'pulse 2s ease-in-out infinite' }}/>
-          <ViewIcon id="daily" size={12} color="var(--ink-2)"/>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <div className="mono uc" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', letterSpacing: '0.08em' }}>AP127 COMMAND CENTER</div>
-            <div className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)', letterSpacing: '0.06em' }}>DAY AT A GLANCE</div>
-          </div>
-        </div>
-        <div style={{ flex: 1 }}/>
-        <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>{flights.length} FLTS · {FLIGHTS.length} TOTAL</div>
-        <RefreshButton/>
-        <LastUpdate/>
-      </div>
-
-      {/* Scrollable body */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <div style={{ padding: isMobile ? '8px' : '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-          {/* Date hero — click to open calendar picker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <DateCalendarTrigger/>
-            {isCurrentDay && (
-              <span className="mono uc" style={{ fontSize:9, color:'var(--col-pending)', padding:'2px 7px', border:'1px solid var(--col-pending)', borderRadius:3 }}>TODAY</span>
-            )}
-          </div>
-
-          {/* Hero KPI strip — School performance */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <DKPI label="TOTAL"     value={stats.total}        sub={`${hoursFmt(stats.schedHours)} HRS SCHED`} color="var(--col-pending)" small={isMobile}/>
-            <DKPI label="COMPLETED" value={stats.completed}    sub={stats.completionRate != null ? `${stats.completionRate.toFixed(0)}% · ${hoursFmt(stats.flownHours)}H` : `${hoursFmt(stats.flownHours)}H`} color="var(--col-done)" small={isMobile}/>
-            <DKPI label="PENDING"   value={stats.pending}      sub={`${stats.standby} STBY · ${hoursFmt(stats.pendingHours)}H`} color="var(--col-pending)" small={isMobile}/>
-            <DKPI label="CANCELED"  value={stats.canceled}     sub={`${hoursFmt(stats.canceledHours)} HRS`} color="var(--col-cancel)" small={isMobile}/>
-            <DKPI label="HOURS"     value={hoursFmt(stats.flownHours)} sub={`${hoursFmt(stats.schedHours)} PLAN`} color="var(--col-done)" small={isMobile}/>
-            <DKPI label="SIM"       value={stats.sim}          sub={`${hoursFmt(stats.simHours)} HRS`} color="var(--col-sim)" small={isMobile}/>
-            <DKPI label="A/C USED"  value={stats.tails.size}   sub="AIRCRAFT" color="var(--ink-2)" small={isMobile}/>
-            <DKPI label="INSTR"     value={stats.instructors.size} sub="ACTIVE" color="var(--ink-2)" small={isMobile}/>
-            <DKPI label="◆ AP-127"  value={stats.ap127}        sub={`${ap127.students.size} STUDENTS`} color="var(--highlight)" small={isMobile}/>
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
           {/* Charts row — Schedule Pulse + Batch Breakdown side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 12 }}>
@@ -630,61 +605,62 @@ function DailyBoard() {
                   <DKPI label="HOURS"      value={hoursFmt(ap127.hours)}   sub="PLANNED"    color="var(--highlight)" small={isMobile}/>
                 </div>
 
-                {/* AP-127 student list */}
+                {/* AP-127 student list — Board-style sortable table (Schedule Day parity) */}
                 <div style={{ background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line-soft)', overflow: 'hidden' }}>
-                  <div className="mono uc" style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? '60px 1fr 70px 60px' : '60px 1.4fr 1.4fr 100px 70px 60px 90px',
-                    gap: 8, padding: '6px 12px', fontSize: 9, color: 'var(--ink-3)',
-                    borderBottom: '1px solid var(--line-soft)', background: 'var(--bg)',
-                  }}>
-                    <span>TIME</span>
-                    <span>STUDENT</span>
-                    {!isMobile && <span>INSTRUCTOR</span>}
-                    <span>LESSON</span>
-                    {!isMobile && <span>TAIL</span>}
-                    <span>DUR</span>
-                    <span>STATUS</span>
-                  </div>
-                  <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-                    {ap127.list.map((f, i) => (
-                      <div key={f.id + i}
-                        onClick={() => app.setDrawer(f.id)}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: isMobile ? '60px 1fr 70px 60px' : '60px 1.4fr 1.4fr 100px 70px 60px 90px',
-                          gap: 8, padding: '6px 12px', fontSize: 11, alignItems: 'center',
-                          borderBottom: '1px solid var(--line-soft)', cursor: 'pointer',
-                          background: i % 2 ? 'transparent' : 'color-mix(in oklch,var(--ink) 1.5%,transparent)',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in oklch,var(--highlight) 8%,transparent)'}
-                        onMouseLeave={e => e.currentTarget.style.background = i % 2 ? 'transparent' : 'color-mix(in oklch,var(--ink) 1.5%,transparent)'}>
-                        <span className="mono num" style={{ fontWeight: 600, color: 'var(--ink)' }}>{f.start}</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.student || '—'}</span>
-                          {f.student && leaveMap[f.student] && <LeaveBadge reason={leaveMap[f.student]}/>}
+                  <div style={{ overflowX: 'auto' }}>
+                    <div className="mono uc" style={{
+                      display: 'grid', gridTemplateColumns: '110px 90px 1.3fr 1.3fr 100px 68px 52px 68px 76px 105px',
+                      minWidth: 900, gap: 10, padding: '7px 12px', fontSize: 9, color: 'var(--ink-3)',
+                      borderBottom: '1px solid var(--line)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 1,
+                    }}>
+                      {[['status', 'STATUS'], ['batch', 'BATCH'], ['student', 'STUDENT'], ['instructor', 'INSTRUCTOR'], ['lesson', 'LESSON'], ['start', 'START'], ['dur', 'DUR'], ['end', 'END'], ['type', 'A/C'], ['tail', 'TAIL']].map(([k, label]) => (
+                        <span key={k} onClick={() => spotSortBy(k)} title={`Sort by ${label.toLowerCase()}`}
+                          style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 3, color: spotSort === k ? 'var(--col-pending)' : 'var(--ink-3)' }}>
+                          {label}{spotSort === k && <span style={{ fontSize: 8 }}>{spotDir === 'asc' ? '▲' : '▼'}</span>}
                         </span>
-                        {!isMobile && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', color: 'var(--ink-2)' }}>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.instructor || '—'}</span>
-                            {f.instructor && leaveMap[f.instructor] && <LeaveBadge reason={leaveMap[f.instructor]}/>}
-                          </span>
-                        )}
-                        <span className="mono" style={{ color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.lesson}</span>
-                        {!isMobile && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <span className="mono" style={{ fontSize: 10, color: isTailMaint(f.tail) ? 'var(--col-cancel)' : 'var(--ink-2)', fontWeight: isTailMaint(f.tail) ? 600 : 400 }}>{f.tail || 'TBD'}</span>
-                            {isTailMaint(f.tail) && <GndBadge/>}
-                          </span>
-                        )}
-                        <span className="mono num" style={{ fontSize: 10, color: 'var(--ink-3)' }}>{f.duration || ''}</span>
-                        <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                          <StatusPill status={f.status}/>
-                          {f.isStandby && <StandbyTag/>}
-                          {f.isSim && <Tag color="var(--col-sim)">SIM</Tag>}
-                        </span>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                    <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                      {ap127Sorted.map((f, i) => {
+                        const color = STATUS_COLOR(f);
+                        const dim = f.status === 'Canceled';
+                        return (
+                          <div key={f.id + i} onClick={() => app.setDrawer(f.id)} style={{
+                            display: 'grid', gridTemplateColumns: '110px 90px 1.3fr 1.3fr 100px 68px 52px 68px 76px 105px',
+                            minWidth: 900, gap: 10, padding: '7px 12px', fontSize: 11, alignItems: 'center',
+                            borderBottom: '1px solid var(--line-soft)', borderLeft: `3px solid ${color}`,
+                            boxShadow: 'inset 7px 0 0 -4px var(--highlight)', cursor: 'pointer', opacity: dim ? 0.5 : 1,
+                            background: i % 2 ? 'transparent' : 'color-mix(in oklch,var(--ink) 1.5%,transparent)',
+                          }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'color-mix(in oklch,var(--highlight) 8%,transparent)'}
+                            onMouseLeave={e => e.currentTarget.style.background = i % 2 ? 'transparent' : 'color-mix(in oklch,var(--ink) 1.5%,transparent)'}>
+                            <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <StatusPill status={f.status}/>
+                              {f.isStandby && <StandbyTag/>}
+                              {f.isSim && <Tag color="var(--col-sim)">SIM</Tag>}
+                            </span>
+                            <span className="mono uc" style={{ fontSize: 10, color: 'var(--highlight)', fontWeight: 600 }}>{f.batch}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.student || '—'}</span>
+                              {f.student && leaveMap[f.student] && <LeaveBadge reason={leaveMap[f.student]}/>}
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', color: 'var(--ink-2)' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.instructor || '—'}</span>
+                              {f.instructor && leaveMap[f.instructor] && <LeaveBadge reason={leaveMap[f.instructor]}/>}
+                            </span>
+                            <span className="mono" style={{ color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.lesson}</span>
+                            <span className="mono num" style={{ fontWeight: 600, color: 'var(--ink)' }}>{f.start}</span>
+                            <span className="mono num" style={{ fontSize: 10, color: 'var(--ink-3)' }}>{f.duration || ''}</span>
+                            <span className="mono num" style={{ color: 'var(--ink-2)' }}>{f.end}</span>
+                            <span className="mono" style={{ color: 'var(--ink-2)' }}>{f.type}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span className="mono" style={{ fontSize: 10, color: isTailMaint(f.tail) ? 'var(--col-cancel)' : 'var(--ink-2)', fontWeight: isTailMaint(f.tail) ? 600 : 400 }}>{f.tail || 'TBD'}</span>
+                              {isTailMaint(f.tail) && <GndBadge/>}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
@@ -707,14 +683,8 @@ function DailyBoard() {
               </div>
             )}
           </Section>
-
-          <div style={{ height: 8 }}/>
-        </div>
-      </div>
-
-      <Drawer/>
-    </ArtboardShell>
+    </div>
   );
 }
 
-window.DailyBoard = DailyBoard;
+window.DayGlancePanels = DayGlancePanels;
