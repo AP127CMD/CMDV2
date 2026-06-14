@@ -383,8 +383,8 @@ function renderAP127Detail(){
   const totalHours=ap127CurriculumHours()*total;
   const avgDone=total?doneAll/total:0;
   const maxDate=all.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"";
-  const sortedLead=ap127PaceSort(all,maxDate);
-  const sortedLag=ap127BehindSort(all,maxDate);
+  const sortedLead=ap127PaceSort(all,today0);
+  const sortedLag=ap127BehindSort(all,today0);
   const aheadNames=sortedLead.slice(0,3).map(s=>ap127ShortName(s.name)).join(", ");
   const lagNames=sortedLag.slice(0,3).map(s=>ap127ShortName(s.name)).join(", ");
   const prg=(total&&curriculum)?(doneAll/(total*curriculum)*100):0;
@@ -419,13 +419,13 @@ function renderAP127Detail(){
 
   const today=ap127TodayBKK();
   const q=(document.getElementById("d127-q")?.value||"").toLowerCase().trim();
-  let rows=ap127SortRows(all,maxDate,planMap,today);
+  let rows=ap127SortRows(all,today,planMap,today);
   if(q)rows=rows.filter(s=>s.name.toLowerCase().includes(q)||(s.nick||"").toLowerCase().includes(q)||(s.fi||"").toLowerCase().includes(q));
   AP127_VIEW_ROWS=rows;
   const updTxt=G._updated?new Date(G._updated).toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
   document.getElementById("d127-asof").textContent=`Updated ${updTxt}`;
 
-  const paced=ap127PaceSort(all,maxDate);
+  const paced=ap127PaceSort(all,today);
   const leaderDone=paced[0]?.done||0,lagDone=paced.at(-1)?.done||0;
   const spread=Math.max(leaderDone-lagDone,1),step=Math.max(Math.ceil(spread/3),1);
   const aheadLo=leaderDone-step+1,midLo=leaderDone-step*2+1;
@@ -437,7 +437,7 @@ function renderAP127Detail(){
   const avgPctAll=curriculum?rows.reduce((a,s)=>a+(s.done||0),0)/rows.length/curriculum*100:0;
   const sumHrsAll=rows.reduce((a,s)=>a+ap127Hours(s),0);
   const sumDoneAll=rows.reduce((a,s)=>a+(s.done||0),0);
-  const validIdles=rows.map(s=>ap127IdleDays(s,maxDate)).filter(v=>v!==9999);
+  const validIdles=rows.map(s=>ap127IdleDays(s,today)).filter(v=>v!==9999);
   const avgIdleAll=validIdles.length?(validIdles.reduce((a,v)=>a+v,0)/validIdles.length):0;
   const validDayDeltas=rows.map(s=>ap127DayDelta(s,planMap,today)).filter(v=>v!==null);
   const avgDayDeltaAll=validDayDeltas.length?Math.round(validDayDeltas.reduce((a,v)=>a+v,0)/validDayDeltas.length):0;
@@ -454,7 +454,7 @@ function renderAP127Detail(){
     const hrsDelta=hrs-plannedHrsToday;
     const hrsDeltaTxt=(hrsDelta>=0?"+":"")+hrsDelta.toFixed(1)+"h";
     const hrsDeltaColor=hrsDelta>=0?"#51cf66":"#ff6b6b";
-    const idle=ap127IdleDays(s,maxDate);
+    const idle=ap127IdleDays(s,today);
     const idleTxt=idle===9999?"-":idle.toString();
     let idleStyle="";
     if(idle!==9999){if(idle<=2)idleStyle="color:var(--tx)";else if(idle<=5)idleStyle="color:#fbbf24";else if(idle<=10)idleStyle="color:#ff6b6b";else idleStyle="color:#ff6b6b;background:rgba(255,255,255,0.85);border-radius:3px;padding:1px 5px;font-weight:700";}
@@ -508,7 +508,7 @@ function closeAP127Drawer(){document.getElementById("d127-draw-ov").classList.re
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeAP127Drawer();});
 
 function buildAP127Timeline(all,curriculum,maxDate){
-  const sorted=ap127PaceSort(all,maxDate);
+  const sorted=ap127PaceSort(all,ap127TodayBKK());
   const wrap=document.getElementById("d127-timeline-wrap");
   if(wrap)wrap.style.height=Math.max(420,sorted.length*22)+"px";
   const today=ap127TodayBKK();
@@ -741,8 +741,8 @@ function buildAP127Timeline(all,curriculum,maxDate){
 
 let AP127_RACE_SOLO=null;
 function buildAP127RaceChart(all,curriculum,maxDate){
-  const racers=ap127PaceSort(all,maxDate);
   const today=ap127TodayBKK();
+  const racers=ap127PaceSort(all,today);
   const plannedDates=(G.cur127||[]).map(c=>c.planned_date).filter(d=>d&&d<=today).sort();
   const dateSet=new Set(plannedDates);
   dateSet.add(today);
@@ -815,7 +815,7 @@ function buildAP127RaceChart(all,curriculum,maxDate){
 }
 
 function buildAP127OverallChart(all,curriculum,maxDate){
-  const sorted=ap127PaceSort(all,maxDate);
+  const sorted=ap127PaceSort(all,ap127TodayBKK());
   const maxDone=Math.max(...sorted.map(s=>s.done||0),1);
   CHARTS.ap127overall=mkC("d127-overall",{
     type:"bar",
