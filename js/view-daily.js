@@ -127,8 +127,32 @@ function DayGlancePanels() {
   const isCurrentDay = date === today;
   const { wd, mo, day, y } = fmtDay(date);
 
-  // Source of truth — all flights for the selected date (no filters applied here)
-  const flights = useM_d(() => FLIGHTS.filter(f => f.date === date), [date]);
+  // Filter + sort state — all hooks before memos
+  const [filterBatches, setFilterBatches] = useS_d(null); // null = all batches
+  const [showSim, setShowSim] = useS_d(true);
+  const [showStandby, setShowStandby] = useS_d(true);
+  const [showCanceled, setShowCanceled] = useS_d(true);
+  const [spotSort, setSpotSort] = useS_d('start');
+  const [spotDir, setSpotDir] = useS_d('asc');
+
+  // All flights for this date — unfiltered, used to build batch chips
+  const allFlights = useM_d(() => FLIGHTS.filter(f => f.date === date), [date]);
+
+  // Batches present today, AP-127 first then ordered by batch number
+  const availBatches = useM_d(() => {
+    const order = ['AP-127', 'AP-126', 'AP-124', 'AP-128', 'AP-129'];
+    return [...new Set(allFlights.map(f => f.batch).filter(Boolean))]
+      .sort((a, b) => { const ia = order.indexOf(a), ib = order.indexOf(b); if (ia !== -1 && ib !== -1) return ia - ib; if (ia !== -1) return -1; if (ib !== -1) return 1; return a.localeCompare(b); });
+  }, [allFlights]);
+
+  // Filtered flights — drives all stats and panels
+  const flights = useM_d(() =>
+    allFlights
+      .filter(f => !filterBatches || filterBatches.has(f.batch || ''))
+      .filter(f => showSim || !f.isSim)
+      .filter(f => showStandby || !f.isStandby)
+      .filter(f => showCanceled || f.status !== 'Canceled'),
+  [allFlights, filterBatches, showSim, showStandby, showCanceled]);
 
   // Comprehensive day stats
   const stats = useM_d(() => {
@@ -289,8 +313,6 @@ function DayGlancePanels() {
   const gridCols = isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))';
 
   // AP-127 Spotlight table — Board-style sortable columns (Schedule Day parity)
-  const [spotSort, setSpotSort] = useS_d('start');
-  const [spotDir, setSpotDir] = useS_d('asc');
   const SPOT_SORT = {
     start: f => minutesOf(f.start) ?? 9999, end: f => minutesOf(f.end) ?? 9999,
     dur: f => f.durMin ?? 0, batch: f => f.batch ?? '', student: f => f.student ?? '',
@@ -308,8 +330,55 @@ function DayGlancePanels() {
     return arr;
   })();
 
+  const batchColor = n => {
+    if (n === 'AP-127') return 'var(--batch-ap127)';
+    if (n === 'AP-126') return 'var(--batch-ap126)';
+    if (n === 'AP-124') return 'var(--batch-ap124)';
+    if (n === 'AP-128') return 'var(--batch-ap128)';
+    if (n === 'AP-129') return 'var(--batch-ap129)';
+    if (/^HP/i.test(n)) return 'var(--col-stby)';
+    return 'var(--ink-3)';
+  };
+  const toggleBatch = b => {
+    setFilterBatches(prev => {
+      const current = prev ? new Set(prev) : new Set(availBatches);
+      if (current.has(b)) { current.delete(b); } else { current.add(b); }
+      return (current.size === 0 || current.size === availBatches.length) ? null : current;
+    });
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* Filter bar */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', padding: '7px 10px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 6 }}>
+            <span className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)', flexShrink: 0 }}>BATCH</span>
+            <span onClick={() => setFilterBatches(null)} className="mono uc" style={{ padding: '2px 8px', fontSize: 9, borderRadius: 3, cursor: 'pointer', background: !filterBatches ? 'color-mix(in oklch,var(--ink) 10%,transparent)' : 'transparent', border: `1px solid ${!filterBatches ? 'var(--ink-2)' : 'var(--line)'}`, color: !filterBatches ? 'var(--ink)' : 'var(--ink-3)', fontWeight: !filterBatches ? 700 : 400 }}>ALL</span>
+            {availBatches.map(b => {
+              const sel = !filterBatches || filterBatches.has(b);
+              const col = batchColor(b);
+              return (
+                <span key={b} onClick={() => toggleBatch(b)} className="mono uc" style={{ padding: '2px 8px', fontSize: 9, borderRadius: 3, cursor: 'pointer', background: sel ? `color-mix(in oklch,${col} 18%,transparent)` : 'transparent', border: `1px solid ${sel ? col : 'var(--line)'}`, color: sel ? col : 'var(--ink-3)', fontWeight: b === HIGHLIGHT_BATCH ? 700 : 400 }}>{b}</span>
+              );
+            })}
+            <span style={{ flex: 1 }}/>
+            {[['SIM', showSim, setShowSim, 'var(--col-sim)'], ['STANDBY', showStandby, setShowStandby, 'var(--col-stby)'], ['CANCELED', showCanceled, setShowCanceled, 'var(--col-cancel)']].map(([label, val, setter, col]) => (
+              <span key={label} onClick={() => setter(!val)} className="mono uc" style={{ padding: '2px 8px', fontSize: 9, borderRadius: 3, cursor: 'pointer', background: val ? `color-mix(in oklch,${col} 18%,transparent)` : 'transparent', border: `1px solid ${val ? col : 'var(--line)'}`, color: val ? col : 'var(--ink-3)' }}>{label}</span>
+            ))}
+          </div>
+
+          {/* Day KPI strip — all-school summary for the selected date */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <DKPI label="TOTAL"     value={stats.total}              sub={`${hoursFmt(stats.schedHours)} HRS SCHED`}  color="var(--col-pending)"  small={isMobile}/>
+            <DKPI label="COMPLETED" value={stats.completed}          sub={stats.completionRate != null ? `${stats.completionRate.toFixed(0)}% · ${hoursFmt(stats.flownHours)}H` : `${hoursFmt(stats.flownHours)}H`} color="var(--col-done)" small={isMobile}/>
+            <DKPI label="PENDING"   value={stats.pending}            sub={`${stats.standby} STBY · ${hoursFmt(stats.pendingHours)}H`} color="var(--col-pending)" small={isMobile}/>
+            <DKPI label="CANCELED"  value={stats.canceled}           sub={`${hoursFmt(stats.canceledHours)} HRS`}    color="var(--col-cancel)"   small={isMobile}/>
+            <DKPI label="HOURS"     value={hoursFmt(stats.flownHours)} sub={`${hoursFmt(stats.schedHours)} PLAN`}   color="var(--col-done)"     small={isMobile}/>
+            <DKPI label="SIM"       value={stats.sim}                sub={`${hoursFmt(stats.simHours)} HRS`}         color="var(--col-sim)"      small={isMobile}/>
+            <DKPI label="A/C USED"  value={stats.tails.size}         sub="AIRCRAFT"                                  color="var(--ink-2)"        small={isMobile}/>
+            <DKPI label="INSTR"     value={stats.instructors.size}   sub="ACTIVE"                                    color="var(--ink-2)"        small={isMobile}/>
+            <DKPI label="◆ AP-127"  value={stats.ap127}              sub={`${ap127.students.size} STUDENTS`}         color="var(--highlight)"    small={isMobile}/>
+          </div>
 
           {/* Charts row — Schedule Pulse + Batch Breakdown side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 12 }}>
