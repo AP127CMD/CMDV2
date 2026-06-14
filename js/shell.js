@@ -133,10 +133,13 @@
   // sees where they stand against the cohort and the leader. Presentational only;
   // the comparison series are computed in StudentLensView and passed in.
   function StudentProgressChart({ student, curriculum, today, etcDate, mobile, batchAvg, leader, leaderNick }) {
-    const ref = React.useRef(null);
+    const canvasRef = React.useRef(null);
+    const chartRef = React.useRef(null);
+    const resetZoom = () => { try { chartRef.current && chartRef.current.resetZoom(); } catch (e) {} };
     React.useEffect(() => {
-      const ctx = ref.current; if (!ctx || !window.Chart) return;
+      const ctx = canvasRef.current; if (!ctx || !window.Chart) return;
       try { const ex = window.Chart.getChart(ctx); if (ex) ex.destroy(); } catch (e) {}
+      if (chartRef.current) { try { chartRef.current.destroy(); } catch (e) {} chartRef.current = null; }
       const ink2 = cssVar('--ink-2', '#8b949e'), ink3 = cssVar('--ink-3', '#6e7681'), line = cssVar('--line', '#21262d');
       const accent = cssVar('--highlight', '#e88aff'), done = cssVar('--col-done', '#7acf7e'), pend = cssVar('--col-pending', '#e9bd63');
       const flown = (student.flown || []).filter(f => f.date).slice().sort((a, b) => a.date.localeCompare(b.date));
@@ -145,8 +148,11 @@
       let pacc = 0; const plan = planDates.map(c => ({ x: c.planned_date, y: ++pacc }));
       const total = student.total || (curriculum || []).length || 101;
       const doneN = student.done || actual.length || 0;
-      // Forward projection: today's standing → ETC at current pace.
       const projection = (etcDate && etcDate > today) ? [{ x: today, y: doneN }, { x: etcDate, y: total }] : [];
+      // Explicit x range — spans from first flown date to etcDate so projection is always visible.
+      const allX = [...flown.map(f => f.date), ...planDates.map(c => c.planned_date), ...(batchAvg || []).map(p => p.x)].filter(Boolean).sort();
+      const xMin = allX[0] || today;
+      const xMax = etcDate || planDates.at(-1)?.planned_date || allX.at(-1) || today;
       const ds = [
         { label: 'Plan', data: plan, borderColor: ink3, borderDash: [6, 4], borderWidth: 1.4, pointRadius: 0, tension: 0, order: 5 },
         { label: 'Batch avg', data: batchAvg || [], borderColor: ink2, borderWidth: 1.4, pointRadius: 0, tension: .25, order: 4 },
@@ -154,26 +160,41 @@
       if (leader && leader.length) ds.push({ label: 'Leader' + (leaderNick ? ' · ' + leaderNick : ''), data: leader, borderColor: done, borderWidth: 1.4, borderDash: [2, 3], pointRadius: 0, tension: 0, order: 3 });
       if (projection.length) ds.push({ label: 'Projection', data: projection, borderColor: pend, borderWidth: 2, borderDash: [3, 3], pointRadius: 3, pointStyle: 'rectRot', tension: 0, order: 2 });
       ds.push({ label: 'You', data: actual, borderColor: accent, backgroundColor: accent + '22', borderWidth: 2.6, pointRadius: mobile ? 0 : 2, pointHoverRadius: 4, tension: 0, fill: false, order: 1 });
-      let chart;
       try {
-        chart = new window.Chart(ctx, {
-          type: 'line',
-          data: { datasets: ds },
+        chartRef.current = new window.Chart(ctx, {
+          type: 'line', data: { datasets: ds },
           options: {
             responsive: true, maintainAspectRatio: false, parsing: { xAxisKey: 'x', yAxisKey: 'y' },
             interaction: { mode: 'index', intersect: false },
-            plugins: { datalabels: { display: false },
+            plugins: {
+              datalabels: { display: false },
               legend: { labels: { color: ink2, usePointStyle: true, pointStyle: 'line', font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, boxWidth: 16, padding: mobile ? 6 : 8 } },
-              tooltip: { callbacks: { title: c => { const r = c[0]?.raw; try { return r ? new Date(r.x + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''; } catch { return r?.x || ''; } },
-                label: c => `${c.dataset.label}: ${Math.round(c.raw?.y || 0)} lessons` } } },
-            scales: { x: { type: 'time', time: { unit: 'month', displayFormats: { month: 'MMM yy' } }, ticks: { color: ink3, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, maxTicksLimit: mobile ? 5 : 9 }, grid: { color: line } },
-              y: { beginAtZero: true, suggestedMax: total, ticks: { color: ink2, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, precision: 0 }, grid: { color: line } } },
+              tooltip: { callbacks: {
+                title: c => { const r = c[0]?.raw; try { return r ? new Date(r.x + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''; } catch { return r?.x || ''; } },
+                label: c => `${c.dataset.label}: ${Math.round(c.raw?.y || 0)} lessons`
+              }},
+              zoom: {
+                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+                pan:  { enabled: true, mode: 'x' },
+              },
+            },
+            scales: {
+              x: { type: 'time', min: xMin, max: xMax,
+                time: { unit: 'month', displayFormats: { day: 'd MMM', week: 'd MMM', month: 'MMM yy' } },
+                ticks: { color: ink3, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, maxTicksLimit: mobile ? 5 : 12, source: 'auto' },
+                grid: { color: line } },
+              y: { beginAtZero: true, suggestedMax: total,
+                ticks: { color: ink2, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, precision: 0 },
+                grid: { color: line } },
+            },
           },
         });
       } catch (e) {}
-      return () => { try { chart && chart.destroy(); } catch (e) {} };
+      return () => { try { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } } catch (e) {} };
     }, [student, curriculum, today, etcDate, mobile, batchAvg, leader, leaderNick]);
-    return h('div', { style: { position: 'relative', height: mobile ? 220 : 290 } }, h('canvas', { ref }));
+    return h('div', { style: { position: 'relative', height: mobile ? 220 : 380 } },
+      h('button', { onClick: resetZoom, title: 'Reset zoom', style: { position: 'absolute', top: 4, right: 4, zIndex: 10, fontSize: 10, padding: '2px 7px', borderRadius: 4, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink-2)', cursor: 'pointer' } }, '⟳ Zoom'),
+      h('canvas', { ref: canvasRef }));
   }
 
   // Combined, sortable OPS+PROG table for one student. One row per lesson;
@@ -201,7 +222,7 @@
     const arrow = k => sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
     const th = (k, label, extra) => h('th', { onClick: () => click(k), style: { cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', ...(extra || {}) }, title: 'Sort by ' + label }, label, arrow(k));
     return h('div', { style: { overflowX: 'auto' } }, h('table', { className: 'tb', style: { width: '100%' } },
-      h('thead', null, h('tr', null,
+      h('thead', { style: { position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 } }, h('tr', null,
         h('th', { style: { width: 22 }, title: 'Data source' }, '●'),
         th('date', 'Date'),
         th('lesson', 'Lesson'),
@@ -356,25 +377,40 @@
       h('div', { className: 'kv', style: { fontSize: 18 } }, valTxt),
       h('div', { className: 'ks', style: { color: delta >= 0 ? 'var(--col-done)' : 'var(--col-cancel)' } }, `${delta >= 0 ? '+' : ''}${unit === 'h' ? delta.toFixed(1) + 'h' : delta + ''} ${delta >= 0 ? 'ahead' : 'behind'}`));
 
-    return h('div', { style: { padding: 16, display: 'grid', gap: 14, overflow: 'auto', height: '100%' } },
-      h('div', { className: 'panel' }, h('div', { className: 'ph' },
-          h('span', { className: 'pt' }, 'Student Lens · ' + s.nick),
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-            h('span', { className: 'ps' }, s.name + ' · ' + (s.catc_id || '')),
-            h('button', { className: 'chip', onClick: () => d.setStudentLens(null), title: 'Pick a different student' }, '↺ Change'))),
-        h('div', { className: 'pb' }, h('div', { className: 'kpis' },
-          h('div', { className: 'kpi acc' }, h('div', { className: 'kl' }, 'Progress'), h('div', { className: 'kv' }, (s.pct || 0).toFixed(0) + '%'), h('div', { className: 'ks' }, `${s.done}/${s.total} lessons`)),
-          kpiDelta('Lessons vs Plan', `${s.done || 0} / ${expectedToday}`, lesDelta, ''),
-          kpiDelta('Hours vs Plan', `${hoursDone.toFixed(1)} / ${plannedHrsToday.toFixed(0)}`, hrsDelta, 'h'),
-          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Next Lesson'), h('div', { className: 'kv', style: { fontSize: 18 } }, s.next_lesson || '—'), h('div', { className: 'ks' }, upcomingOps[0] ? 'sched ' + fd(upcomingOps[0].date) : 'not scheduled')),
-          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Idle Days'), h('div', { className: 'kv', style: { color: idle != null && idle >= 6 ? 'var(--col-cancel)' : idle != null && idle >= 3 ? 'var(--col-pending)' : 'var(--ink)' } }, idle == null ? '—' : idle), h('div', { className: 'ks' }, lastDate ? 'last ' + fd(lastDate) : 'no flights')),
-          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Proj. Finish'), h('div', { className: 'kv', style: { fontSize: 16, color: 'var(--col-pending)' } }, etcDate ? fd(etcDate) : '—'), h('div', { className: 'ks' }, 'ETC at current pace')),
-          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Total Hours' ), h('div', { className: 'kv', style: { fontSize: 16 } }, `${hoursDone.toFixed(0)}/${totalHrs.toFixed(0)}`), h('div', { className: 'ks' }, 'flown / curriculum')),
-          h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Instructor'), h('div', { className: 'kv', style: { fontSize: 15 } }, (d.FI_FULL[s.fi] || s.fi || '—')), h('div', { className: 'ks' }, (s.se || '—') + ' · ' + opsFlights.length + ' ops')),
-        ))),
+    const idleCol = idle != null && idle >= 6 ? 'var(--col-cancel)' : idle != null && idle >= 3 ? 'var(--col-pending)' : 'var(--ink-2)';
+    const kStat = (label, val, sub, col) => h('div', { key: label, style: { minWidth: 72 } },
+      h('div', { style: { fontSize: 9, color: 'var(--ink-3)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 1 } }, label),
+      h('div', { style: { fontSize: 13, fontWeight: 600, color: col || 'var(--ink)', fontFamily: 'JetBrains Mono', lineHeight: 1.2 } }, val),
+      sub && h('div', { style: { fontSize: 9, color: 'var(--ink-3)', fontFamily: 'JetBrains Mono' } }, sub));
+    return h('div', { style: { overflowY: 'auto', height: '100%' } },
+      h('div', { style: { padding: 16, display: 'flex', flexDirection: 'column', gap: 14 } },
+      // ── Compact header + KPI bar ──
       h('div', { className: 'panel' },
-        h('div', { className: 'ph' }, h('span', { className: 'pt' }, 'Progress · You vs Batch'), h('span', { className: 'ps' }, etcDate ? 'projected finish ' + fd(etcDate) + (compare.isSelfLeader ? ' · you lead the batch' : '') : 'cumulative lessons over time')),
+        h('div', { className: 'ph' },
+          h('div', { style: { flex: 1 } },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              h('span', { className: 'pt' }, s.nick || s.name),
+              h('span', { className: 'ps' }, s.name + ' · ' + (s.catc_id || '') + ' · ' + s.batch)),
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 } },
+              h('div', { style: { flex: 1, height: 4, borderRadius: 99, background: 'var(--line)' } },
+                h('div', { style: { height: '100%', width: Math.max(s.pct || 0, 0.3) + '%', background: 'var(--highlight)', borderRadius: 99 } })),
+              h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: 'var(--highlight)', minWidth: 38, textAlign: 'right' } }, (s.pct || 0).toFixed(1) + '%'))),
+          h('button', { className: 'chip', onClick: () => d.setStudentLens(null), title: 'Pick a different student' }, '↺ Change')),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px 20px', padding: '10px 14px' } },
+          kStat('Done', `${s.done}/${s.total}`, 'lessons'),
+          kStat('Hrs flown', `${hoursDone.toFixed(1)}h`, `${hrsDelta >= 0 ? '+' : ''}${hrsDelta.toFixed(1)}h vs plan`, hrsDelta >= 0 ? 'var(--col-done)' : 'var(--col-cancel)'),
+          kStat('Les vs plan', `${s.done || 0} / ${expectedToday}`, `${lesDelta >= 0 ? '+' : ''}${lesDelta} ${lesDelta >= 0 ? 'ahead' : 'behind'}`, lesDelta >= 0 ? 'var(--col-done)' : 'var(--col-cancel)'),
+          kStat('Idle', idle != null ? `${idle}d` : '—', lastDate ? `last ${fd(lastDate)}` : 'no flights', idleCol),
+          kStat('ETC', etcDate ? fd(etcDate) : '—', 'proj. finish', 'var(--col-pending)'),
+          kStat('Next', s.next_lesson || '—', upcomingOps[0] ? `sched ${fd(upcomingOps[0].date)}` : 'not scheduled'),
+          kStat('Instructor', d.FI_FULL[s.fi] || s.fi || '—', (s.se || '—') + ` · ${opsFlights.length} ops`))),
+      // ── Chart ──
+      h('div', { className: 'panel' },
+        h('div', { className: 'ph' },
+          h('span', { className: 'pt' }, 'Progress · You vs Batch'),
+          h('span', { className: 'ps' }, compare.isSelfLeader ? 'you lead the batch' : etcDate ? 'proj. finish ' + fd(etcDate) : 'cumulative lessons over time')),
         h('div', { className: 'pb' }, h(StudentProgressChart, { student: s, curriculum, today, etcDate, mobile: d.isMobile, batchAvg: compare.batchAvg, leader: compare.leader, leaderNick: compare.leaderNick }))),
+      // ── Lesson Log table ──
       h('div', { className: 'panel' },
         h('div', { className: 'ph' },
           h('span', { className: 'pt' }, 'Lesson Log · Operations + Progress'),
@@ -383,7 +419,8 @@
           ...[['both', 'Both agree'], ['review', 'Differ — review'], ['ops', 'Ops only'], ['prog', 'Progress only'], ['sched', 'Scheduled']].map(([k, lbl]) =>
             h('span', { key: k, title: LENS_SRC[k].t, style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ink-2)' } },
               h('span', { style: { width: 8, height: 8, borderRadius: '50%', background: LENS_SRC[k].c } }), lbl))),
-        h('div', { className: 'pb', style: { padding: 0 } }, h(LensCombinedTable, { rows: mergedRows, mobile: d.isMobile, onRow: id => d.setDrawer(id), fd, hm }))));
+        h('div', { style: { padding: 0, overflow: 'auto', maxHeight: 400 } },
+          h(LensCombinedTable, { rows: mergedRows, mobile: d.isMobile, onRow: id => d.setDrawer(id), fd, hm })))));
   }
 
   // Maps view id → component. Resolved at render time (after all view scripts load).
