@@ -11,8 +11,9 @@ into one place for students and leaders to monitor everything, timely and effort
 
 …plus the **unifying** views built for V2:
 
-- **Home** — "AP127 COMMAND CENTER" landing: today on the line, cohort progress, pace
-  leaders, students behind plan, and a live alerts feed.
+- **Home** — "AP127 COMMAND CENTER" landing: AP-127 operational snapshot (schedule pulse,
+  batch/instructor/fleet breakdown, sortable AP-127 Spotlight) combined with cohort-progress
+  KPIs — all driven by a date picker.
 - **Cross-Check** — reconciles the two *independent* data sources and flags **conflicts**
   (a lesson present in one system but missing in the other) and **review** items
   (matched lesson where flight time or date disagrees beyond tolerance).
@@ -25,7 +26,6 @@ into one place for students and leaders to monitor everything, timely and effort
 HOME ◎        combined landing — operational day snapshot (Day Glance) + cohort-progress digest
 SCHEDULE      one screen · layout switch: Day ▦ · Gantt ▭ · Week ▦ · Month ▦ · Roster ▥
 OPERATIONS    Ops Analytics ◫ · Aircraft Status ✦
-PLANNING      Slot Finder ⚡
 PROGRESS      AP127 Detail ▰ · Student Lens 👤
 TRAINING PGM  Curriculum Plans ▤ · School Perf. ◷ · Simulation ◈ / ⚖ / ◆
 INTEGRITY     Cross-Check ⇄   (amber dot when review/conflict items exist)
