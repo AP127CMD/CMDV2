@@ -14,7 +14,6 @@
       { id: 'schedule', label: 'Schedule', icon: '▦' },
     ] },
     { label: 'Operations', items: [
-      { id: 'today', label: 'Day Glance', icon: '✈' },
       { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
       { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
     ] },
@@ -276,7 +275,7 @@
   function registry() {
     return {
       schedule: window.ScheduleView,
-      today: window.DailyBoard, board: window.OpsBoard, gantt: window.GanttBoard,
+      board: window.OpsBoard, gantt: window.GanttBoard,
       weekly: window.WeeklyBoard, roster: window.RosterBoard, calendar: window.CalendarBoard,
       autoslotfinder: window.AutoSlotFinderBoard,
       analytics: window.SummaryBoard,
@@ -296,16 +295,17 @@
 
   function Shell() {
     const d = window.useData();
+    const ALIAS = { today: 'overview' };
     const [view, setView] = useState(() => {
       const raw = (location.hash || '').replace('#/', '').replace('#', '') || localStorage.getItem('ap127v2-view') || 'overview';
       if (_sharePreset && !_sharePreset.includes(raw)) return _sharePreset[0];
-      return raw;
+      return ALIAS[raw] || raw;
     });
     const [menu, setMenu] = useState(false);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('ap127v2-collapsed') === '1');
     const mobile = d.isMobile;
     useEffect(() => {
-      const onGo = e => { if (_sharePreset && !_sharePreset.includes(e.detail)) return; setView(e.detail); setMenu(false); };
+      const onGo = e => { const v = ALIAS[e.detail] || e.detail; if (_sharePreset && !_sharePreset.includes(v)) return; setView(v); setMenu(false); };
       window.addEventListener('ap127-go', onGo); return () => window.removeEventListener('ap127-go', onGo);
     }, []);
     useEffect(() => { localStorage.setItem('ap127v2-view', view); try { history.replaceState(null, '', location.search + '#/' + view); } catch (e) {} }, [view]);
