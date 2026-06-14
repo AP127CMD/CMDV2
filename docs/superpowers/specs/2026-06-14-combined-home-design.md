@@ -42,11 +42,12 @@ UX study — they become one view instead of two.
 3. **Operations · today** — `SCHEDULE PULSE` (hourly flights, inline SVG area) + `STATUS MIX` (inline
    SVG donut: completed/pending/canceled).
 4. **Utilization** — `BATCH BREAKDOWN` + `INSTRUCTOR LOAD` + `AIRCRAFT FLEET` (3-up bar lists).
-5. **Today's line & alerts** — `ON THE LINE` (AP-127 flights on the selected day, click → Schedule)
+5. **◆ AP-127 SPOTLIGHT** — Day Glance's dedicated cohort panel (AP-127 KPIs + today's AP-127 student
+   list). Placed here, **above** the cohort-progress lists, so the AP-127 day content clusters with
+   "On The Line".
+6. **Today's line & alerts** — `ON THE LINE` (AP-127 flights on the selected day, click → Schedule)
    + `ALERTS` (idle students, cancellations; integrity stays as the Cross-Check amber dot).
-6. **Cohort progress** — `PACE LEADERS` + `BEHIND SCHEDULE` (click a student → Student Lens).
-7. **◆ AP-127 SPOTLIGHT** — Day Glance's dedicated cohort panel (AP-127 KPIs + today's AP-127 student
-   list).
+7. **Cohort progress** — `PACE LEADERS` + `BEHIND SCHEDULE` (click a student → Student Lens).
 
 All sections honor the selected date for the operational/day content; the progress sections (cohort,
 pace, behind, leaders) are period-wide and date-independent.
