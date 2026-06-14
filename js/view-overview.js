@@ -31,7 +31,7 @@
     );
 
     return (
-      <div style={{ padding: 16, display: 'grid', gap: 14, overflow: 'auto', height: '100%' }}>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', height: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', paddingBottom: 10 }}>
           <h1 className="head" style={{ fontSize: 24, fontWeight: 700, letterSpacing: 0.5, margin: 0 }}>AP<b style={{ color: 'var(--highlight)' }}>127</b> COMMAND CENTER</h1>
           <DateCalendarTrigger/>

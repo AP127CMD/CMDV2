@@ -17,9 +17,6 @@
       { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
       { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
     ] },
-    { label: 'Planning', items: [
-      { id: 'autoslotfinder', label: 'Slot Finder', icon: '⚡' },
-    ] },
     { label: 'Progress', items: [
       { id: 'cohort', label: 'AP127 Detail', icon: '▰' },
       { id: 'student', label: 'Student Lens', icon: '👤' },
@@ -47,7 +44,7 @@
     // students: Home + Progress + Training Program + Help
     students: ['overview', 'cohort', 'student', 'plans', 'tutorial'],
     // instructors: Home + Operations + Planning + Progress + Help
-    instructors: ['overview', 'today', 'board', 'gantt', 'weekly', 'roster', 'calendar', 'aircraft', 'autoslotfinder', 'cohort', 'analytics', 'student', 'tutorial'],
+    instructors: ['overview', 'board', 'gantt', 'weekly', 'roster', 'calendar', 'aircraft', 'cohort', 'analytics', 'student', 'tutorial'],
   };
   const _shareParam = new URLSearchParams(location.search).get('g') || '';
   const _sharePreset = _shareParam ? (SHARE_PRESETS[_shareParam.toLowerCase()] || null) : null;
@@ -282,7 +279,6 @@
       schedule: window.ScheduleView,
       board: window.OpsBoard, gantt: window.GanttBoard,
       weekly: window.WeeklyBoard, roster: window.RosterBoard, calendar: window.CalendarBoard,
-      autoslotfinder: window.AutoSlotFinderBoard,
       analytics: window.SummaryBoard,
       aircraft: window.AircraftStatusView,
       cohort: window.CohortView,
