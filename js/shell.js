@@ -132,7 +132,7 @@
   // overlaid with the batch-average curve and the most-advanced SP — so a student
   // sees where they stand against the cohort and the leader. Presentational only;
   // the comparison series are computed in StudentLensView and passed in.
-  function StudentProgressChart({ student, curriculum, today, etcDate, mobile, batchAvg, leader, leaderNick }) {
+  function StudentProgressChart({ student, curriculum, today, xMax, mobile, hourMode, batchAvg, batchAvgHrs, leader, leaderHrs, leaderNick }) {
     const canvasRef = React.useRef(null);
     const chartRef = React.useRef(null);
     const resetZoom = () => { try { chartRef.current && chartRef.current.resetZoom(); } catch (e) {} };
@@ -141,25 +141,37 @@
       try { const ex = window.Chart.getChart(ctx); if (ex) ex.destroy(); } catch (e) {}
       if (chartRef.current) { try { chartRef.current.destroy(); } catch (e) {} chartRef.current = null; }
       const ink2 = cssVar('--ink-2', '#8b949e'), ink3 = cssVar('--ink-3', '#6e7681'), line = cssVar('--line', '#21262d');
-      const accent = cssVar('--highlight', '#e88aff'), done = cssVar('--col-done', '#7acf7e'), pend = cssVar('--col-pending', '#e9bd63');
+      const pend = cssVar('--col-pending', '#e9bd63');
+      const magenta = '#e88aff', blue = '#38bdf8', youCol = '#f0f6fc';
       const flown = (student.flown || []).filter(f => f.date).slice().sort((a, b) => a.date.localeCompare(b.date));
-      let acc = 0; const actual = flown.map(f => ({ x: f.date, y: ++acc }));
       const planDates = (curriculum || []).filter(c => c.planned_date).slice().sort((a, b) => a.planned_date.localeCompare(b.planned_date));
-      let pacc = 0; const plan = planDates.map(c => ({ x: c.planned_date, y: ++pacc }));
       const total = student.total || (curriculum || []).length || 101;
-      const doneN = student.done || actual.length || 0;
-      const projection = (etcDate && etcDate > today) ? [{ x: today, y: doneN }, { x: etcDate, y: total }] : [];
-      // Explicit x range — spans from first flown date to etcDate so projection is always visible.
-      const allX = [...flown.map(f => f.date), ...planDates.map(c => c.planned_date), ...(batchAvg || []).map(p => p.x)].filter(Boolean).sort();
+      const totalHrs = (curriculum || []).reduce((a, c) => a + (c.planned_mins || 0), 0) / 60;
+      let actualData, planData, avgData, leadData, projData, sugMax;
+      if (hourMode) {
+        let hacc = 0; actualData = flown.map(f => ({ x: f.date, y: (hacc += (f.actual_mins || 0) / 60) }));
+        let phacc = 0; planData = planDates.map(c => ({ x: c.planned_date, y: (phacc += (c.planned_mins || 0) / 60) }));
+        avgData = batchAvgHrs || []; leadData = leaderHrs || [];
+        projData = (xMax && xMax > today) ? [{ x: today, y: hacc }, { x: xMax, y: totalHrs }] : [];
+        sugMax = totalHrs;
+      } else {
+        let acc = 0; actualData = flown.map(f => ({ x: f.date, y: ++acc }));
+        let pacc = 0; planData = planDates.map(c => ({ x: c.planned_date, y: ++pacc }));
+        avgData = batchAvg || []; leadData = leader || [];
+        const doneN = student.done || actualData.length || 0;
+        projData = (xMax && xMax > today) ? [{ x: today, y: doneN }, { x: xMax, y: total }] : [];
+        sugMax = total;
+      }
+      const allX = [...flown.map(f => f.date), ...planDates.map(c => c.planned_date), ...(avgData || []).map(p => p.x)].filter(Boolean).sort();
       const xMin = allX[0] || today;
-      const xMax = etcDate || planDates.at(-1)?.planned_date || allX.at(-1) || today;
+      const xMaxFinal = xMax || xMin;
       const ds = [
-        { label: 'Plan', data: plan, borderColor: ink3, borderDash: [6, 4], borderWidth: 1.4, pointRadius: 0, tension: 0, order: 5 },
-        { label: 'Batch avg', data: batchAvg || [], borderColor: ink2, borderWidth: 1.4, pointRadius: 0, tension: .25, order: 4 },
+        { label: 'Plan', data: planData, borderColor: ink3, borderDash: [6, 4], borderWidth: 1.4, pointRadius: 0, tension: 0, order: 5 },
+        { label: 'AVG AP127', data: avgData, borderColor: magenta, borderWidth: 1.2, borderDash: [4, 3], pointRadius: 0, tension: .25, order: 4 },
       ];
-      if (leader && leader.length) ds.push({ label: 'Leader' + (leaderNick ? ' · ' + leaderNick : ''), data: leader, borderColor: done, borderWidth: 1.4, borderDash: [2, 3], pointRadius: 0, tension: 0, order: 3 });
-      if (projection.length) ds.push({ label: 'Projection', data: projection, borderColor: pend, borderWidth: 2, borderDash: [3, 3], pointRadius: 3, pointStyle: 'rectRot', tension: 0, order: 2 });
-      ds.push({ label: 'You', data: actual, borderColor: accent, backgroundColor: accent + '22', borderWidth: 2.6, pointRadius: mobile ? 0 : 2, pointHoverRadius: 4, tension: 0, fill: false, order: 1 });
+      if (leadData && leadData.length) ds.push({ label: 'Target SP' + (leaderNick ? ' · ' + leaderNick : ''), data: leadData, borderColor: blue, borderWidth: 1.4, borderDash: [2, 3], pointRadius: 0, tension: 0, order: 3 });
+      if (projData.length) ds.push({ label: 'Projection', data: projData, borderColor: pend, borderWidth: 2, borderDash: [3, 3], pointRadius: 3, pointStyle: 'rectRot', tension: 0, order: 2 });
+      ds.push({ label: 'You', data: actualData, borderColor: youCol, backgroundColor: youCol + '18', borderWidth: 2.6, pointRadius: mobile ? 0 : 2, pointHoverRadius: 4, tension: 0, fill: false, order: 1 });
       try {
         chartRef.current = new window.Chart(ctx, {
           type: 'line', data: { datasets: ds },
@@ -171,7 +183,7 @@
               legend: { labels: { color: ink2, usePointStyle: true, pointStyle: 'line', font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, boxWidth: 16, padding: mobile ? 6 : 8 } },
               tooltip: { callbacks: {
                 title: c => { const r = c[0]?.raw; try { return r ? new Date(r.x + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''; } catch { return r?.x || ''; } },
-                label: c => `${c.dataset.label}: ${Math.round(c.raw?.y || 0)} lessons`
+                label: c => `${c.dataset.label}: ${hourMode ? (c.raw?.y || 0).toFixed(1) + 'h' : Math.round(c.raw?.y || 0) + ' les'}`
               }},
               zoom: {
                 zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
@@ -179,19 +191,19 @@
               },
             },
             scales: {
-              x: { type: 'time', min: xMin, max: xMax,
+              x: { type: 'time', min: xMin, max: xMaxFinal,
                 time: { unit: 'month', displayFormats: { day: 'd MMM', week: 'd MMM', month: 'MMM yy' } },
                 ticks: { color: ink3, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, maxTicksLimit: mobile ? 5 : 12, source: 'auto' },
                 grid: { color: line } },
-              y: { beginAtZero: true, suggestedMax: total,
-                ticks: { color: ink2, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, precision: 0 },
+              y: { beginAtZero: true, suggestedMax: sugMax,
+                ticks: { color: ink2, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, precision: hourMode ? 1 : 0 },
                 grid: { color: line } },
             },
           },
         });
       } catch (e) {}
       return () => { try { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } } catch (e) {} };
-    }, [student, curriculum, today, etcDate, mobile, batchAvg, leader, leaderNick]);
+    }, [student, curriculum, today, xMax, mobile, hourMode, batchAvg, batchAvgHrs, leader, leaderHrs, leaderNick]);
     return h('div', { style: { position: 'relative', height: mobile ? 220 : 380 } },
       h('button', { onClick: resetZoom, title: 'Reset zoom', style: { position: 'absolute', top: 4, right: 4, zIndex: 10, fontSize: 10, padding: '2px 7px', borderRadius: 4, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink-2)', cursor: 'pointer' } }, '⟳ Zoom'),
       h('canvas', { ref: canvasRef }));
@@ -247,6 +259,8 @@
     const d = window.useData();
     const { useState: useSlQ } = React;
     const [q, setQ] = useSlQ('');
+    const [chartMode, setChartMode] = React.useState('lessons');
+    const [chartFilter, setChartFilter] = React.useState('today');
     const s = d.studentLens;
 
     // Cohort comparison series for the chart: the batch-average cumulative curve
@@ -264,7 +278,19 @@
       const isSelfLeader = leaderSt && s && leaderSt.catc_id === s.catc_id;
       let lacc = 0;
       const leader = (leaderSt && !isSelfLeader) ? (leaderSt.flown || []).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date)).map(f => ({ x: f.date, y: ++lacc })) : [];
-      return { batchAvg, leader, leaderNick: isSelfLeader ? '' : (leaderSt ? (leaderSt.nick || leaderSt.name) : ''), isSelfLeader: !!isSelfLeader };
+      // Hour-based series for chart hour mode
+      const perStudentHours = all.map(st =>
+        (st.flown || []).filter(x => x.date).slice().sort((a, b) => a.date.localeCompare(b.date)).map(x => ({ date: x.date, mins: x.actual_mins || 0 }))
+      );
+      const batchAvgHrs = all.length ? allDates.map(dt => {
+        let sum = 0; perStudentHours.forEach(ds => { let acc = 0; for (const x of ds) { if (x.date <= dt) acc += x.mins / 60; else break; } sum += acc; });
+        return { x: dt, y: sum / all.length };
+      }) : [];
+      let lhAcc = 0;
+      const leaderHrs = (leaderSt && !isSelfLeader) ?
+        (leaderSt.flown || []).filter(x => x.date).slice().sort((a, b) => a.date.localeCompare(b.date))
+          .map(f => ({ x: f.date, y: (lhAcc += (f.actual_mins || 0) / 60) })) : [];
+      return { batchAvg, batchAvgHrs, leader, leaderHrs, leaderNick: isSelfLeader ? '' : (leaderSt ? (leaderSt.nick || leaderSt.name) : ''), isSelfLeader: !!isSelfLeader };
     }, [d.students, s]);
 
     // No student selected — show inline picker
@@ -408,8 +434,19 @@
       h('div', { className: 'panel' },
         h('div', { className: 'ph' },
           h('span', { className: 'pt' }, 'Progress · You vs Batch'),
-          h('span', { className: 'ps' }, compare.isSelfLeader ? 'you lead the batch' : etcDate ? 'proj. finish ' + fd(etcDate) : 'cumulative lessons over time')),
-        h('div', { className: 'pb' }, h(StudentProgressChart, { student: s, curriculum, today, etcDate, mobile: d.isMobile, batchAvg: compare.batchAvg, leader: compare.leader, leaderNick: compare.leaderNick }))),
+          h('div', { style: { display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' } },
+            ...[['today', 'Today'], ['proj', 'To End']].map(([v, lbl]) =>
+              h('button', { key: v, onClick: () => setChartFilter(v), style: { padding: '2px 7px', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'JetBrains Mono,monospace', background: chartFilter === v ? 'var(--highlight)' : 'transparent', color: chartFilter === v ? '#000' : 'var(--ink-2)', border: '1px solid ' + (chartFilter === v ? 'var(--highlight)' : 'var(--line)') } }, lbl)),
+            h('span', { style: { width: 1, height: 12, background: 'var(--line)', display: 'inline-block', margin: '0 2px' } }),
+            ...[['lessons', 'Les'], ['hours', 'Hrs']].map(([v, lbl]) =>
+              h('button', { key: v, onClick: () => setChartMode(v), style: { padding: '2px 7px', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'JetBrains Mono,monospace', background: chartMode === v ? 'var(--highlight)' : 'transparent', color: chartMode === v ? '#000' : 'var(--ink-2)', border: '1px solid ' + (chartMode === v ? 'var(--highlight)' : 'var(--line)') } }, lbl)))),
+        h('div', { className: 'pb' }, h(StudentProgressChart, {
+          student: s, curriculum, today,
+          xMax: chartFilter === 'today' ? today : (etcDate || today),
+          mobile: d.isMobile, hourMode: chartMode === 'hours',
+          batchAvg: compare.batchAvg, batchAvgHrs: compare.batchAvgHrs,
+          leader: compare.leader, leaderHrs: compare.leaderHrs, leaderNick: compare.leaderNick
+        }))),
       // ── Lesson Log table ──
       h('div', { className: 'panel' },
         h('div', { className: 'ph' },
