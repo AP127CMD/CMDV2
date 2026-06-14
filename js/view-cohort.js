@@ -758,38 +758,63 @@ function buildAP127Timeline(all,curriculum,maxDate){
 }
 
 let AP127_RACE_SOLO=null;
+let AP127_RACE_MODE='lessons';
+function setAP127RaceMode(m){
+  AP127_RACE_MODE=m;
+  const maxD=(G.ap127||[]).flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"";
+  buildAP127RaceChart(G.ap127,G.cur127?.length||101,maxD);
+}
 function buildAP127RaceChart(all,curriculum,maxDate){
   const today=ap127TodayBKK();
   const racers=ap127PaceSort(all,today);
+  const isHrs=AP127_RACE_MODE==='hours';
+  const curMap={};(G.cur127||[]).forEach(c=>{curMap[c.lesson]=c.planned_mins||0;});
+
+  // Build label set from all planned + actual dates up to today
   const plannedDates=(G.cur127||[]).map(c=>c.planned_date).filter(d=>d&&d<=today).sort();
   const dateSet=new Set(plannedDates);
   dateSet.add(today);
   racers.forEach(s=>(s.flown||[]).forEach(f=>{if(f.date&&f.date<=today)dateSet.add(f.date);}));
   const labels=[...dateSet].sort();
-  const labelsSet=new Set(labels);
-  const cumSeries=(flightDates)=>{
-    const flightSet=new Set(flightDates);
-    const cnt={};flightDates.forEach(d=>{cnt[d]=(cnt[d]||0)+1;});
+
+  // Cumulative series — lessons or hours
+  const cumSeries=(flights)=>{
+    const flightDates=new Set(flights.map(f=>f.date));
+    const byDate={};
+    flights.forEach(f=>{
+      const v=isHrs?((ap127FlightMins(f)||curMap[f.lesson]||0)/60):1;
+      byDate[f.date]=(byDate[f.date]||0)+v;
+    });
     let run=0;
     return labels.map(d=>{
-      run+=(cnt[d]||0);
-      return {y:run,r:flightSet.has(d)?3:0};
+      run+=(byDate[d]||0);
+      return {y:+run.toFixed(2),r:flightDates.has(d)?3:0};
     });
   };
-  const planCnt={};plannedDates.forEach(d=>{planCnt[d]=(planCnt[d]||0)+1;});
-  let planRun=0;const planData=labels.map(d=>{planRun+=(planCnt[d]||0);return planRun;});
+
+  // Planned target (per student)
+  const planByDate={};
+  if(isHrs){
+    (G.cur127||[]).forEach(c=>{if(!c.planned_date||c.planned_date>today)return;planByDate[c.planned_date]=(planByDate[c.planned_date]||0)+(c.planned_mins||0)/60;});
+  } else {
+    plannedDates.forEach(d=>{planByDate[d]=(planByDate[d]||0)+1;});
+  }
+  let planRun=0;
+  const planData=labels.map(d=>{planRun+=(planByDate[d]||0);return +planRun.toFixed(2);});
+
   const datasets=[{
     label:"Planned Target",
     data:planData,
     borderColor:"#cbd5e1",pointRadius:0,tension:.25,borderDash:[6,4],borderWidth:2
   }];
+
   racers.forEach((s,i)=>{
     const hue=(i*360/Math.max(racers.length,1)).toFixed(0);
     const col=`hsla(${hue},85%,62%,0.8)`;
     const nick=ap127ShortName(s.name);
-    const ad=(s.flown||[]).map(f=>f.date).filter(d=>d&&d<=today).sort();
+    const flights=(s.flown||[]).filter(f=>f.date&&f.date<=today).sort((a,b)=>a.date.localeCompare(b.date));
     const visible=AP127_RACE_SOLO===null||AP127_RACE_SOLO===nick;
-    const pts=cumSeries(ad);
+    const pts=cumSeries(flights);
     datasets.push({
       label:nick,
       data:pts.map(p=>p.y),
@@ -803,22 +828,67 @@ function buildAP127RaceChart(all,curriculum,maxDate){
       hidden:!visible
     });
   });
+
+  // Batch average line — rendered on top
+  const avgData=labels.map((_,li)=>{
+    let sum=0,cnt=0;
+    datasets.forEach(ds=>{
+      if(ds.label==='Planned Target')return;
+      const v=ds.data[li];
+      if(typeof v==='number'){sum+=v;cnt++;}
+    });
+    return cnt?+(sum/cnt).toFixed(2):0;
+  });
+  datasets.push({
+    label:'Batch Avg',
+    data:avgData,
+    borderColor:'#e88aff',
+    borderWidth:3,
+    pointRadius:0,
+    tension:.18,
+    borderDash:[],
+    order:999
+  });
+
   CHARTS.ap127race=mkC("d127-race",{
     type:"line",data:{labels,datasets},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{datalabels:{display:false},legend:{display:false},tooltip:{callbacks:{title:(ctx)=>ap127FmtDate(ctx[0]?.label||""),label:(ctx)=>`${ctx.dataset.label}: ${ctx.parsed.y}`}}},
+      plugins:{datalabels:{display:false},legend:{display:false},tooltip:{callbacks:{
+        title:(ctx)=>ap127FmtDate(ctx[0]?.label||""),
+        label:(ctx)=>`${ctx.dataset.label}: ${isHrs?ctx.parsed.y.toFixed(1)+" hrs":ctx.parsed.y+" les"}`
+      }}},
       scales:{
         x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxTicksLimit:18},grid:{color:"#21262d"}},
-        y:{beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#8b949e"},grid:{color:"#21262d"}}
+        y:{beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",callback:v=>isHrs?v.toFixed(0)+"h":v},grid:{color:"#21262d"}}
       }
     }
   });
+
   const togglesDiv=document.getElementById("d127-race-toggles");
   togglesDiv.innerHTML="";
+
+  // Mode chips row
+  const modeRow=document.createElement("div");
+  modeRow.style.cssText="display:flex;gap:6px;align-items:center;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--bd)";
+  ['lessons','hours'].forEach(m=>{
+    const sel=AP127_RACE_MODE===m;
+    const btn=document.createElement("button");
+    btn.textContent=m==='lessons'?'Lessons':'Hours';
+    btn.style.cssText=`padding:4px 10px;background:${sel?"#e88aff":"#30363d"};color:${sel?"#000":"#8b949e"};border:0;border-radius:3px;cursor:pointer;font-weight:${sel?"700":"400"};font-size:10px;font-family:'JetBrains Mono',monospace`;
+    btn.onclick=()=>setAP127RaceMode(m);
+    modeRow.appendChild(btn);
+  });
+  const avgNote=document.createElement("span");
+  avgNote.style.cssText="font-family:'JetBrains Mono',monospace;font-size:9px;color:#e88aff;margin-left:8px";
+  avgNote.textContent="◆ thick = batch avg";
+  modeRow.appendChild(avgNote);
+  togglesDiv.appendChild(modeRow);
+
+  // Student solo toggle buttons
   const allBtn=document.createElement("button");
   allBtn.textContent="ALL";
   allBtn.style.cssText=`padding:4px 10px;background:${AP127_RACE_SOLO===null?"#4ade80":"#30363d"};color:${AP127_RACE_SOLO===null?"#000":"#8b949e"};border:0;border-radius:3px;cursor:pointer;font-weight:700;font-size:10px;font-family:'JetBrains Mono',monospace`;
-  allBtn.onclick=()=>{AP127_RACE_SOLO=null;buildAP127RaceChart(G.ap127,G.cur127?.length||101,(G.ap127||[]).flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"");};
+  allBtn.onclick=()=>{AP127_RACE_SOLO=null;buildAP127RaceChart(all,curriculum,maxDate);};
   togglesDiv.appendChild(allBtn);
   racers.forEach(s=>{
     const nick=ap127ShortName(s.name);
@@ -826,10 +896,10 @@ function buildAP127RaceChart(all,curriculum,maxDate){
     const btn=document.createElement("button");
     btn.textContent=nick;
     btn.style.cssText=`padding:4px 8px;background:${active?"#38bdf8":"#30363d"};color:${active?"#000":"#8b949e"};border:0;border-radius:3px;cursor:pointer;font-size:10px;font-family:'JetBrains Mono',monospace`;
-    btn.onclick=()=>{AP127_RACE_SOLO=active?null:nick;buildAP127RaceChart(G.ap127,G.cur127?.length||101,(G.ap127||[]).flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"");};
+    btn.onclick=()=>{AP127_RACE_SOLO=active?null:nick;buildAP127RaceChart(all,curriculum,maxDate);};
     togglesDiv.appendChild(btn);
   });
-  document.getElementById("d127-race-meta").textContent=`${all.length} students · actual to ${ap127FmtDate(today)} · planned baseline`;
+  document.getElementById("d127-race-meta").textContent=`${all.length} students · to ${ap127FmtDate(today)} · ${isHrs?"hours":"lessons"} mode · planned baseline`;
 }
 
 function buildAP127OverallChart(all,curriculum,maxDate){
@@ -1042,7 +1112,7 @@ function ap127FitY(chart){
   function setSS(){ /* no-op: freshness shown in the unified top bar */ }
 
   // expose inline-handler targets used inside the reused markup/row HTML
-  Object.assign(window, { renderAP127Detail, renderAP127Pace, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, openAP127Drawer, closeAP127Drawer, CHARTS });
+  Object.assign(window, { renderAP127Detail, renderAP127Pace, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, openAP127Drawer, closeAP127Drawer, setAP127RaceMode, CHARTS });
 
   function mountProgress(data){ G = data; renderAP127Detail(); }
   function destroyProgress(){ try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch(e){} }); } catch(e){} }
