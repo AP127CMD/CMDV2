@@ -1745,11 +1745,11 @@ function resetPerformanceFilters(){
       if (!prev || ((f.status === "Completed" && prev.status !== "Completed") || (f.status === prev.status && (f.date || "") < (prev.date || "")))) opsBy[k] = f;
     });
     const flownBy = {}; (s.flown || []).forEach(f => { if (f.lesson) flownBy[norm(f.lesson)] = f; });
-    const planBy = {}; (s.planned || []).forEach(p => { if (p.lesson) planBy[norm(p.lesson)] = p; });
-    const keys = [...new Set([...Object.keys(flownBy), ...Object.keys(planBy), ...Object.keys(opsBy)])];
+    // modal shows only real records: PROG flown + OPS flights — no projected plan
+    const keys = [...new Set([...Object.keys(flownBy), ...Object.keys(opsBy)])];
     return keys.map(k => {
-      const pf = flownBy[k], pp = planBy[k], op = opsBy[k], opsDone = op && op.status === "Completed";
-      const lesson = (pf && pf.lesson) || (op && op.lesson) || (pp && pp.lesson) || k;
+      const pf = flownBy[k], op = opsBy[k], opsDone = op && op.status === "Completed";
+      const lesson = (pf && pf.lesson) || (op && op.lesson) || k;
       let src, status, date, mins;
       if (pf || opsDone) {
         status = "Completed";
@@ -1761,9 +1761,9 @@ function resetPerformanceFilters(){
           src = ((dd != null && Math.abs(dd) > 1) || (oM != null && pM != null && Math.abs(oM - pM) > 20)) ? "review" : "both";
         } else src = pf ? "prog" : "ops";
       } else {
-        date = (op && op.date) || (pp && pp.date) || "";
-        mins = (pp && (pp.mins || pp.planned_mins)) || (op && op.durMin) || 0;
-        if (op) { status = "Scheduled"; src = "sched"; } else { status = "Planned"; src = "plan"; }
+        date = (op && op.date) || "";
+        mins = (op && op.durMin) || 0;
+        status = "Scheduled"; src = "sched";
       }
       return { lesson, date, mins, status, src };
     });
@@ -1773,13 +1773,13 @@ function resetPerformanceFilters(){
     const col = BC[s.batch] || "#888", bg = BB[s.batch] || "rgba(255,255,255,.06)";
     const rows = buildSpRows(s);
     rows.sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
-    const SC = { Completed: "var(--done)", Scheduled: "#38bdf8", Planned: "var(--tx3)" };
+    const SC = { Completed: "var(--done)", Scheduled: "#38bdf8" };
     const rowHtml = rows.map(r => {
       const dotCell = `<td style="text-align:center">${r.src ? `<span title="${SP_SRC[r.src].t}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SP_SRC[r.src].c}"></span>` : ""}</td>`;
       return `<tr>${dotCell}<td style="white-space:nowrap;color:var(--tx2)">${r.date ? fd(r.date) : "—"}</td><td style="font-family:'JetBrains Mono',monospace">${r.lesson || "—"}</td><td style="text-align:right;color:var(--tx2)">${r.mins ? hm(r.mins) : "—"}</td><td><span style="font-size:9px;padding:1px 5px;border-radius:3px;color:${SC[r.status] || "var(--tx3)"};background:${(SC[r.status] || "var(--tx3)")}22">${r.status}</span></td></tr>`;
     }).join("");
-    const legend = `<div class="sp-legend">${["both", "review", "ops", "prog", "sched", "plan"].map(k => `<span title="${SP_SRC[k].t}"><span class="sp-dot" style="background:${SP_SRC[k].c}"></span>${({ both: "Both agree", review: "Differ", ops: "Ops only", prog: "Prog only", sched: "Scheduled", plan: "Planned/TBC" })[k]}</span>`).join("")}</div>`;
-    const note = `<div class="sp-note"><b>How this is processed:</b> Progress (PROG) lesson records are the source of truth for completed lessons; upcoming dates are pulled from the live Operations schedule. Dots flag where the two systems agree, differ, or have data in only one. <i>TBC</i> = not yet scheduled in Operations.</div>`;
+    const legend = `<div class="sp-legend">${["both", "review", "ops", "prog", "sched"].map(k => `<span title="${SP_SRC[k].t}"><span class="sp-dot" style="background:${SP_SRC[k].c}"></span>${({ both: "Both agree", review: "Differ", ops: "Ops only", prog: "Prog only", sched: "Scheduled" })[k]}</span>`).join("")}</div>`;
+    const note = `<div class="sp-note"><b>How this is processed:</b> Shows only real records — completed lessons from Progress (PROG) and flights from the live Operations schedule. No projected plan dates. Dots show agreement between the two systems.</div>`;
     const colW = 5;
     const ov = document.createElement("div");
     ov.id = "sp-modal"; ov.className = "sp-modal-ov";
