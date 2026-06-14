@@ -119,7 +119,7 @@ function StackBar({ pending = 0, completed = 0, canceled = 0, standby = 0, max =
   );
 }
 
-function DailyBoard() {
+function DayGlancePanels() {
   const app = useApp();
   const { isMobile } = app;
   const date = app.date;
@@ -289,52 +289,7 @@ function DailyBoard() {
   const gridCols = isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))';
 
   return (
-    <ArtboardShell style={{ display: 'flex', flexDirection: 'column' }}>
-      <ThemeStyle/>
-
-      {/* Top bar */}
-      <div style={{
-        minHeight: 38, padding: '0 16px', borderBottom: '1px solid var(--line)',
-        background: 'var(--bg-2)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--col-done)', boxShadow: '0 0 8px var(--col-done)', animation: 'pulse 2s ease-in-out infinite' }}/>
-          <ViewIcon id="daily" size={12} color="var(--ink-2)"/>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <div className="mono uc" style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', letterSpacing: '0.08em' }}>AP127 COMMAND CENTER</div>
-            <div className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)', letterSpacing: '0.06em' }}>DAY AT A GLANCE</div>
-          </div>
-        </div>
-        <div style={{ flex: 1 }}/>
-        <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>{flights.length} FLTS · {FLIGHTS.length} TOTAL</div>
-        <RefreshButton/>
-        <LastUpdate/>
-      </div>
-
-      {/* Scrollable body */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <div style={{ padding: isMobile ? '8px' : '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-          {/* Date hero — click to open calendar picker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <DateCalendarTrigger/>
-            {isCurrentDay && (
-              <span className="mono uc" style={{ fontSize:9, color:'var(--col-pending)', padding:'2px 7px', border:'1px solid var(--col-pending)', borderRadius:3 }}>TODAY</span>
-            )}
-          </div>
-
-          {/* Hero KPI strip — School performance */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <DKPI label="TOTAL"     value={stats.total}        sub={`${hoursFmt(stats.schedHours)} HRS SCHED`} color="var(--col-pending)" small={isMobile}/>
-            <DKPI label="COMPLETED" value={stats.completed}    sub={stats.completionRate != null ? `${stats.completionRate.toFixed(0)}% · ${hoursFmt(stats.flownHours)}H` : `${hoursFmt(stats.flownHours)}H`} color="var(--col-done)" small={isMobile}/>
-            <DKPI label="PENDING"   value={stats.pending}      sub={`${stats.standby} STBY · ${hoursFmt(stats.pendingHours)}H`} color="var(--col-pending)" small={isMobile}/>
-            <DKPI label="CANCELED"  value={stats.canceled}     sub={`${hoursFmt(stats.canceledHours)} HRS`} color="var(--col-cancel)" small={isMobile}/>
-            <DKPI label="HOURS"     value={hoursFmt(stats.flownHours)} sub={`${hoursFmt(stats.schedHours)} PLAN`} color="var(--col-done)" small={isMobile}/>
-            <DKPI label="SIM"       value={stats.sim}          sub={`${hoursFmt(stats.simHours)} HRS`} color="var(--col-sim)" small={isMobile}/>
-            <DKPI label="A/C USED"  value={stats.tails.size}   sub="AIRCRAFT" color="var(--ink-2)" small={isMobile}/>
-            <DKPI label="INSTR"     value={stats.instructors.size} sub="ACTIVE" color="var(--ink-2)" small={isMobile}/>
-            <DKPI label="◆ AP-127"  value={stats.ap127}        sub={`${ap127.students.size} STUDENTS`} color="var(--highlight)" small={isMobile}/>
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
           {/* Charts row — Schedule Pulse + Batch Breakdown side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 12 }}>
@@ -707,14 +662,8 @@ function DailyBoard() {
               </div>
             )}
           </Section>
-
-          <div style={{ height: 8 }}/>
-        </div>
-      </div>
-
-      <Drawer/>
-    </ArtboardShell>
+    </div>
   );
 }
 
-window.DailyBoard = DailyBoard;
+window.DayGlancePanels = DayGlancePanels;
