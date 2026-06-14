@@ -38,8 +38,10 @@
       const completed = onDate.filter(f => f.status === 'Completed').length;
       const pending = onDate.filter(f => f.status === 'Pending').length;
       const canc = onDate.filter(f => f.status === 'Canceled').length;
+      const apDone = apLine.filter(f => f.status === 'Completed').length;
+      const apPending = apLine.filter(f => f.status === 'Pending').length;
       const schedMin = onDate.reduce((a, f) => a + (f.durMin || 0), 0);
-      return { apLine, completed, pending, canc, hours: hoursOf(schedMin), apCount: apLine.length };
+      return { apLine, completed, pending, canc, apDone, apPending, hours: hoursOf(schedMin), apCount: apLine.length };
     }, [FLIGHTS, date]);
 
     const t = reconciliation.totals;
@@ -66,7 +68,7 @@
         </div>
 
         <div className="kpis">
-          {kpi('acc', 'On The Line', dayModel.apCount, `${dayModel.completed} done · ${dayModel.pending} pending`, toSchedule)}
+          {kpi('acc', 'On The Line', dayModel.apCount, `${dayModel.apDone} done · ${dayModel.apPending} pending`, toSchedule)}
           {kpi('ok', 'Completed', dayModel.completed, `${dayModel.hours}h all batches`, toSchedule)}
           {kpi('rev', 'Pending', dayModel.pending, `${dayModel.canc} canceled`, toSchedule)}
           {kpi('', 'Cohort Progress', model.cohortPct + '%', `${model.studs.length} students avg`, () => go('cohort'))}
