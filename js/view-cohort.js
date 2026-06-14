@@ -98,7 +98,7 @@
           <button class="cpv-btn cpv-mode sel" data-m="lessons" onclick="setCPVMode('lessons')">Lessons</button>
           <button class="cpv-btn cpv-mode"     data-m="hours"   onclick="setCPVMode('hours')">Hours</button>
           <span style="width:1px;height:14px;background:var(--bd);display:inline-block;margin:0 2px"></span>
-          <button class="cpv-btn" onclick="CHARTS.ap127combined?.resetZoom()" title="Reset zoom">⟳ Zoom</button>
+          <button class="cpv-btn" onclick="cpvResetZoom()" title="Reset zoom">⟳ Zoom</button>
         </div>
       </div>
       <div class="d127-body">
@@ -945,14 +945,20 @@ function buildAP127OverallChart(all,curriculum,maxDate){
 }
 let CPV_FILTER='today';
 let CPV_MODE='lessons';
+function cpvResetZoom(){
+  const chart=CHARTS.ap127combined;
+  if(!chart)return;
+  delete chart.options.scales.y.min;
+  delete chart.options.scales.y.max;
+  chart.resetZoom();
+  chart.update('none');
+}
 function setCPVFilter(f){
-  CHARTS.ap127combined?.resetZoom?.();
   CPV_FILTER=f;
   document.querySelectorAll('.cpv-btn[data-f]').forEach(b=>b.classList.toggle('sel',b.dataset.f===f));
   buildAP127CombinedChart();
 }
 function setCPVMode(m){
-  CHARTS.ap127combined?.resetZoom?.();
   CPV_MODE=m;
   document.querySelectorAll('.cpv-mode').forEach(b=>b.classList.toggle('sel',b.dataset.m===m));
   buildAP127CombinedChart();
@@ -1112,7 +1118,7 @@ function ap127FitY(chart){
   function setSS(){ /* no-op: freshness shown in the unified top bar */ }
 
   // expose inline-handler targets used inside the reused markup/row HTML
-  Object.assign(window, { renderAP127Detail, renderAP127Pace, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, openAP127Drawer, closeAP127Drawer, setAP127RaceMode, CHARTS });
+  Object.assign(window, { renderAP127Detail, renderAP127Pace, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, cpvResetZoom, openAP127Drawer, closeAP127Drawer, setAP127RaceMode, CHARTS });
 
   function mountProgress(data){ G = data; renderAP127Detail(); }
   function destroyProgress(){ try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch(e){} }); } catch(e){} }
