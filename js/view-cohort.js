@@ -137,9 +137,10 @@
       <div><div class="d127-dn" id="d127-d-name">-</div><div class="d127-dm" id="d127-d-meta">-</div></div>
       <button class="d127-close" onclick="closeAP127Drawer()">Close</button>
     </div>
+    <div id="d127-d-kpis" style="display:flex;gap:10px;flex-wrap:wrap;padding:10px 16px 0;border-bottom:1px solid var(--bd)"></div>
     <div class="d127-dg">
-      <div class="d127-list"><div class="d127-lh">Recent Completed Flights</div><div id="d127-d-flown"></div></div>
-      <div class="d127-list"><div class="d127-lh">Upcoming Planned Flights</div><div id="d127-d-plan"></div></div>
+      <div class="d127-list" style="overflow-y:auto;max-height:45vh"><div class="d127-lh">Completed Flights</div><div id="d127-d-flown"></div></div>
+      <div class="d127-list" style="overflow-y:auto;max-height:45vh"><div class="d127-lh">Planned Flights</div><div id="d127-d-plan"></div></div>
     </div>
   </div>
 </div>
@@ -496,12 +497,29 @@ function renderAP127Detail(){
 function openAP127Drawer(idx){
   const s=AP127_VIEW_ROWS[idx];if(!s)return;
   const total=s.total||0,done=s.done||0;
+  const setH=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h;};
   document.getElementById("d127-d-name").textContent=s.name;
-  document.getElementById("d127-d-meta").textContent=`${s.catc_id||"-"} · ${done}/${total} lessons · ${ap127Hours(s).toFixed(2)} hrs`;
-  const flown=(s.flown||[]).slice(-14).reverse();
-  document.getElementById("d127-d-flown").innerHTML=flown.length?flown.map(f=>`<div class="d127-li"><div class="d127-ldt">${ap127ShortDate(f.date)}</div><div class="d127-ll">${f.lesson||"-"}</div><div class="d127-ld">${hm(ap127FlightMins(f))}</div></div>`).join(""):`<div class="d127-ad">No completed flights.</div>`;
-  const plan=(s.planned||[]).slice(0,14);
-  document.getElementById("d127-d-plan").innerHTML=plan.length?plan.map(p=>`<div class="d127-li"><div class="d127-ldt">${ap127ShortDate(p.date)}</div><div class="d127-ll">${p.lesson||"-"}</div><div class="d127-ld">${hm(p.mins||p.planned_mins||0)}</div></div>`).join(""):`<div class="d127-ad">No planned flights.</div>`;
+  document.getElementById("d127-d-meta").textContent=`${s.catc_id||"-"} · ${s.nick||"-"} · FI: ${s.fi||"-"} · ${s.se||"-"}`;
+  // KPI strip
+  const today0=ap127TodayBKK();
+  const planMap={};(G.cur127||[]).forEach(c=>{if(c.lesson&&c.planned_date)planMap[c.lesson]=c.planned_date;});
+  const idle=ap127IdleDays(s,today0);
+  const dayDelta=ap127DayDelta(s,planMap,today0);
+  const hrs=ap127Hours(s);
+  const hrsDelta=hrs-ap127PlannedHoursAsOf(today0);
+  const kpiItem=(label,val,color)=>`<div style="min-width:68px;text-align:center;padding:6px 10px 8px;background:var(--s2);border-radius:4px"><div class="d127-kl" style="margin-bottom:2px">${label}</div><div style="font-family:'Rajdhani',sans-serif;font-size:18px;font-weight:700;color:${color||'var(--tx)'};line-height:1.1">${val}</div></div>`;
+  setH("d127-d-kpis",[
+    kpiItem("Lessons",`${done} / ${total}`,"var(--c127)"),
+    kpiItem("Hours",hrs.toFixed(1)+"h","var(--tx)"),
+    kpiItem("Idle",idle===9999?"—":idle+"d",idle<=2?"var(--tx)":idle<=5?"#fbbf24":"#ff6b6b"),
+    kpiItem("Day Δ",dayDelta===null?"—":(dayDelta>=0?"+":"")+dayDelta+"d",dayDelta===null?"var(--tx3)":dayDelta>0?"#ff6b6b":"#51cf66"),
+    kpiItem("Hrs Δ",(hrsDelta>=0?"+":"")+hrsDelta.toFixed(1)+"h",hrsDelta>=0?"#51cf66":"#ff6b6b"),
+  ].join(""));
+  // Full flight lists (no cap)
+  const flown=(s.flown||[]).slice().reverse();
+  setH("d127-d-flown",flown.length?flown.map(f=>`<div class="d127-li"><div class="d127-ldt">${ap127ShortDate(f.date)}</div><div class="d127-ll">${f.lesson||"-"}</div><div class="d127-ld">${hm(ap127FlightMins(f))}</div></div>`).join(""):`<div class="d127-ad">No completed flights.</div>`);
+  const plan=(s.planned||[]);
+  setH("d127-d-plan",plan.length?plan.map(p=>`<div class="d127-li"><div class="d127-ldt">${ap127ShortDate(p.date)}</div><div class="d127-ll">${p.lesson||"-"}</div><div class="d127-ld">${hm(p.mins||p.planned_mins||0)}</div></div>`).join(""):`<div class="d127-ad">No planned flights.</div>`);
   document.getElementById("d127-draw-ov").classList.add("show");
 }
 function closeAP127Drawer(){document.getElementById("d127-draw-ov").classList.remove("show");}
