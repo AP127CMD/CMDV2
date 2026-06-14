@@ -309,7 +309,6 @@
     const R = window.AP127Reconcile;
     const nl = l => R ? R.normLesson(l) : String(l || '').toUpperCase().trim();
     const progFlownBy = {}; (s.flown || []).forEach(f => { if (f.lesson) progFlownBy[nl(f.lesson)] = f; });
-    const progPlanBy = {}; (s.planned || []).forEach(p => { if (p.lesson) progPlanBy[nl(p.lesson)] = p; });
     const curBy = {}; curriculum.forEach(c => { if (c.lesson) curBy[nl(c.lesson)] = c; });
     // Non-canceled ops flights for this student, one per lesson (prefer Completed, else earliest).
     const opsBy = {};
@@ -320,11 +319,12 @@
         (f.status === prev.status && (f.date || '') < (prev.date || ''));
       if (better) opsBy[k] = f;
     });
-    const lessonKeys = [...new Set([...Object.keys(progFlownBy), ...Object.keys(progPlanBy), ...Object.keys(opsBy)])];
+    // Only real records: PROG flown + OPS flights — no projected plan
+    const lessonKeys = [...new Set([...Object.keys(progFlownBy), ...Object.keys(opsBy)])];
     const mergedRows = lessonKeys.map(k => {
-      const pf = progFlownBy[k], pp = progPlanBy[k], cu = curBy[k], op = opsBy[k];
+      const pf = progFlownBy[k], cu = curBy[k], op = opsBy[k];
       const opsDone = op && op.status === 'Completed';
-      const lesson = (pf && pf.lesson) || (op && op.lesson) || (pp && pp.lesson) || k;
+      const lesson = (pf && pf.lesson) || (op && op.lesson) || k;
       let src, status, date, mins;
       if (pf || opsDone) {
         // Completed domain
@@ -340,11 +340,10 @@
         } else if (pf) src = 'prog';
         else src = 'ops';
       } else {
-        // Future / not-yet-flown domain
-        date = (op && op.date) || (pp && pp.date) || (cu && cu.planned_date) || '';
-        mins = (pp && (pp.mins || pp.planned_mins)) || (cu && cu.planned_mins) || (op && op.durMin) || 0;
-        if (op) { status = 'Scheduled'; src = 'sched'; }
-        else { status = 'Planned'; src = 'plan'; }
+        // Upcoming: only OPS-scheduled flights reach here
+        date = (op && op.date) || '';
+        mins = (op && (R ? R.hmToMin(op.duration) : null)) || op?.durMin || (cu && cu.planned_mins) || 0;
+        status = 'Scheduled'; src = 'sched';
       }
       return { key: k, lesson, date, mins, status, src, fi: op ? op.instructor : '', opsId: op ? op.id : null };
     });
@@ -381,7 +380,7 @@
           h('span', { className: 'pt' }, 'Lesson Log · Operations + Progress'),
           h('span', { className: 'ps' }, mergedRows.length + ' lessons · canceled flights hidden')),
         h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12, padding: '8px 12px', borderBottom: '1px solid var(--line-soft)', fontSize: 10 } },
-          ...[['both', 'Both agree'], ['review', 'Differ — review'], ['ops', 'Ops only'], ['prog', 'Progress only'], ['sched', 'Scheduled'], ['plan', 'Planned/TBC']].map(([k, lbl]) =>
+          ...[['both', 'Both agree'], ['review', 'Differ — review'], ['ops', 'Ops only'], ['prog', 'Progress only'], ['sched', 'Scheduled']].map(([k, lbl]) =>
             h('span', { key: k, title: LENS_SRC[k].t, style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ink-2)' } },
               h('span', { style: { width: 8, height: 8, borderRadius: '50%', background: LENS_SRC[k].c } }), lbl))),
         h('div', { className: 'pb', style: { padding: 0 } }, h(LensCombinedTable, { rows: mergedRows, mobile: d.isMobile, onRow: id => d.setDrawer(id), fd, hm }))));

@@ -1676,7 +1676,33 @@ function resetPerformanceFilters(){
   // Map a student+lesson to its ACTUAL scheduled date from the Operations feed
   // (window.FLIGHT_DATA) — replacing the scheduler's projected date. Built once.
   // Keyed exactly like the cross-check engine so AP127 names/lessons line up.
-  let OPS_SCHED = null;
+  let OPS_SCHED = null, OPS_UPCOMING = null;
+  function opsUpcomingMap() {
+    if (OPS_UPCOMING) return OPS_UPCOMING;
+    OPS_UPCOMING = new Map();
+    const R = window.AP127Reconcile;
+    const flights = (window.FLIGHT_DATA && window.FLIGHT_DATA.flights) || [];
+    if (!R) return OPS_UPCOMING;
+    const bySL = new Map();
+    flights.forEach(f => {
+      if (!f.student || !f.lesson || f.status === 'Canceled' || f.status === 'Completed') return;
+      const sk = R.ccNameNorm(f.student), lk = R.normLesson(f.lesson), mk = sk + '|' + lk;
+      const prev = bySL.get(mk);
+      if (!prev || f.date < prev.date) bySL.set(mk, f);
+    });
+    bySL.forEach((f, mk) => {
+      const sk = mk.split('|')[0];
+      if (!OPS_UPCOMING.has(sk)) OPS_UPCOMING.set(sk, []);
+      OPS_UPCOMING.get(sk).push(f);
+    });
+    OPS_UPCOMING.forEach(arr => arr.sort((a, b) => (a.date || '').localeCompare(b.date || '')));
+    return OPS_UPCOMING;
+  }
+  function opsUpcomingFor(fullName) {
+    const R = window.AP127Reconcile;
+    if (!R) return [];
+    return opsUpcomingMap().get(R.ccKeyFromFull(fullName)) || [];
+  }
   function opsSchedMap() {
     if (OPS_SCHED) return OPS_SCHED;
     OPS_SCHED = new Map();
@@ -1704,19 +1730,19 @@ function resetPerformanceFilters(){
     const col = BC[s.batch], bg = BB[s.batch];
     const nick = s.nick ? `<span style="font-family:'JetBrains Mono',monospace;font-size:8px;padding:1px 3px;border-radius:2px;background:${bg};color:${col};margin-left:3px">${s.nick}</span>` : "";
     const fRows = (s.flown || []).slice(-CFG.recents).map(f => `<div class="lr"><div class="ld" style="background:var(--done)"></div><div class="ldate" style="color:var(--done)">${fd(f.date)}</div><div class="lname" style="color:var(--done)">${f.lesson}</div><div class="ldur">${f.actual_ft || hm(f.actual_mins)}</div></div>`).join("");
-    let prev = (s.flown || []).at(-1)?.actual_mins || 60;
-    const tbc = `<span style="color:var(--tx3);font-style:italic">TBC</span>`;
-    const pRows = (s.planned || []).slice(0, CFG.upcomings).map(p => {
-      const rest = CFG.showRest && prev >= 120; const lv = p.mins || p.planned_mins || 60; prev = lv;
-      const sd = scheduledDateFor(s.name, p.lesson);
-      const dCell = sd ? `<div class="ldate">${fd(sd)}</div>` : `<div class="ldate">${tbc}</div>`;
-      return `<div class="lr"><div class="ld" style="background:${col};opacity:.5"></div>${dCell}<div class="lname" style="color:${col}">${p.lesson}</div><div class="ldur">${hm(lv)}${rest ? `<span class="lrest">+r</span>` : ""}</div></div>`;
+    const upcoming = opsUpcomingFor(s.name);
+    const Rc = window.AP127Reconcile;
+    const pRows = upcoming.slice(0, CFG.upcomings).map(f => {
+      const lv = f.durMin || (Rc && Rc.hmToMin(f.duration)) || 60;
+      return `<div class="lr"><div class="ld" style="background:${col};opacity:.5"></div><div class="ldate">${fd(f.date)}</div><div class="lname" style="color:${col}">${f.lesson}</div><div class="ldur">${hm(lv)}</div></div>`;
     }).join("");
-    const sep = (s.flown?.length && s.planned?.length) ? `<div class="lsep">▸ ${s.remaining} remaining · next ${Math.min(CFG.upcomings, s.remaining)} shown · dates from Operations schedule (TBC = not yet scheduled)</div>` : "";
-    const more = (s.planned_total || 0) > CFG.upcomings ? `<div class="moret">+${s.planned_total - CFG.upcomings} more</div>` : "";
-    const nextSched = s.next_lesson && s.next_lesson !== "COMPLETE" ? scheduledDateFor(s.name, s.next_lesson) : null;
-    const ntag = CFG.showNextTag && s.next_lesson ? `<b style="color:${col}">${s.next_lesson}</b>` : "";
-    const ndateTag = s.next_lesson && s.next_lesson !== "COMPLETE" ? `<span style="color:${nextSched ? 'var(--tx2)' : 'var(--tx3)'};margin-left:3px${nextSched ? '' : ';font-style:italic'}">${nextSched ? fd(nextSched) : 'TBC'}</span>` : "";
+    const sep = (s.flown?.length && upcoming.length) ? `<div class="lsep">▸ ${s.remaining} remaining · next ${Math.min(CFG.upcomings, upcoming.length)} scheduled shown</div>` : "";
+    const more = upcoming.length > CFG.upcomings ? `<div class="moret">+${upcoming.length - CFG.upcomings} more</div>` : "";
+    const nextOps = upcoming[0] || null;
+    const nextLesson = (nextOps && nextOps.lesson) || (s.next_lesson && s.next_lesson !== "COMPLETE" ? s.next_lesson : null);
+    const nextDate = nextOps ? nextOps.date : null;
+    const ntag = CFG.showNextTag && nextLesson ? `<b style="color:${col}">${nextLesson}</b>` : "";
+    const ndateTag = nextLesson ? `<span style="color:${nextDate ? 'var(--tx2)' : 'var(--tx3)'};margin-left:3px${nextDate ? '' : ';font-style:italic'}">${nextDate ? fd(nextDate) : 'TBC'}</span>` : "";
     return `<div class="scard" data-catc="${s.catc_id}" data-batch="${s.batch}" title="Click for all records"><div class="sh"><div><div class="sname">${s.name}${nick}</div><div class="smeta">${s.batch} · ${s.done}/${s.total}</div></div><div><div class="spct" style="color:${col}">${s.pct.toFixed(1)}%</div><div class="spct2">${s.remaining} left</div></div></div><div class="pb"><div class="pf" style="width:${Math.max(s.pct, .3)}%;background:${col}"></div></div><div class="sb2" style="max-height:${CFG.cardH}px">${fRows}${sep}${pRows}${more}</div><div class="sf2"><span style="font-size:10px;color:var(--tx3)">Next:${ntag ? ` ${ntag}${ndateTag}` : ""}</span><span class="ftag" style="background:${bg};color:${col};border:1px solid ${col}33">View all ›</span></div></div>`;
   }
 
