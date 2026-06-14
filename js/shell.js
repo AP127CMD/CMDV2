@@ -99,6 +99,11 @@
     };
     return h('div', { style: { width: rail ? 58 : 224, flexShrink: 0, background: 'var(--bg-2)', borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', height: mobile ? '100vh' : '100%', position: mobile ? 'fixed' : 'relative', top: 0, left: 0, zIndex: mobile ? 200 : 'auto', boxShadow: mobile ? '6px 0 24px oklch(0 0 0 / 0.45)' : 'none', overflowY: 'auto', transition: 'width .15s ease' } },
       mobile && h('div', { style: { padding: '12px 16px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, h('span', { className: 'head', style: { fontWeight: 700 } }, 'AP127 V2'), h('button', { onClick: onClose, style: { background: 'none', border: 'none', color: 'var(--ink-3)', fontSize: 18, cursor: 'pointer' } }, '✕')),
+      // Mobile-only: surface the PROG/OPS data freshness (SYNC times) hidden from the top bar on small screens.
+      mobile && h('div', { style: { padding: '8px 16px', borderBottom: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 6 } },
+        h('div', { className: 'mono uc', style: { fontSize: 8, color: 'var(--ink-3)', letterSpacing: '0.1em' } }, 'DATA FRESHNESS'),
+        h(FreshnessDot, { kind: 'PROG', fresh: d.freshness.progress }),
+        h(FreshnessDot, { kind: 'OPS', fresh: d.freshness.ops })),
       h('nav', { style: { padding: rail ? '8px 6px' : 8, display: 'flex', flexDirection: 'column', gap: 2 } },
         (_sharePreset ? GROUPS.map(g => ({ ...g, items: g.items.filter(i => _sharePreset.includes(i.id)) })).filter(g => g.items.length > 0) : GROUPS)
         .map((g, gi) => h('div', { key: gi, style: { marginTop: g.label ? 10 : 0 } },
