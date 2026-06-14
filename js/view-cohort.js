@@ -1092,6 +1092,7 @@ function buildAP127CombinedChart(){
       }
     }
   });
+  ap127FitY(CHARTS.ap127combined);
 }
 function ap127FitY(chart){
   try{
