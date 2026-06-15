@@ -1595,11 +1595,11 @@ function renderPerformance(){
   });
   // Daily FLIGHTS — stacked by batch + 7-day rolling avg line.
   const _fOpts=dailyOpts("n");
-  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f",borderWidth:0})),{label:"7d Avg",type:"line",data:rollingAvgF,borderColor:"#f59e0b",borderWidth:1.5,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:_fOpts});
+  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f",borderWidth:0})),{label:"Total",type:"line",data:dates.map(d=>dm[d].n),borderColor:"#f59e0b",borderWidth:1.5,pointRadius:0,fill:false,order:0,datalabels:{display:false}},{label:"7d Avg",type:"line",data:rollingAvgF,borderColor:"rgba(251,191,36,0.45)",borderWidth:1,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:_fOpts});
   observeChartResize('perfDailyF','wrap-perf-daily-f');
   // Daily HOURS — stacked by batch + 7-day rolling avg line.
   const _hOpts=dailyOpts("h");
-  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h",borderWidth:0})),{label:"7d Avg",type:"line",data:rollingAvgH,borderColor:"#f59e0b",borderWidth:1.5,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:_hOpts});
+  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h",borderWidth:0})),{label:"Total",type:"line",data:dates.map(d=>+dm[d].h.toFixed(1)),borderColor:"#f59e0b",borderWidth:1.5,pointRadius:0,fill:false,order:0,datalabels:{display:false}},{label:"7d Avg",type:"line",data:rollingAvgH,borderColor:"rgba(251,191,36,0.45)",borderWidth:1,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:_hOpts});
   observeChartResize('perfDailyH','wrap-perf-daily-h');
 
   const mm={};
