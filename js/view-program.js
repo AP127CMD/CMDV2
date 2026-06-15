@@ -1758,19 +1758,35 @@ function resetPerformanceFilters(){
   renderPerformance();
 }
 
+function anSetBatch(b){
+  document.querySelectorAll('[data-anb]').forEach(el=>el.classList.toggle('active',el.dataset.anb===b));
+  renderAnalysis();
+}
+function anSetStatus(s){
+  document.querySelectorAll('[data-ans]').forEach(el=>el.classList.toggle('active',el.dataset.ans===s));
+  renderAnalysis();
+}
 function renderAnalysis(){
   const today=ap127TodayBKK();
   const lookBack=+(document.getElementById('an-lookback')?.value||30);
   const cutoffD=new Date(today+'T12:00:00Z');
   cutoffD.setUTCDate(cutoffD.getUTCDate()-lookBack);
   const cutoff=cutoffD.toISOString().slice(0,10);
+  // Active filter state
+  const anBatch=document.querySelector('[data-anb].active')?.dataset.anb||'AP127';
+  const anStatus=document.querySelector('[data-ans].active')?.dataset.ans||'ALL';
+  const anSort=document.getElementById('an-sort')?.value||'pace';
+  // Collect flights
   const recAll=collectHistoricalFlights().filter(r=>r.date<=today);
-  const rec=recAll.filter(r=>r.date>=cutoff);
+  const recPeriod=recAll.filter(r=>r.date>=cutoff);
+  const recBatch=anBatch==='ALL'?recPeriod:recPeriod.filter(r=>r.batch===anBatch);
+  // dm from batch-filtered flights (for DoW chart + alerts)
   const dm={};
-  rec.forEach(r=>{
+  recBatch.forEach(r=>{
     if(!dm[r.date])dm[r.date]={n:0,bn:{}};
     dm[r.date].n++;dm[r.date].bn[r.batch]=(dm[r.date].bn[r.batch]||0)+1;
   });
+  // Per-student stats (all batches always)
   const BATCHKEYS=[['ap124','AP124'],['ap126','AP126'],['ap127','AP127'],['ap129','AP129']];
   const bStats={};const allStu=[];
   BATCHKEYS.forEach(([k,b])=>{
@@ -1787,38 +1803,72 @@ function renderAnalysis(){
     const atr=sts.filter(s=>s._dsl===null||s._dsl>=14).length;
     bStats[b]={n,avgP,avgR,atr};allStu.push(...sts);
   });
-  // Batch health cards
-  [['AP124','c124'],['AP126','c126'],['AP127','c127'],['AP129','c129']].forEach(([b,cc])=>{
-    const el=document.getElementById('an-card-'+b);if(!el)return;
-    const s=bStats[b];const col=`var(--${cc})`;
-    el.innerHTML=`<div class="sl">${b}</div><div class="sv" style="color:${col}">${s.n}</div><div class="ss2">students</div><div class="an-card-rows"><div>Avg progress <b style="color:${col}">${s.avgP.toFixed(1)}%</b></div><div>Pace (${lookBack}d) <b style="color:${col}">${s.avgR.toFixed(1)}</b> lessons</div><div style="color:${s.atr>0?'#ef4444':'var(--tx3)'}">At-risk <b>${s.atr}</b>${s.atr>0?' ⚠':''}</div></div>`;
-  });
-  // Batch medians for status badges
+  // Batch medians (whole batch, not filtered)
   const meds={};
   ['AP124','AP126','AP127','AP129'].forEach(b=>{
     const ns=allStu.filter(s=>s._b===b).map(s=>s._rn).sort((a,z)=>a-z);
     if(!ns.length){meds[b]=0;return;}
     const m=Math.floor(ns.length/2);meds[b]=ns.length%2?ns[m]:(ns[m-1]+ns[m])/2;
   });
-  function sbadge(s){
-    if(s._dsl===null||s._dsl>=14)return'<span class="an-status an-s-red" title="No flights in 14+ days">●</span>';
+  function statusKey(s){
+    if(s._dsl===null||s._dsl>=14)return'atrisk';
     const med=meds[s._b]||0;
-    if(med>0&&s._rn<med*0.5)return'<span class="an-status an-s-ora" title="Below median pace">●</span>';
-    if(med>0&&s._rn<med*0.8)return'<span class="an-status an-s-yel" title="Slightly below pace">●</span>';
+    if(med>0&&s._rn<med*0.5)return'below';
+    if(med>0&&s._rn<med*0.8)return'slow';
+    return'onpace';
+  }
+  function sbadge(s){
+    const sk=statusKey(s);
+    if(sk==='atrisk')return'<span class="an-status an-s-red" title="No flights in 14+ days">●</span>';
+    if(sk==='below')return'<span class="an-status an-s-ora" title="Below median pace">●</span>';
+    if(sk==='slow')return'<span class="an-status an-s-yel" title="Slightly below pace">●</span>';
     return'<span class="an-status an-s-grn" title="On pace">●</span>';
   }
+  // Batch health cards (all 4 always shown; dim non-selected when focused)
+  [['AP124','c124'],['AP126','c126'],['AP127','c127'],['AP129','c129']].forEach(([b,cc])=>{
+    const el=document.getElementById('an-card-'+b);if(!el)return;
+    const s=bStats[b];const col=`var(--${cc})`;
+    el.style.opacity=anBatch!=='ALL'&&anBatch!==b?'0.3':'1';
+    el.innerHTML=`<div class="sl">${b}</div><div class="sv" style="color:${col}">${s.n}</div><div class="ss2">students</div><div class="an-card-rows"><div>Avg progress <b style="color:${col}">${s.avgP.toFixed(1)}%</b></div><div>Pace (${lookBack}d) <b style="color:${col}">${s.avgR.toFixed(1)}</b> lessons</div><div style="color:${s.atr>0?'#ef4444':'var(--tx3)'}">At-risk <b>${s.atr}</b>${s.atr>0?' ⚠':''}</div></div>`;
+  });
+  // Rebuild FI select (preserve selection)
+  const fiSel=document.getElementById('an-fi');
+  if(fiSel){
+    const prevFI=fiSel.value||'ALL';
+    const fiBase=anBatch==='ALL'?allStu:allStu.filter(s=>s._b===anBatch);
+    const fis=[...new Set(fiBase.map(s=>s.fi||'').filter(Boolean))].sort();
+    fiSel.innerHTML='<option value="ALL">All FI</option>'+fis.map(f=>`<option value="${f}"${f===prevFI?' selected':''}>${f}</option>`).join('');
+  }
+  const anFI=fiSel?.value||'ALL';
+  // Apply filters to student list
+  let visible=anBatch==='ALL'?[...allStu]:[...allStu.filter(s=>s._b===anBatch)];
+  if(anStatus==='atrisk')visible=visible.filter(s=>statusKey(s)==='atrisk');
+  else if(anStatus==='below')visible=visible.filter(s=>statusKey(s)==='below'||statusKey(s)==='slow');
+  else if(anStatus==='onpace')visible=visible.filter(s=>statusKey(s)==='onpace');
+  if(anFI!=='ALL')visible=visible.filter(s=>s.fi===anFI);
+  // Sort
+  if(anSort==='pace')visible.sort((a,b)=>b._rn!==a._rn?b._rn-a._rn:(b._lf||'').localeCompare(a._lf||''));
+  else if(anSort==='pct')visible.sort((a,b)=>b.pct-a.pct);
+  else if(anSort==='remaining')visible.sort((a,b)=>b.remaining-a.remaining);
+  else if(anSort==='name')visible.sort((a,b)=>(a.nick||a.name).localeCompare(b.nick||b.name));
+  else if(anSort==='last')visible.sort((a,b)=>(b._lf||'').localeCompare(a._lf||''));
   // Student pace table
-  const sorted=[...allStu].sort((a,b)=>{if(b._rn!==a._rn)return b._rn-a._rn;return(b._lf||'').localeCompare(a._lf||'');});
   const tEl=document.getElementById('an-student-table');
   if(tEl){
     const ccMap={AP124:'var(--c124)',AP126:'var(--c126)',AP127:'var(--c127)',AP129:'var(--c129)'};
-    const rows=sorted.map((s,i)=>{
-      const col=ccMap[s._b];const lfd=s._lf?ap127ShortDate(s._lf):'—';const nick=s.nick||ap127ShortName(s.name);
-      return`<tr><td style="color:var(--tx3)">${i+1}</td><td><span style="color:${col};font-weight:600">${nick}</span><span style="font-size:8px;color:var(--tx3);margin-left:4px">${s._b}</span></td><td style="color:var(--tx3)">${s.fi||'—'}</td><td>${s.done}/${s.total}</td><td style="color:${col}">${s.pct.toFixed(1)}%</td><td style="color:var(--tx);font-weight:600">${s._rn}</td><td style="color:var(--tx3)">${lfd}</td><td>${sbadge(s)}</td></tr>`;
-    }).join('');
-    tEl.innerHTML=`<table class="pf-table"><thead><tr><th>#</th><th>Name</th><th>FI</th><th>Done/Tot</th><th>Prog%</th><th>L(${lookBack}d)</th><th>Last Flight</th><th>S</th></tr></thead><tbody>${rows}</tbody></table>`;
+    if(!visible.length){
+      tEl.innerHTML='<div style="padding:16px;color:var(--tx3);font-family:\'JetBrains Mono\',monospace;font-size:10px">No students match current filters.</div>';
+    }else{
+      const tags=[anBatch!=='ALL'?anBatch:null,anStatus!=='ALL'?anStatus:null,anFI!=='ALL'?'FI:'+anFI:null].filter(Boolean);
+      const sub=`${visible.length} student${visible.length!==1?'s':''}${tags.length?' · '+tags.join(' · '):''}`;
+      const rows=visible.map((s,i)=>{
+        const col=ccMap[s._b];const lfd=s._lf?ap127ShortDate(s._lf):'—';const nick=s.nick||ap127ShortName(s.name);
+        return`<tr><td style="color:var(--tx3)">${i+1}</td><td><span style="color:${col};font-weight:600">${nick}</span><span style="font-size:8px;color:var(--tx3);margin-left:4px">${s._b}</span></td><td style="color:var(--tx3)">${s.fi||'—'}</td><td>${s.done}/${s.total}</td><td style="color:${col}">${s.pct.toFixed(1)}%</td><td style="color:var(--tx);font-weight:600">${s._rn}</td><td style="color:var(--tx3)">${lfd}</td><td>${sbadge(s)}</td></tr>`;
+      }).join('');
+      tEl.innerHTML=`<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);margin-bottom:4px">${sub}</div><table class="pf-table"><thead><tr><th>#</th><th>Name</th><th>FI</th><th>Done/Tot</th><th>Prog%</th><th>L(${lookBack}d)</th><th>Last Flight</th><th>S</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
   }
-  // Day-of-week distribution
+  // DoW chart (batch-filtered)
   const wdF=[0,0,0,0,0,0,0],wdD=[0,0,0,0,0,0,0];
   let dtx=new Date(cutoff+'T12:00:00Z');const todayDt=new Date(today+'T12:00:00Z');
   while(dtx<=todayDt){const ds=dtx.toISOString().slice(0,10);const wd=dtx.getUTCDay();wdD[wd]++;if(dm[ds])wdF[wd]+=dm[ds].n;dtx.setUTCDate(dtx.getUTCDate()+1);}
@@ -1828,9 +1878,9 @@ function renderAnalysis(){
   if(CHARTS.anDoW){CHARTS.anDoW.destroy();CHARTS.anDoW=null;}
   CHARTS.anDoW=mkC('c-an-dow',{type:'bar',data:{labels:DOW_LABELS,datasets:[{label:'Avg flights/day',data:dowAvg,backgroundColor:dowAvg.map(v=>v===dowMax?'rgba(245,158,11,0.85)':'rgba(245,158,11,0.45)'),borderWidth:0,datalabels:{anchor:'end',align:'end',color:'rgba(230,237,243,0.8)',font:{family:"JetBrains Mono",size:10,weight:'600'},formatter:(v,ctx)=>{const n=ctx.dataset.data[ctx.dataIndex];return n>0?n.toFixed(1):null;}}}]},options:{...copts({grid:{color:'rgba(48,54,61,0.7)'},stacked:false},{grid:{color:'rgba(48,54,61,0.7)'},beginAtZero:true,stacked:false},{p:{legend:{display:false}}})}});
   observeChartResize('anDoW','wrap-an-dow');
-  // Low-activity alert list
+  // Low-activity alerts (batch-filtered)
   const wkMap={};
-  rec.forEach(r=>{const d2=new Date(r.date+'T12:00:00Z');const wd2=d2.getUTCDay();const diff=wd2===0?6:wd2-1;const mon=new Date(d2);mon.setUTCDate(d2.getUTCDate()-diff);const wk=mon.toISOString().slice(0,10);wkMap[wk]=(wkMap[wk]||0)+1;});
+  recBatch.forEach(r=>{const d2=new Date(r.date+'T12:00:00Z');const wd2=d2.getUTCDay();const diff=wd2===0?6:wd2-1;const mon=new Date(d2);mon.setUTCDate(d2.getUTCDate()-diff);const wk=mon.toISOString().slice(0,10);wkMap[wk]=(wkMap[wk]||0)+1;});
   const wkE=Object.entries(wkMap).sort(([a],[b])=>a.localeCompare(b));
   const pAvg=wkE.length?wkE.reduce((a,[,n])=>a+n,0)/wkE.length:0;
   const thr=pAvg*0.75;
@@ -2048,7 +2098,7 @@ function renderAnalysis(){
   }
 
   // Expose inline-handler targets referenced by the embedded markup + generated rows.
-  Object.assign(window, { renderPerformance, resetPerformanceFilters, renderAnalysis, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch, onRestRegChange, onPriorityChange, renderPriorityChips,
+  Object.assign(window, { renderPerformance, resetPerformanceFilters, renderAnalysis, anSetBatch, anSetStatus, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch, onRestRegChange, onPriorityChange, renderPriorityChips,
     runSimulation2, renderSimulation2, addExtraBatch2, removeExtraBatch2, updateExtraBatch2, toggleHourMode2, onWeHolCapInput2, propagateCapToWeHol2, onRestRegChange2, onPriorityChange2, renderPriorityChips2, onModeChange2, onWeightChange2, resetWeights2, renderSchedulingModeUI2,
     runSimulation3, sim3Field3, sim3Weather3, sim3Toggle3, sim3OnMcToggle3, sim3OnHardCapInput3, sim3OnModeChange3, sim3OnWeightChange3, sim3ResetWeights3, sim3OnPriorityChange3, sim3OnHourMode3, sim3AddExtra3, sim3RemoveExtra3, sim3UpdateExtra3, sim3AddScenario3, sim3DeleteScenario3, sim3DuplicateScenario3, sim3SetBaseline3, sim3PinScenario3, sim3RenameScenario3, sim3SelectScenario3, sim3ResetDefaults3, sim3SetCompareTab3, sim3EnterPresent3, sim3ExitPresent3, sim3NarrativeStep3, sim3ToggleBeforeAfter3, sim3AddAnnotation3, sim3SetAp129Start3 });
 
@@ -2182,14 +2232,39 @@ const MK_ANALYSIS = `
 <div id="page-analysis" class="page">
   <div class="pf-filter">
     <div class="pt">School Analysis</div>
-    <div class="fr">
+    <div class="fr" style="margin-bottom:6px">
       <select id="an-lookback" onchange="renderAnalysis()">
         <option value="30">Last 30 days</option>
         <option value="14">Last 14 days</option>
         <option value="60">Last 60 days</option>
         <option value="90">Last 90 days</option>
       </select>
-      <span class="d127-meta">Relative to today · highlights where to focus</span>
+      <div class="an-vsep"></div>
+      <span class="an-flbl">BATCH</span>
+      <button class="bt" data-anb="ALL" onclick="anSetBatch('ALL')">ALL</button>
+      <button class="bt" data-anb="AP124" onclick="anSetBatch('AP124')">AP124</button>
+      <button class="bt" data-anb="AP126" onclick="anSetBatch('AP126')">AP126</button>
+      <button class="bt active" data-anb="AP127" onclick="anSetBatch('AP127')">★ AP127</button>
+      <button class="bt" data-anb="AP129" onclick="anSetBatch('AP129')">AP129</button>
+    </div>
+    <div class="fr">
+      <span class="an-flbl">STATUS</span>
+      <button class="bt active" data-ans="ALL" onclick="anSetStatus('ALL')">All</button>
+      <button class="bt an-s-btn-atrisk" data-ans="atrisk" onclick="anSetStatus('atrisk')">● At-risk</button>
+      <button class="bt an-s-btn-below" data-ans="below" onclick="anSetStatus('below')">● Below pace</button>
+      <button class="bt an-s-btn-onpace" data-ans="onpace" onclick="anSetStatus('onpace')">● On pace</button>
+      <div class="an-vsep"></div>
+      <span class="an-flbl">FI</span>
+      <select id="an-fi" onchange="renderAnalysis()"><option value="ALL">All FI</option></select>
+      <div class="an-vsep"></div>
+      <span class="an-flbl">SORT</span>
+      <select id="an-sort" onchange="renderAnalysis()">
+        <option value="pace">Pace ↓</option>
+        <option value="pct">Progress ↓</option>
+        <option value="remaining">Remaining ↓</option>
+        <option value="last">Last flight ↓</option>
+        <option value="name">Name A–Z</option>
+      </select>
     </div>
   </div>
   <div class="ss" style="grid-template-columns:repeat(4,1fr)">
@@ -2201,18 +2276,18 @@ const MK_ANALYSIS = `
   <div class="cr c2">
     <div class="cb">
       <div class="ch">Student Pace</div>
-      <div class="cs">All students ranked by lessons flown in look-back window · S = status badge</div>
+      <div class="cs">Ranked by filter selection · S = status badge · ● red no-fly 14d · ● orange below median · ● yellow slow · ● green on pace</div>
       <div id="an-student-table" style="overflow-x:auto;margin-top:8px"></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <div class="cb">
         <div class="ch">Day-of-Week Distribution</div>
-        <div class="cs">Avg flights/day by weekday in look-back window</div>
+        <div class="cs">Avg flights/day by weekday · batch-filtered</div>
         <div class="chart-resize-wrap" id="wrap-an-dow" style="min-height:140px;height:160px"><canvas id="c-an-dow"></canvas></div>
       </div>
       <div class="cb">
         <div class="ch">Low-Activity Weeks</div>
-        <div class="cs">Weeks with flights ≥ 25% below period average</div>
+        <div class="cs">Weeks ≥ 25% below period average · batch-filtered</div>
         <ul id="an-alerts" style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:5px;font-family:'JetBrains Mono',monospace;font-size:10px"></ul>
       </div>
     </div>

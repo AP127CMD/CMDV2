@@ -438,7 +438,7 @@ body.s3-present .s3-topbar{display:none;}
 .sp-table tbody tr:hover{background:var(--s2);}
 @media(max-width:520px){.sp-modal{max-height:92vh;}.sp-modal-ov{padding:10px;}}
 /* ── School Analysis ── */
-.an-card{min-height:110px;}
+.an-card{min-height:110px;transition:opacity .2s;}
 .an-card-rows{margin-top:8px;display:flex;flex-direction:column;gap:3px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx2);}
 .pf-table{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:10px;}
 .pf-table th{color:var(--tx3);font-size:9px;font-weight:400;letter-spacing:.5px;text-align:left;padding:4px 8px;border-bottom:1px solid var(--bd);white-space:nowrap;}
@@ -446,3 +446,20 @@ body.s3-present .s3-topbar{display:none;}
 .pf-table tbody tr:hover td{background:color-mix(in oklch,var(--c127) 5%,var(--s1));}
 .an-status{font-size:10px;line-height:1;}
 .an-s-red{color:#ef4444;}.an-s-ora{color:#f97316;}.an-s-yel{color:#eab308;}.an-s-grn{color:#22c55e;}
+/* Analysis filter controls */
+.an-vsep{width:1px;height:20px;background:var(--bd);margin:0 5px;flex-shrink:0;}
+.an-flbl{font-size:9px;color:var(--tx3);letter-spacing:.6px;white-space:nowrap;}
+/* Batch filter active colors */
+.bt[data-anb="ALL"].active{background:var(--acc);border-color:var(--acc);}
+.bt[data-anb="AP124"].active{background:var(--c124);border-color:var(--c124);}
+.bt[data-anb="AP126"].active{background:var(--c126);border-color:var(--c126);}
+.bt[data-anb="AP127"].active{background:var(--c127);border-color:var(--c127);}
+.bt[data-anb="AP129"].active{background:var(--c129);border-color:var(--c129);}
+/* Status filter — pre-colored hints + active fills */
+.an-s-btn-atrisk{color:#ef4444!important;border-color:rgba(239,68,68,.3)!important;}
+.an-s-btn-below{color:#f97316!important;border-color:rgba(249,115,22,.3)!important;}
+.an-s-btn-onpace{color:#22c55e!important;border-color:rgba(34,197,94,.3)!important;}
+.bt[data-ans="ALL"].active{background:var(--s3);border-color:var(--tx3);color:var(--tx)!important;}
+.bt[data-ans="atrisk"].active{background:#ef4444;border-color:#ef4444;color:#fff!important;}
+.bt[data-ans="below"].active{background:#f97316;border-color:#f97316;color:#fff!important;}
+.bt[data-ans="onpace"].active{background:#22c55e;border-color:#22c55e;color:#000!important;}
