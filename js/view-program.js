@@ -1621,7 +1621,7 @@ function renderPerformance(){
       maintainAspectRatio:false,
       plugins:{
         legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}},
-        datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>=0.5,color:'rgba(255,255,255,0.85)',font:{family:"JetBrains Mono",size:7},formatter:(v)=>v>=0.5?v.toFixed(1):null,anchor:'center',align:'center'},
+        datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>=0.5,color:'rgba(255,255,255,0.85)',font:{family:"JetBrains Mono",size:7},formatter:(v,ctx)=>{const n=ctx.dataset.data[ctx.dataIndex];return typeof n==='number'&&n>=0.5?n.toFixed(1):null;},anchor:'center',align:'center'},
         stackTotalLabels:{enabled:true,totals:monthlyTotals,fmt:v=>v.toFixed(1)}
       },
       scales:{
@@ -1639,7 +1639,7 @@ function renderPerformance(){
     {label:"AP129",data:months.map(m=>+(mm[m].AP129||0).toFixed(1)),backgroundColor:"rgba(233,189,99,.80)"}
   ]},options:{responsive:true,maintainAspectRatio:false,plugins:{
     legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}},
-    datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>=0.5,color:'rgba(230,237,243,0.90)',font:{family:"JetBrains Mono",size:7,weight:'600'},formatter:(v)=>v>=0.5?v.toFixed(1):null,anchor:'end',align:'end',offset:2}
+    datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>=0.5,color:'rgba(230,237,243,0.90)',font:{family:"JetBrains Mono",size:7,weight:'600'},formatter:(v,ctx)=>{const n=ctx.dataset.data[ctx.dataIndex];return typeof n==='number'&&n>=0.5?n.toFixed(1):null;},anchor:'end',align:'end',offset:2}
   },scales:{
     x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681"},grid:{color:"#21262d"}},
     y:{beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},grid:{color:"#21262d"},title:{display:true,text:"hours",color:"#8b949e",font:{size:9,family:"JetBrains Mono"}}}
@@ -1662,7 +1662,7 @@ function renderPerformance(){
       {label:'Total',type:'line',data:recentTotals,borderColor:'#f59e0b',borderWidth:1.5,pointRadius:2,pointBackgroundColor:'#f59e0b',fill:false,datalabels:{display:false}}
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{
       legend:{labels:{font:{family:'JetBrains Mono',size:9},color:'#8b949e',boxWidth:8}},
-      datalabels:{display:(ctx)=>ctx.datasetIndex<4&&(ctx.dataset.data[ctx.dataIndex]||0)>0,color:'rgba(255,255,255,0.85)',font:{family:'JetBrains Mono',size:7},formatter:(v)=>v>0?v:null,anchor:'center',align:'center'},
+      datalabels:{display:(ctx)=>ctx.datasetIndex<4&&(ctx.dataset.data[ctx.dataIndex]||0)>0,color:'rgba(255,255,255,0.85)',font:{family:'JetBrains Mono',size:7},formatter:(v,ctx)=>{const n=ctx.dataset.data[ctx.dataIndex];return typeof n==='number'&&n>0?n:null;},anchor:'center',align:'center'},
       stackTotalLabels:{enabled:true,totals:recentTotals},
       tooltip:{callbacks:{title:([c])=>ap127FmtDate(recent[c.dataIndex]),footer:(items)=>`Total: ${items.filter(i=>i.datasetIndex<4).reduce((a,i)=>a+(i.raw||0),0)} flights · ${(dm[recent[items[0]?.dataIndex]]?.h||0).toFixed(1)}h`}}
     },scales:{
