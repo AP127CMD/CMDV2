@@ -27,6 +27,7 @@
     { label: 'Training Program', items: [
       { id: 'plans', label: 'Curriculum Plans', icon: '▤' },
       { id: 'performance', label: "School Perf.", icon: '◷' },
+      { id: 'school-analysis', label: 'School Analysis', icon: '◐' },
       { id: 'simulation', label: 'Simulation', icon: '◈' },
       { id: 'sim2', label: 'Simulation 2', icon: '⚖' },
       { id: 'sim3', label: 'Simulation 3', icon: '◆' },
@@ -481,6 +482,7 @@
       cohort: window.CohortView,
       plans: window.ProgressDetailView,
       performance: window.SchoolPerformanceView,
+      'school-analysis': window.SchoolAnalysisView,
       simulation: window.SimulationView,
       sim2: window.Simulation2View,
       sim3: window.Simulation3View,

@@ -1758,6 +1758,90 @@ function resetPerformanceFilters(){
   renderPerformance();
 }
 
+function renderAnalysis(){
+  const today=ap127TodayBKK();
+  const lookBack=+(document.getElementById('an-lookback')?.value||30);
+  const cutoffD=new Date(today+'T12:00:00Z');
+  cutoffD.setUTCDate(cutoffD.getUTCDate()-lookBack);
+  const cutoff=cutoffD.toISOString().slice(0,10);
+  const recAll=collectHistoricalFlights().filter(r=>r.date<=today);
+  const rec=recAll.filter(r=>r.date>=cutoff);
+  const dm={};
+  rec.forEach(r=>{
+    if(!dm[r.date])dm[r.date]={n:0,bn:{}};
+    dm[r.date].n++;dm[r.date].bn[r.batch]=(dm[r.date].bn[r.batch]||0)+1;
+  });
+  const BATCHKEYS=[['ap124','AP124'],['ap126','AP126'],['ap127','AP127'],['ap129','AP129']];
+  const bStats={};const allStu=[];
+  BATCHKEYS.forEach(([k,b])=>{
+    const sts=(G?.[k]||[]).map(s=>{
+      const rf=(s.flown||[]).filter(f=>f.date>=cutoff&&f.date<=today);
+      const sf=(s.flown||[]).filter(f=>f.date<=today).sort((a,z)=>a.date.localeCompare(z.date));
+      const lf=sf.at(-1)?.date||null;
+      const dsl=lf?Math.round((new Date(today+'T12:00:00Z')-new Date(lf+'T12:00:00Z'))/86400000):null;
+      return{...s,_b:b,_rn:rf.length,_lf:lf,_dsl:dsl};
+    });
+    const n=sts.length;
+    const avgP=n?sts.reduce((a,s)=>a+(s.pct||0),0)/n:0;
+    const avgR=n?sts.reduce((a,s)=>a+s._rn,0)/n:0;
+    const atr=sts.filter(s=>s._dsl===null||s._dsl>=14).length;
+    bStats[b]={n,avgP,avgR,atr};allStu.push(...sts);
+  });
+  // Batch health cards
+  [['AP124','c124'],['AP126','c126'],['AP127','c127'],['AP129','c129']].forEach(([b,cc])=>{
+    const el=document.getElementById('an-card-'+b);if(!el)return;
+    const s=bStats[b];const col=`var(--${cc})`;
+    el.innerHTML=`<div class="sl">${b}</div><div class="sv" style="color:${col}">${s.n}</div><div class="ss2">students</div><div class="an-card-rows"><div>Avg progress <b style="color:${col}">${s.avgP.toFixed(1)}%</b></div><div>Pace (${lookBack}d) <b style="color:${col}">${s.avgR.toFixed(1)}</b> lessons</div><div style="color:${s.atr>0?'#ef4444':'var(--tx3)'}">At-risk <b>${s.atr}</b>${s.atr>0?' ⚠':''}</div></div>`;
+  });
+  // Batch medians for status badges
+  const meds={};
+  ['AP124','AP126','AP127','AP129'].forEach(b=>{
+    const ns=allStu.filter(s=>s._b===b).map(s=>s._rn).sort((a,z)=>a-z);
+    if(!ns.length){meds[b]=0;return;}
+    const m=Math.floor(ns.length/2);meds[b]=ns.length%2?ns[m]:(ns[m-1]+ns[m])/2;
+  });
+  function sbadge(s){
+    if(s._dsl===null||s._dsl>=14)return'<span class="an-status an-s-red" title="No flights in 14+ days">●</span>';
+    const med=meds[s._b]||0;
+    if(med>0&&s._rn<med*0.5)return'<span class="an-status an-s-ora" title="Below median pace">●</span>';
+    if(med>0&&s._rn<med*0.8)return'<span class="an-status an-s-yel" title="Slightly below pace">●</span>';
+    return'<span class="an-status an-s-grn" title="On pace">●</span>';
+  }
+  // Student pace table
+  const sorted=[...allStu].sort((a,b)=>{if(b._rn!==a._rn)return b._rn-a._rn;return(b._lf||'').localeCompare(a._lf||'');});
+  const tEl=document.getElementById('an-student-table');
+  if(tEl){
+    const ccMap={AP124:'var(--c124)',AP126:'var(--c126)',AP127:'var(--c127)',AP129:'var(--c129)'};
+    const rows=sorted.map((s,i)=>{
+      const col=ccMap[s._b];const lfd=s._lf?ap127ShortDate(s._lf):'—';const nick=s.nick||ap127ShortName(s.name);
+      return`<tr><td style="color:var(--tx3)">${i+1}</td><td><span style="color:${col};font-weight:600">${nick}</span><span style="font-size:8px;color:var(--tx3);margin-left:4px">${s._b}</span></td><td style="color:var(--tx3)">${s.fi||'—'}</td><td>${s.done}/${s.total}</td><td style="color:${col}">${s.pct.toFixed(1)}%</td><td style="color:var(--tx);font-weight:600">${s._rn}</td><td style="color:var(--tx3)">${lfd}</td><td>${sbadge(s)}</td></tr>`;
+    }).join('');
+    tEl.innerHTML=`<table class="pf-table"><thead><tr><th>#</th><th>Name</th><th>FI</th><th>Done/Tot</th><th>Prog%</th><th>L(${lookBack}d)</th><th>Last Flight</th><th>S</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  // Day-of-week distribution
+  const wdF=[0,0,0,0,0,0,0],wdD=[0,0,0,0,0,0,0];
+  let dtx=new Date(cutoff+'T12:00:00Z');const todayDt=new Date(today+'T12:00:00Z');
+  while(dtx<=todayDt){const ds=dtx.toISOString().slice(0,10);const wd=dtx.getUTCDay();wdD[wd]++;if(dm[ds])wdF[wd]+=dm[ds].n;dtx.setUTCDate(dtx.getUTCDate()+1);}
+  const DOW_IDX=[1,2,3,4,5];const DOW_LABELS=['Mon','Tue','Wed','Thu','Fri'];
+  const dowAvg=DOW_IDX.map(i=>wdD[i]>0?+(wdF[i]/wdD[i]).toFixed(1):0);
+  const dowMax=Math.max(...dowAvg,0.01);
+  if(CHARTS.anDoW){CHARTS.anDoW.destroy();CHARTS.anDoW=null;}
+  CHARTS.anDoW=mkC('c-an-dow',{type:'bar',data:{labels:DOW_LABELS,datasets:[{label:'Avg flights/day',data:dowAvg,backgroundColor:dowAvg.map(v=>v===dowMax?'rgba(245,158,11,0.85)':'rgba(245,158,11,0.45)'),borderWidth:0,datalabels:{anchor:'end',align:'end',color:'rgba(230,237,243,0.8)',font:{family:"JetBrains Mono",size:10,weight:'600'},formatter:(v,ctx)=>{const n=ctx.dataset.data[ctx.dataIndex];return n>0?n.toFixed(1):null;}}}]},options:{...copts({grid:{color:'rgba(48,54,61,0.7)'},stacked:false},{grid:{color:'rgba(48,54,61,0.7)'},beginAtZero:true,stacked:false},{p:{legend:{display:false}}})}});
+  observeChartResize('anDoW','wrap-an-dow');
+  // Low-activity alert list
+  const wkMap={};
+  rec.forEach(r=>{const d2=new Date(r.date+'T12:00:00Z');const wd2=d2.getUTCDay();const diff=wd2===0?6:wd2-1;const mon=new Date(d2);mon.setUTCDate(d2.getUTCDate()-diff);const wk=mon.toISOString().slice(0,10);wkMap[wk]=(wkMap[wk]||0)+1;});
+  const wkE=Object.entries(wkMap).sort(([a],[b])=>a.localeCompare(b));
+  const pAvg=wkE.length?wkE.reduce((a,[,n])=>a+n,0)/wkE.length:0;
+  const thr=pAvg*0.75;
+  const aEl=document.getElementById('an-alerts');
+  if(aEl){
+    const flagged=wkE.filter(([,n])=>n<thr);
+    if(!flagged.length){aEl.innerHTML='<li style="color:var(--tx3)">No low-activity weeks in this period.</li>';}
+    else{aEl.innerHTML=flagged.map(([wk,n])=>{const pct=pAvg>0?Math.round((1-n/pAvg)*100):0;return`<li><span style="color:var(--tx2)">Week of ${ap127ShortDate(wk)}</span> — <b style="color:var(--c127)">${n}</b> flights <span style="color:#ef4444">↓ ${pct}% vs avg ${pAvg.toFixed(0)}</span></li>`;}).join('');}
+  }
+}
+
   // ======================== end verbatim NGT_001 logic ========================
 
   // ---- Progress Detail (NGT_001 "Flight Plans"), with REAL scheduled dates ----
@@ -1964,7 +2048,7 @@ function resetPerformanceFilters(){
   }
 
   // Expose inline-handler targets referenced by the embedded markup + generated rows.
-  Object.assign(window, { renderPerformance, resetPerformanceFilters, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch, onRestRegChange, onPriorityChange, renderPriorityChips,
+  Object.assign(window, { renderPerformance, resetPerformanceFilters, renderAnalysis, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch, onRestRegChange, onPriorityChange, renderPriorityChips,
     runSimulation2, renderSimulation2, addExtraBatch2, removeExtraBatch2, updateExtraBatch2, toggleHourMode2, onWeHolCapInput2, propagateCapToWeHol2, onRestRegChange2, onPriorityChange2, renderPriorityChips2, onModeChange2, onWeightChange2, resetWeights2, renderSchedulingModeUI2,
     runSimulation3, sim3Field3, sim3Weather3, sim3Toggle3, sim3OnMcToggle3, sim3OnHardCapInput3, sim3OnModeChange3, sim3OnWeightChange3, sim3ResetWeights3, sim3OnPriorityChange3, sim3OnHourMode3, sim3AddExtra3, sim3RemoveExtra3, sim3UpdateExtra3, sim3AddScenario3, sim3DeleteScenario3, sim3DuplicateScenario3, sim3SetBaseline3, sim3PinScenario3, sim3RenameScenario3, sim3SelectScenario3, sim3ResetDefaults3, sim3SetCompareTab3, sim3EnterPresent3, sim3ExitPresent3, sim3NarrativeStep3, sim3ToggleBeforeAfter3, sim3AddAnnotation3, sim3SetAp129Start3 });
 
@@ -2093,6 +2177,47 @@ const MK_PERF = `
   </div>
 </div>
 
+`;
+const MK_ANALYSIS = `
+<div id="page-analysis" class="page">
+  <div class="pf-filter">
+    <div class="pt">School Analysis</div>
+    <div class="fr">
+      <select id="an-lookback" onchange="renderAnalysis()">
+        <option value="30">Last 30 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="60">Last 60 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+      <span class="d127-meta">Relative to today · highlights where to focus</span>
+    </div>
+  </div>
+  <div class="ss" style="grid-template-columns:repeat(4,1fr)">
+    <div class="sc c124 an-card" id="an-card-AP124"></div>
+    <div class="sc c126 an-card" id="an-card-AP126"></div>
+    <div class="sc c127 an-card" id="an-card-AP127"></div>
+    <div class="sc c129 an-card" id="an-card-AP129"></div>
+  </div>
+  <div class="cr c2">
+    <div class="cb">
+      <div class="ch">Student Pace</div>
+      <div class="cs">All students ranked by lessons flown in look-back window · S = status badge</div>
+      <div id="an-student-table" style="overflow-x:auto;margin-top:8px"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="cb">
+        <div class="ch">Day-of-Week Distribution</div>
+        <div class="cs">Avg flights/day by weekday in look-back window</div>
+        <div class="chart-resize-wrap" id="wrap-an-dow" style="min-height:140px;height:160px"><canvas id="c-an-dow"></canvas></div>
+      </div>
+      <div class="cb">
+        <div class="ch">Low-Activity Weeks</div>
+        <div class="cs">Weeks with flights ≥ 25% below period average</div>
+        <ul id="an-alerts" style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:5px;font-family:'JetBrains Mono',monospace;font-size:10px"></ul>
+      </div>
+    </div>
+  </div>
+</div>
 `;
 const MK_SIM = `
 <div id="page-simulation" class="page">
@@ -2612,6 +2737,7 @@ const MK_SIM3 = `
     buildBC('c-127', 'inf-127', 'ap127', BC.AP127);
   });
   window.SchoolPerformanceView = makeView(MK_PERF, () => { resetPerformanceFilters(); });
+  window.SchoolAnalysisView = makeView(MK_ANALYSIS, renderAnalysis);
   window.SimulationView = makeView(MK_SIM, () => {
     renderSimulation();
     if (SIM_G) { renderSimFinish(); buildSimCapacityChart(); }

@@ -437,3 +437,12 @@ body.s3-present .s3-topbar{display:none;}
 .sp-table td{padding:5px 12px;border-bottom:1px solid var(--bd2);}
 .sp-table tbody tr:hover{background:var(--s2);}
 @media(max-width:520px){.sp-modal{max-height:92vh;}.sp-modal-ov{padding:10px;}}
+/* ── School Analysis ── */
+.an-card{min-height:110px;}
+.an-card-rows{margin-top:8px;display:flex;flex-direction:column;gap:3px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx2);}
+.pf-table{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:10px;}
+.pf-table th{color:var(--tx3);font-size:9px;font-weight:400;letter-spacing:.5px;text-align:left;padding:4px 8px;border-bottom:1px solid var(--bd);white-space:nowrap;}
+.pf-table td{padding:4px 8px;border-bottom:1px solid var(--bd2);vertical-align:middle;white-space:nowrap;}
+.pf-table tbody tr:hover td{background:color-mix(in oklch,var(--c127) 5%,var(--s1));}
+.an-status{font-size:10px;line-height:1;}
+.an-s-red{color:#ef4444;}.an-s-ora{color:#f97316;}.an-s-yel{color:#eab308;}.an-s-grn{color:#22c55e;}
