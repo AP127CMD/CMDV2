@@ -162,6 +162,14 @@
         projData = (xMax && xMax > today) ? [{ x: today, y: doneN }, { x: xMax, y: total }] : [];
         sugMax = total;
       }
+      const fitY = chart => {
+        const xs = chart.scales.x;
+        let hi = 0;
+        chart.data.datasets.forEach(d => { d.data.forEach(p => { if (p.x >= xs.min && p.x <= xs.max && p.y > hi) hi = p.y; }); });
+        if (!hi) return;
+        chart.options.scales.y.max = hi * 1.08;
+        chart.update('none');
+      };
       const allX = [...flown.map(f => f.date), ...planDates.map(c => c.planned_date), ...(avgData || []).map(p => p.x)].filter(Boolean).sort();
       const xMin = allX[0] || today;
       const xMaxFinal = xMax || xMin;
@@ -169,9 +177,9 @@
         { label: 'Plan', data: planData, borderColor: ink3, borderDash: [6, 4], borderWidth: 1.4, pointRadius: 0, tension: 0, order: 5 },
         { label: 'AVG AP127', data: avgData, borderColor: magenta, borderWidth: 1.2, borderDash: [4, 3], pointRadius: 0, tension: .25, order: 4 },
       ];
-      if (leadData && leadData.length) ds.push({ label: 'Target SP' + (leaderNick ? ' · ' + leaderNick : ''), data: leadData, borderColor: blue, borderWidth: 1.4, borderDash: [2, 3], pointRadius: 0, tension: 0, order: 3 });
-      if (projData.length) ds.push({ label: 'Projection', data: projData, borderColor: pend, borderWidth: 2, borderDash: [3, 3], pointRadius: 3, pointStyle: 'rectRot', tension: 0, order: 2 });
-      ds.push({ label: 'You', data: actualData, borderColor: youCol, backgroundColor: youCol + '18', borderWidth: 2.6, pointRadius: mobile ? 0 : 2, pointHoverRadius: 4, tension: 0, fill: false, order: 1 });
+      if (leadData && leadData.length) ds.push({ label: 'Adv SP' + (leaderNick ? ' · ' + leaderNick : ''), data: leadData, borderColor: blue, borderWidth: 1.4, borderDash: [2, 3], pointRadius: 0, tension: 0, order: 3 });
+      if (projData.length) ds.push({ label: 'Projection', data: projData, borderColor: pend, borderWidth: 1.6, borderDash: [3, 3], pointRadius: 3, pointStyle: 'rectRot', tension: 0, order: 2 });
+      ds.push({ label: 'You', data: actualData, borderColor: youCol, backgroundColor: youCol + '18', borderWidth: 1.6, pointRadius: mobile ? 0 : 2, pointHoverRadius: 4, tension: 0, fill: false, order: 1 });
       try {
         chartRef.current = new window.Chart(ctx, {
           type: 'line', data: { datasets: ds },
@@ -186,8 +194,8 @@
                 label: c => `${c.dataset.label}: ${hourMode ? (c.raw?.y || 0).toFixed(1) + 'h' : Math.round(c.raw?.y || 0) + ' les'}`
               }},
               zoom: {
-                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-                pan:  { enabled: true, mode: 'x' },
+                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x', onZoomComplete: ({ chart }) => fitY(chart) },
+                pan:  { enabled: true, mode: 'x', onPanComplete: ({ chart }) => fitY(chart) },
               },
             },
             scales: {
@@ -195,7 +203,7 @@
                 time: { unit: 'month', displayFormats: { day: 'd MMM', week: 'd MMM', month: 'MMM yy' } },
                 ticks: { color: ink3, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, maxTicksLimit: mobile ? 5 : 12, source: 'auto' },
                 grid: { color: line } },
-              y: { beginAtZero: true, suggestedMax: sugMax,
+              y: { min: 0,
                 ticks: { color: ink2, font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, precision: hourMode ? 1 : 0 },
                 grid: { color: line } },
             },
