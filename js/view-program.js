@@ -1593,13 +1593,21 @@ function renderPerformance(){
       y:{stacked:true,beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},grid:{color:"#21262d"},title:{display:true,text:unit==="h"?"hours / day":"flights / day",color:"#8b949e",font:{size:9,family:"JetBrains Mono"}}}
     }
   });
-  // Daily FLIGHTS — stacked by batch + 7-day rolling avg line.
+  // Daily FLIGHTS — stacked by batch + Total + 7d avg lines on hidden y2 axis
+  const maxDailyN=Math.max(1,...dates.map(d=>dm[d].n));
+  const yMaxN=Math.ceil(maxDailyN/5)*5+5;
   const _fOpts=dailyOpts("n");
-  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f",borderWidth:0})),{label:"Total",type:"line",data:dates.map(d=>dm[d].n),borderColor:"#f59e0b",borderWidth:1.5,pointRadius:0,fill:false,order:0,datalabels:{display:false}},{label:"7d Avg",type:"line",data:rollingAvgF,borderColor:"rgba(251,191,36,0.45)",borderWidth:1,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:_fOpts});
+  _fOpts.scales.y.max=yMaxN;
+  _fOpts.scales.y2={display:false,min:0,max:yMaxN,grid:{drawOnChartArea:false}};
+  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f",borderWidth:0})),{label:"Total",type:"line",data:dates.map(d=>dm[d].n),borderColor:"#f59e0b",borderWidth:1.5,pointRadius:0,fill:false,yAxisID:"y2",datalabels:{display:false}},{label:"7d Avg",type:"line",data:rollingAvgF,borderColor:"rgba(251,191,36,0.45)",borderWidth:1,borderDash:[4,2],pointRadius:0,fill:false,yAxisID:"y2",datalabels:{display:false}}]},options:_fOpts});
   observeChartResize('perfDailyF','wrap-perf-daily-f');
-  // Daily HOURS — stacked by batch + 7-day rolling avg line.
+  // Daily HOURS — stacked by batch + Total + 7d avg lines on hidden y2 axis
+  const maxDailyH=Math.max(1,...dates.map(d=>dm[d].h));
+  const yMaxH=Math.ceil(maxDailyH/5)*5+5;
   const _hOpts=dailyOpts("h");
-  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h",borderWidth:0})),{label:"Total",type:"line",data:dates.map(d=>+dm[d].h.toFixed(1)),borderColor:"#f59e0b",borderWidth:1.5,pointRadius:0,fill:false,order:0,datalabels:{display:false}},{label:"7d Avg",type:"line",data:rollingAvgH,borderColor:"rgba(251,191,36,0.45)",borderWidth:1,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:_hOpts});
+  _hOpts.scales.y.max=yMaxH;
+  _hOpts.scales.y2={display:false,min:0,max:yMaxH,grid:{drawOnChartArea:false}};
+  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h",borderWidth:0})),{label:"Total",type:"line",data:dates.map(d=>+dm[d].h.toFixed(1)),borderColor:"#f59e0b",borderWidth:1.5,pointRadius:0,fill:false,yAxisID:"y2",datalabels:{display:false}},{label:"7d Avg",type:"line",data:rollingAvgH,borderColor:"rgba(251,191,36,0.45)",borderWidth:1,borderDash:[4,2],pointRadius:0,fill:false,yAxisID:"y2",datalabels:{display:false}}]},options:_hOpts});
   observeChartResize('perfDailyH','wrap-perf-daily-h');
 
   const mm={};
