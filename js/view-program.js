@@ -1515,13 +1515,13 @@ function renderPerformance(){
   // ISO week key so week-boundary detection works even when Monday is a holiday/weekend
   const isoWeek=(ds)=>{const d=new Date(ds+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=d.getUTCFullYear();return`${y}-${Math.ceil((((d-new Date(Date.UTC(y,0,1)))/86400000)+1)/7)}`;};
   const xTickFmt=(value,index)=>{
-    if(!value||!value.slice)return null;
+    const d=dates[index];if(!d)return null;
     const prev=index>0?dates[index-1]:null;
-    const newMonth=!prev||prev.slice(0,7)!==value.slice(0,7);
-    const newWeek=!prev||isoWeek(value)!==isoWeek(prev);
-    if(newMonth)return xMonthLabel(value);       // always label month starts
-    if(rangeDays<=14)return xDayLabel(value);    // short: every day
-    if(rangeDays<=60&&newWeek)return xDayLabel(value); // medium: week starts
+    const newMonth=!prev||prev.slice(0,7)!==d.slice(0,7);
+    const newWeek=!prev||isoWeek(d)!==isoWeek(prev);
+    if(newMonth)return xMonthLabel(d);
+    if(rangeDays<=14)return xDayLabel(d);
+    if(rangeDays<=60&&newWeek)return xDayLabel(d);
     return null;
   };
   // Tick color: month-start labels are brighter than week/day labels
