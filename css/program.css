@@ -55,6 +55,11 @@ nav{position:sticky;top:0;z-index:300;background:rgba(13,17,23,.97);backdrop-fil
 .cb{background:var(--s1);border:1px solid var(--bd);border-radius:7px;padding:13px 15px;}
 .ch{font-size:10px;font-weight:700;color:var(--tx2);margin-bottom:1px;letter-spacing:.5px;text-transform:uppercase;}
 .cs{font-size:10px;color:var(--tx3);margin-bottom:10px;}
+.pf-week-tbl{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:10px;}
+.pf-week-tbl th{color:var(--tx3);font-size:9px;font-weight:400;letter-spacing:.5px;text-align:left;padding:4px 8px;border-bottom:1px solid var(--bd);white-space:nowrap;}
+.pf-week-tbl td{padding:4px 8px;border-bottom:1px solid var(--bd2);vertical-align:middle;white-space:nowrap;}
+.pf-week-tbl tbody tr:hover td{background:color-mix(in oklch,var(--c127) 5%,var(--s1));}
+.pf-week-date{color:var(--tx2);}
 .tl-wrap{background:var(--s1);border:1px solid var(--bd);border-radius:7px;padding:14px 18px;margin-bottom:12px;}
 .tl-title{font-size:10px;font-weight:700;color:var(--tx2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;}
 .tl-rows{display:flex;flex-direction:column;gap:9px;}

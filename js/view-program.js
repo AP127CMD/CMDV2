@@ -1529,6 +1529,14 @@ function renderPerformance(){
   const bh={AP124:0,AP126:0,AP127:0,AP129:0};
   rec.forEach(r=>{bh[r.batch]+=r.mins/60;});
   const topBatch=Object.entries(bh).sort((a,b)=>b[1]-a[1])[0];
+  // 7-day rolling averages for daily chart overlays
+  const rollingAvgF=dates.map((d,i)=>{const w=dates.slice(Math.max(0,i-6),i+1);return+(w.reduce((a,wd)=>a+dm[wd].n,0)/w.length).toFixed(2);});
+  const rollingAvgH=dates.map((d,i)=>{const w=dates.slice(Math.max(0,i-6),i+1);return+(w.reduce((a,wd)=>a+dm[wd].h,0)/w.length).toFixed(2);});
+  // 7-day vs prior-7 trend
+  const last7D=dates.slice(-7),prior7D=dates.slice(-14,-7);
+  const avg7=last7D.length?last7D.reduce((a,d)=>a+dm[d].n,0)/last7D.length:0;
+  const avgP7=prior7D.length?prior7D.reduce((a,d)=>a+dm[d].n,0)/prior7D.length:0;
+  const trendPct=prior7D.length?(avg7-avgP7)/avgP7*100:null;
   document.getElementById("pf-total-flights").textContent=totalFlights;
   document.getElementById("pf-total-hours").textContent=totalHours.toFixed(1);
   document.getElementById("pf-days").textContent=days;
@@ -1541,6 +1549,14 @@ function renderPerformance(){
   document.getElementById("pf-best-wd-sub").textContent=`${bestW[1]} flights`;
   document.getElementById("pf-top-batch").textContent=topBatch[0];
   document.getElementById("pf-top-batch-sub").textContent=`${topBatch[1].toFixed(1)}h`;
+  // Trend insight strip
+  const pfTrend=document.getElementById('pf-trend');
+  if(pfTrend){
+    const dir=trendPct===null?'':trendPct>2?'↑':trendPct<-2?'↓':'→';
+    const col=trendPct===null?'':trendPct>2?'var(--c126)':trendPct<-2?'#f87171':'var(--tx3)';
+    const pctTxt=trendPct!==null?` <span style="color:${col};font-weight:600">${dir} ${Math.abs(trendPct).toFixed(0)}%</span> vs prior 7 days`:'';
+    pfTrend.innerHTML=`7-day avg: <strong>${avg7.toFixed(1)}</strong> fl/day${pctTxt} &nbsp;·&nbsp; Period avg: <strong>${avg.toFixed(1)}</strong> fl/day &nbsp;·&nbsp; ${days} operating days`;
+  }
 
   // Batch palette (canonical, matches TODAY view).
   const BPAL=[["AP124","rgba(75,163,247,.80)"],["AP126","rgba(122,207,126,.80)"],["AP127","rgba(232,138,255,.80)"],["AP129","rgba(233,189,99,.80)"]];
@@ -1548,18 +1564,18 @@ function renderPerformance(){
     plugins:{
       legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}},
       datalabels:{display:false},
-      tooltip:{callbacks:{title:([c])=>ap127FmtDate(dates[c.dataIndex]),footer:(items)=>"Total: "+items.reduce((a,i)=>a+(i.raw||0),0).toFixed(unit==="h"?1:0)+" "+(unit==="h"?"hrs":"flights")}}
+      tooltip:{callbacks:{title:([c])=>ap127FmtDate(dates[c.dataIndex]),footer:(items)=>{const s=items.filter(i=>i.dataset.stack);return"Total: "+s.reduce((a,i)=>a+(i.raw||0),0).toFixed(unit==="h"?1:0)+" "+(unit==="h"?"hrs":"flights");}}}
     },
     scales:{
       x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",callback:xTickFmt,maxTicksLimit:999,autoSkip:false,maxRotation:0,minRotation:0},grid:{color:xGridColor}},
       y:{stacked:true,beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},grid:{color:"#21262d"},title:{display:true,text:unit==="h"?"hours / day":"flights / day",color:"#8b949e",font:{size:9,family:"JetBrains Mono"}}}
     }
   });
-  // Daily FLIGHTS — stacked by batch.
-  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f",borderWidth:0}))},options:dailyOpts("n")});
+  // Daily FLIGHTS — stacked by batch + 7-day rolling avg line.
+  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f",borderWidth:0})),{label:"7d Avg",type:"line",data:rollingAvgF,borderColor:"#f59e0b",borderWidth:1.5,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:dailyOpts("n")});
   observeChartResize('perfDailyF','wrap-perf-daily-f');
-  // Daily HOURS — stacked by batch.
-  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h",borderWidth:0}))},options:dailyOpts("h")});
+  // Daily HOURS — stacked by batch + 7-day rolling avg line.
+  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h",borderWidth:0})),{label:"7d Avg",type:"line",data:rollingAvgH,borderColor:"#f59e0b",borderWidth:1.5,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:dailyOpts("h")});
   observeChartResize('perfDailyH','wrap-perf-daily-h');
 
   const mm={};
@@ -1648,6 +1664,42 @@ function renderPerformance(){
   f127('pf-127-peak').textContent=peak127Entry?ap127FmtDate(peak127Entry):'-';
   const peakSub=document.getElementById('pf-127-peak-sub');
   if(peakSub)peakSub.textContent=peak127Entry?`${dm[peak127Entry]?.bn?.AP127||0} flights`:'';
+
+  // Weekly performance summary table
+  const wkOf=(ds)=>{const d=new Date(ds+'T12:00:00Z'),dow=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-dow);return d.toISOString().slice(0,10);};
+  const wkMap={};
+  allDates.forEach(d=>{const wk=wkOf(d);if(!wkMap[wk])wkMap[wk]={wk,n:0,h:0,days:0,bn:{AP124:0,AP126:0,AP127:0,AP129:0}};wkMap[wk].days++;wkMap[wk].n+=dm[d].n;wkMap[wk].h+=dm[d].h;['AP124','AP126','AP127','AP129'].forEach(b=>{wkMap[wk].bn[b]+=(dm[d].bn[b]||0);});});
+  const wks=Object.values(wkMap).sort((a,b)=>a.wk.localeCompare(b.wk));
+  const maxWkN=Math.max(1,...wks.map(w=>w.n));
+  const BHEX={AP124:'#4ba3f7',AP126:'#7acf7e',AP127:'#e88aff',AP129:'#e9bd63'};
+  const wkEl=document.getElementById('pf-weekly');
+  if(wkEl){
+    if(!wks.length){wkEl.innerHTML='';}else{
+      wkEl.innerHTML=`<table class="pf-week-tbl"><thead><tr>
+        <th>Week of</th><th>Days</th><th colspan="2">Flights</th><th>Avg/day</th><th>Hours</th>
+        <th style="color:${BHEX.AP124}">AP124</th><th style="color:${BHEX.AP126}">AP126</th>
+        <th style="color:${BHEX.AP127}">AP127</th><th style="color:${BHEX.AP129}">AP129</th>
+        <th>vs prior wk</th></tr></thead><tbody>
+        ${wks.map((w,wi)=>{
+          const avgD=w.days?(w.n/w.days).toFixed(1):'—';
+          const prev=wi>0?wks[wi-1]:null;
+          const dPct=prev&&prev.n?((w.n-prev.n)/prev.n*100):null;
+          const dDir=dPct===null?'<span style="color:var(--tx3)">—</span>':dPct>5?`<span style="color:var(--c126)">↑ ${Math.abs(dPct).toFixed(0)}%</span>`:dPct<-5?`<span style="color:#f87171">↓ ${Math.abs(dPct).toFixed(0)}%</span>`:`<span style="color:var(--tx3)">→ ${Math.abs(dPct).toFixed(0)}%</span>`;
+          const barW=Math.round(w.n/maxWkN*100);
+          return `<tr>
+            <td class="pf-week-date">${ap127ShortDate(w.wk)}</td>
+            <td>${w.days}</td>
+            <td style="font-weight:600">${w.n}</td>
+            <td style="width:60px"><div style="width:${barW}%;height:3px;background:var(--c127);border-radius:2px;min-width:2px"></div></td>
+            <td>${avgD}</td>
+            <td>${w.h.toFixed(1)}</td>
+            ${['AP124','AP126','AP127','AP129'].map(b=>`<td style="color:${BHEX[b]}">${w.bn[b]||0}</td>`).join('')}
+            <td>${dDir}</td>
+          </tr>`;
+        }).join('')}
+      </tbody></table>`;
+    }
+  }
 }
 
 function resetPerformanceFilters(){
@@ -1968,6 +2020,7 @@ const MK_PERF = `
     <div class="sc c127"><div class="sl">AP127 Avg / Day</div><div class="sv" style="color:var(--c127)" id="pf-127-avg">-</div><div class="ss2">per AP127 ops day</div></div>
     <div class="sc c127"><div class="sl">AP127 Peak Day</div><div class="sv" style="color:var(--c127)" id="pf-127-peak">-</div><div class="ss2" id="pf-127-peak-sub">-</div></div>
   </div>
+  <div id="pf-trend" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx2);margin:0 0 14px;padding:8px 14px;background:var(--s1);border-radius:5px;border:1px solid var(--bd)">—</div>
   <div class="cb">
     <div class="ch">Daily Flights by Batch</div>
     <div class="cs">Stacked bars · flights/day, coloured by batch</div>
@@ -1993,6 +2046,11 @@ const MK_PERF = `
     <div class="cs" id="pf-recent-sub">Most recent N days with flights</div>
     <div style="position:relative;height:220px"><canvas id="c-perf-recent"></canvas></div>
     <div id="pf-recent-stats" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px"></div>
+  </div>
+  <div class="cb" style="margin-top:12px">
+    <div class="ch">Weekly Performance</div>
+    <div class="cs">Aggregated by calendar week (Mon–Sun) · ordered oldest → newest · vs prior wk = week-over-week flight count change</div>
+    <div id="pf-weekly" style="overflow-x:auto;margin-top:8px"></div>
   </div>
 </div>
 
