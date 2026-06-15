@@ -58,6 +58,23 @@ Chart.register({id:"catcNowLine",afterDraw(chart){
 }});
 /* Register chartjs-plugin-datalabels for School Perf monthly + recent charts */
 try { if(window.ChartDataLabels) Chart.register(window.ChartDataLabels); } catch(e){}
+/* ===== stackTotalLabels — draws total value above each stacked bar ===== */
+Chart.register({id:"stackTotalLabels",afterDraw(chart){
+  const opts=chart.options?.plugins?.stackTotalLabels;
+  if(!opts?.enabled||!opts.totals)return;
+  const{ctx,chartArea,scales:{x:xs,y:ys}}=chart;if(!xs||!ys)return;
+  ctx.save();
+  ctx.fillStyle=opts.color||'rgba(230,237,243,0.90)';
+  ctx.font=`600 ${opts.fs||7}px 'JetBrains Mono',monospace`;
+  ctx.textAlign='center';ctx.textBaseline='bottom';
+  opts.totals.forEach((t,i)=>{
+    if(!t)return;
+    const x=xs.getPixelForValue(i);
+    const y=Math.max(chartArea.top+9,ys.getPixelForValue(t))-(opts.gap||3);
+    ctx.fillText(opts.fmt?opts.fmt(t):String(t),x,y);
+  });
+  ctx.restore();
+}});
 /* ===== EXTRA_COLORS + escHtml ===== */
 const EXTRA_COLORS=['#a78bfa','#f472b6','#34d399','#60a5fa','#fbbf24','#f87171'];
 function escHtml(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
@@ -1473,7 +1490,7 @@ function renderPerformance(){
     filterNote.textContent=`Filter: ${batch} | ${ap127FmtDate(from)} → ${ap127FmtDate(to)} | ${allDates.length} operating days${extraNonBiz?` (incl. ${extraNonBiz} weekend/holiday day${extraNonBiz>1?"s":""} with flights)`:""}`;
   }
   const recentTitle=document.getElementById("pf-recent-title");
-  if(recentTitle)recentTitle.textContent=`Recent ${recentN} Operating Days`;
+  if(recentTitle)recentTitle.textContent=`Recent ${recentN} Calendar Days`;
   if(!allDates.length){
     ["pf-total-flights","pf-total-hours","pf-days","pf-avg","pf-peak","pf-med","pf-avg-h","pf-best-wd","pf-top-batch"].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent="-";});
     const sub=document.getElementById("pf-peak-sub");if(sub)sub.textContent="-";
@@ -1572,15 +1589,18 @@ function renderPerformance(){
     }
   });
   // Daily FLIGHTS — stacked by batch + 7-day rolling avg line.
-  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f",borderWidth:0})),{label:"7d Avg",type:"line",data:rollingAvgF,borderColor:"#f59e0b",borderWidth:1.5,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:dailyOpts("n")});
+  const _fOpts=dailyOpts("n");_fOpts.plugins.stackTotalLabels={enabled:true,totals:dates.map(d=>dm[d].n)};
+  CHARTS.perfDailyF=mkC("c-perf-daily-f",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>dm[d].bn[b]||0),backgroundColor:c,stack:"f",borderWidth:0})),{label:"7d Avg",type:"line",data:rollingAvgF,borderColor:"#f59e0b",borderWidth:1.5,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:_fOpts});
   observeChartResize('perfDailyF','wrap-perf-daily-f');
   // Daily HOURS — stacked by batch + 7-day rolling avg line.
-  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h",borderWidth:0})),{label:"7d Avg",type:"line",data:rollingAvgH,borderColor:"#f59e0b",borderWidth:1.5,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:dailyOpts("h")});
+  const _hOpts=dailyOpts("h");_hOpts.plugins.stackTotalLabels={enabled:true,totals:dates.map(d=>+dm[d].h.toFixed(1)),fmt:v=>v.toFixed(1)};
+  CHARTS.perfDailyH=mkC("c-perf-daily-h",{type:"bar",data:{labels:dates,datasets:[...BPAL.map(([b,c])=>({label:b,data:dates.map(d=>+(dm[d].b[b]||0).toFixed(2)),backgroundColor:c,stack:"h",borderWidth:0})),{label:"7d Avg",type:"line",data:rollingAvgH,borderColor:"#f59e0b",borderWidth:1.5,borderDash:[4,2],pointRadius:0,fill:false,order:-1,datalabels:{display:false}}]},options:_hOpts});
   observeChartResize('perfDailyH','wrap-perf-daily-h');
 
   const mm={};
   rec.forEach(r=>{const m=r.date.slice(0,7);if(!mm[m])mm[m]={AP124:0,AP126:0,AP127:0,AP129:0};mm[m][r.batch]+=r.mins/60;});
   const months=Object.keys(mm).sort();
+  const monthlyTotals=months.map(m=>+(mm[m].AP124+mm[m].AP126+mm[m].AP127+mm[m].AP129).toFixed(1));
   CHARTS.perfMonthly=mkC("c-perf-monthly",{
     type:"bar",
     data:{
@@ -1597,7 +1617,8 @@ function renderPerformance(){
       maintainAspectRatio:false,
       plugins:{
         legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}},
-        datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>=0.5,color:'rgba(255,255,255,0.85)',font:{family:"JetBrains Mono",size:7},formatter:(v)=>v>=0.5?v.toFixed(1):null,anchor:'center',align:'center'}
+        datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>=0.5,color:'rgba(255,255,255,0.85)',font:{family:"JetBrains Mono",size:7},formatter:(v)=>v>=0.5?v.toFixed(1):null,anchor:'center',align:'center'},
+        stackTotalLabels:{enabled:true,totals:monthlyTotals,fmt:v=>v.toFixed(1)}
       },
       scales:{
         x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681"},grid:{color:"#21262d"}},
@@ -1614,26 +1635,31 @@ function renderPerformance(){
     {label:"AP129",data:months.map(m=>+(mm[m].AP129||0).toFixed(1)),backgroundColor:"rgba(233,189,99,.80)"}
   ]},options:{responsive:true,maintainAspectRatio:false,plugins:{
     legend:{labels:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",boxWidth:8}},
-    datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>=0.5,color:'rgba(0,0,0,0.80)',font:{family:"JetBrains Mono",size:7},formatter:(v)=>v>=0.5?v.toFixed(1):null,anchor:'center',align:'center'}
+    datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>=0.5,color:'rgba(230,237,243,0.90)',font:{family:"JetBrains Mono",size:7,weight:'600'},formatter:(v)=>v>=0.5?v.toFixed(1):null,anchor:'end',align:'end',offset:2}
   },scales:{
     x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681"},grid:{color:"#21262d"}},
     y:{beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},grid:{color:"#21262d"},title:{display:true,text:"hours",color:"#8b949e",font:{size:9,family:"JetBrains Mono"}}}
   }}});
   observeChartResize('perfMonthlyG','wrap-perf-monthly-g');
 
-  const recent=dates.filter(d=>dm[d].n>0).slice(-recentN).reverse();
+  // Last recentN calendar days (oldest → newest), including WE/HOL with 0 flights
+  const recent=[];
+  for(let i=recentN-1;i>=0;i--){const _d=new Date(today+'T12:00:00Z');_d.setUTCDate(_d.getUTCDate()-i);const ds=_d.toISOString().slice(0,10);if(ds<=today){if(!dm[ds])dm[ds]={n:0,h:0,b:{AP124:0,AP126:0,AP127:0,AP129:0},bn:{AP124:0,AP126:0,AP127:0,AP129:0}};recent.push(ds);}}
   const BPAL_HEX={AP124:'#4ba3f7',AP126:'#7acf7e',AP127:'#e88aff',AP129:'#e9bd63'};
   const BPAL_KEYS=['AP124','AP126','AP127','AP129'];
   const BPAL_BG={AP124:'rgba(75,163,247,.80)',AP126:'rgba(122,207,126,.80)',AP127:'rgba(232,138,255,.80)',AP129:'rgba(233,189,99,.80)'};
   const recSubEl=document.getElementById('pf-recent-sub');
-  if(recSubEl)recSubEl.textContent=`${recent.length} most recent days with flights`;
+  const recFlightDays=recent.filter(d=>dm[d]?.n>0).length;
+  if(recSubEl)recSubEl.textContent=`${recent.length} calendar days · ${recFlightDays} with flights`;
   if(recent.length){
+    const recentTotals=recent.map(d=>dm[d].n||0);
     CHARTS.perfRecent=mkC('c-perf-recent',{type:'bar',data:{labels:recent.map(d=>ap127ShortDate(d)),datasets:[
       ...BPAL_KEYS.map(b=>({label:b,data:recent.map(d=>dm[d].bn[b]||0),backgroundColor:BPAL_BG[b],stack:'r'})),
-      {label:'Total',type:'line',data:recent.map(d=>dm[d].n),borderColor:'#f59e0b',borderWidth:1.5,pointRadius:2,pointBackgroundColor:'#f59e0b',fill:false,datalabels:{display:false}}
+      {label:'Total',type:'line',data:recentTotals,borderColor:'#f59e0b',borderWidth:1.5,pointRadius:2,pointBackgroundColor:'#f59e0b',fill:false,datalabels:{display:false}}
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{
       legend:{labels:{font:{family:'JetBrains Mono',size:9},color:'#8b949e',boxWidth:8}},
-      datalabels:{display:(ctx)=>ctx.datasetIndex<4&&(ctx.dataset.data[ctx.dataIndex]||0)>0,color:'rgba(0,0,0,0.80)',font:{family:'JetBrains Mono',size:7},formatter:(v)=>v>0?v:null,anchor:'center',align:'center'},
+      datalabels:{display:(ctx)=>ctx.datasetIndex<4&&(ctx.dataset.data[ctx.dataIndex]||0)>0,color:'rgba(255,255,255,0.85)',font:{family:'JetBrains Mono',size:7},formatter:(v)=>v>0?v:null,anchor:'center',align:'center'},
+      stackTotalLabels:{enabled:true,totals:recentTotals},
       tooltip:{callbacks:{title:([c])=>ap127FmtDate(recent[c.dataIndex]),footer:(items)=>`Total: ${items.filter(i=>i.datasetIndex<4).reduce((a,i)=>a+(i.raw||0),0)} flights · ${(dm[recent[items[0]?.dataIndex]]?.h||0).toFixed(1)}h`}}
     },scales:{
       x:{stacked:true,ticks:{font:{family:'JetBrains Mono',size:8},color:'#6e7681',maxRotation:45},grid:{color:'#21262d'}},
@@ -1709,7 +1735,7 @@ function resetPerformanceFilters(){
   if(a)a.value=getThreeMonthsAgo();
   if(b){b.value=today;b.max=today;}
   if(c)c.value="ALL";
-  if(d)d.value="20";
+  if(d)d.value="30";
   document.getElementById('pf-inc-we')?.classList.remove('active');
   document.getElementById('pf-inc-hol')?.classList.remove('active');
   ['pf-127-flights','pf-127-hours','pf-127-days','pf-127-avg','pf-127-peak'].forEach(id=>{
@@ -1988,10 +2014,10 @@ const MK_PERF = `
         <option value="AP129">AP129</option>
       </select>
       <select id="pf-recent-n" onchange="renderPerformance()">
-        <option value="20">Recent 20 Operating Days</option>
-        <option value="10">Recent 10 Operating Days</option>
-        <option value="30">Recent 30 Operating Days</option>
-        <option value="45">Recent 45 Operating Days</option>
+        <option value="30">Recent 30 Days</option>
+        <option value="20">Recent 20 Days</option>
+        <option value="14">Recent 14 Days</option>
+        <option value="45">Recent 45 Days</option>
       </select>
       <button id="pf-inc-we"  class="bt" onclick="this.classList.toggle('active');renderPerformance()">Incl WE</button>
       <button id="pf-inc-hol" class="bt" onclick="this.classList.toggle('active');renderPerformance()">Incl HOL</button>
