@@ -185,7 +185,7 @@
           type: 'line', data: { datasets: ds },
           options: {
             responsive: true, maintainAspectRatio: false, parsing: { xAxisKey: 'x', yAxisKey: 'y' },
-            interaction: { mode: 'index', intersect: false },
+            interaction: { mode: 'x', intersect: false, axis: 'x' },
             plugins: {
               datalabels: { display: false },
               legend: { labels: { color: ink2, usePointStyle: true, pointStyle: 'line', font: { family: 'JetBrains Mono', size: mobile ? 8 : 9 }, boxWidth: 16, padding: mobile ? 6 : 8 } },
