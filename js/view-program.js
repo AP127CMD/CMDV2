@@ -1949,14 +1949,31 @@ function renderAnalysis(){
     return opsSchedMap().get(R.ccKeyFromFull(fullName) + '|' + R.normLesson(lesson)) || null;
   }
 
+  // Returns curriculum-position map (normed lesson → 1-based index) for a batch.
+  function batchCurPosMap(batch) {
+    const g = initG();
+    if (!g) return {};
+    const num = (batch || '').replace(/\D/g, '');
+    const cur = g['cur' + num] || [];
+    const R = window.AP127Reconcile;
+    const map = {};
+    cur.forEach((c, i) => { if (c.lesson) map[R ? R.normLesson(c.lesson) : c.lesson.toUpperCase().trim()] = i + 1; });
+    return map;
+  }
+
   // makeCard — future-lesson dates come from the live Operations schedule for
   // all batches; TBC if not yet scheduled.
   function makeCard(s, rankClass = "") {
     const col = BC[s.batch], bg = BB[s.batch];
     const nick = s.nick ? `<span style="font-family:'JetBrains Mono',monospace;font-size:8px;padding:1px 3px;border-radius:2px;background:${bg};color:${col};margin-left:3px">${s.nick}</span>` : "";
     const fRows = (s.flown || []).slice(-CFG.recents).map(f => `<div class="lr"><div class="ld" style="background:var(--done)"></div><div class="ldate" style="color:var(--done)">${fd(f.date)}</div><div class="lname" style="color:var(--done)">${f.lesson}</div><div class="ldur">${f.actual_ft || hm(f.actual_mins)}</div></div>`).join("");
-    const upcoming = opsUpcomingFor(s.name);
     const Rc = window.AP127Reconcile;
+    const posMap = batchCurPosMap(s.batch);
+    const upcoming = opsUpcomingFor(s.name).filter(f => {
+      if (!Rc || !f.lesson) return true;
+      const pos = posMap[Rc.normLesson(f.lesson)];
+      return !pos || pos > (s.done || 0);
+    });
     const pRows = upcoming.slice(0, CFG.upcomings).map(f => {
       const lv = f.durMin || (Rc && Rc.hmToMin(f.duration)) || 60;
       return `<div class="lr"><div class="ld" style="background:${col};opacity:.5"></div><div class="ldate">${fd(f.date)}</div><div class="lname" style="color:${col}">${f.lesson}</div><div class="ldur">${hm(lv)}</div></div>`;
@@ -1987,6 +2004,7 @@ function renderAnalysis(){
   function spModalKey(e) { if (e.key === "Escape") closeSpModal(); }
   function buildSpRows(s) {
     const R = window.AP127Reconcile;
+    const posMap = batchCurPosMap(s.batch);
     const norm = l => R ? R.normLesson(l) : String(l || "").toUpperCase().trim();
     const flights = ((window.FLIGHT_DATA && window.FLIGHT_DATA.flights) || [])
       .filter(f => f.student && f.lesson && f.status !== "Canceled" && R && R.ccNameNorm(f.student) === R.ccKeyFromFull(s.name));
@@ -2012,12 +2030,14 @@ function renderAnalysis(){
           src = ((dd != null && Math.abs(dd) > 1) || (oM != null && pM != null && Math.abs(oM - pM) > 20)) ? "review" : "both";
         } else src = pf ? "prog" : "ops";
       } else {
+        const pos = posMap[k];
+        if (pos && pos <= (s.done || 0)) return null;
         date = (op && op.date) || "";
         mins = (op && op.durMin) || 0;
         status = "Scheduled"; src = "sched";
       }
       return { lesson, date, mins, status, src };
-    });
+    }).filter(Boolean);
   }
   function openSpModal(s) {
     closeSpModal();
