@@ -1508,32 +1508,36 @@ function renderPerformance(){
   const dates=[...allDates];
   const rangeDays=dates.length;
   const thisYear=new Date(today+'T00:00:00').getFullYear();
-  const xAxisLabel=(ds)=>{
-    if(!ds)return null;
-    try{
-      const d=new Date(ds+'T00:00:00');
-      const mo=d.toLocaleDateString('en-GB',{month:'short'});
-      const yr=d.getFullYear();
-      if(rangeDays>90){return yr===thisYear?mo:`${mo} '${String(yr).slice(2)}`;}
-      const day=String(d.getDate()).padStart(2,'0');
-      return yr===thisYear?`${day} ${mo}`:`${day} ${mo} '${String(yr).slice(2)}`;
-    }catch{return null;}
-  };
+  // Month-only label (used at every month boundary regardless of range)
+  const xMonthLabel=(ds)=>{if(!ds)return null;try{const d=new Date(ds+'T00:00:00');const mo=d.toLocaleDateString('en-GB',{month:'short'});const yr=d.getFullYear();return yr===thisYear?mo:`${mo} '${String(yr).slice(2)}`;}catch{return null;}};
+  // Day+month label (used at week/day ticks for shorter ranges)
+  const xDayLabel=(ds)=>{if(!ds)return null;try{const d=new Date(ds+'T00:00:00');const mo=d.toLocaleDateString('en-GB',{month:'short'});const yr=d.getFullYear();const day=String(d.getDate()).padStart(2,'0');return yr===thisYear?`${day} ${mo}`:`${day} ${mo} '${String(yr).slice(2)}`;}catch{return null;}};
   // ISO week key so week-boundary detection works even when Monday is a holiday/weekend
   const isoWeek=(ds)=>{const d=new Date(ds+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=d.getUTCFullYear();return`${y}-${Math.ceil((((d-new Date(Date.UTC(y,0,1)))/86400000)+1)/7)}`;};
   const xTickFmt=(value,index)=>{
     if(!value||!value.slice)return null;
     const prev=index>0?dates[index-1]:null;
-    if(rangeDays>90)return(!prev||prev.slice(0,7)!==value.slice(0,7))?xAxisLabel(value):null;
-    if(rangeDays>14)return(!prev||isoWeek(value)!==isoWeek(prev))?xAxisLabel(value):null;
-    return xAxisLabel(value);
+    const newMonth=!prev||prev.slice(0,7)!==value.slice(0,7);
+    const newWeek=!prev||isoWeek(value)!==isoWeek(prev);
+    if(newMonth)return xMonthLabel(value);       // always label month starts
+    if(rangeDays<=14)return xDayLabel(value);    // short: every day
+    if(rangeDays<=60&&newWeek)return xDayLabel(value); // medium: week starts
+    return null;
+  };
+  // Tick color: month-start labels are brighter than week/day labels
+  const xTickColor=(ctx)=>{
+    const d=dates[ctx.index];if(!d)return'#6e7681';
+    const prev=ctx.index>0?dates[ctx.index-1]:null;
+    return(!prev||prev.slice(0,7)!==d.slice(0,7))?'#c9d1d9':'#6e7681';
   };
   const xGridColor=(ctx)=>{
-    const d=dates[ctx.index];if(!d)return'#21262d';
+    const d=dates[ctx.index];if(!d)return'#1a1f26';
     const prev=ctx.index>0?dates[ctx.index-1]:null;
-    if(rangeDays>90)return(!prev||prev.slice(0,7)!==d.slice(0,7))?'#40464d':'#1a1f26';
-    if(rangeDays>14)return(!prev||isoWeek(d)!==isoWeek(prev))?'#40464d':'#1a1f26';
-    return'#21262d';
+    const newMonth=!prev||prev.slice(0,7)!==d.slice(0,7);
+    const newWeek=!prev||isoWeek(d)!==isoWeek(prev);
+    if(newMonth)return'rgba(255,255,255,0.18)';              // always: bright for month start
+    if(rangeDays<=60&&newWeek)return'rgba(255,255,255,0.06)'; // short/medium: subtle week grid
+    return'#1a1f26';
   };
   const days=dates.length,avg=totalFlights/days;
   const med=(()=>{const a=dates.map(d=>dm[d].n).sort((x,y)=>x-y);const m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2;})();
@@ -1584,7 +1588,7 @@ function renderPerformance(){
       tooltip:{callbacks:{title:([c])=>ap127FmtDate(dates[c.dataIndex]),footer:(items)=>{const s=items.filter(i=>i.dataset.stack);return"Total: "+s.reduce((a,i)=>a+(i.raw||0),0).toFixed(unit==="h"?1:0)+" "+(unit==="h"?"hrs":"flights");}}}
     },
     scales:{
-      x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",callback:xTickFmt,maxTicksLimit:999,autoSkip:false,maxRotation:0,minRotation:0},grid:{color:xGridColor}},
+      x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:xTickColor,callback:xTickFmt,maxTicksLimit:999,autoSkip:false,maxRotation:0,minRotation:0},grid:{color:xGridColor}},
       y:{stacked:true,beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#6e7681"},grid:{color:"#21262d"},title:{display:true,text:unit==="h"?"hours / day":"flights / day",color:"#8b949e",font:{size:9,family:"JetBrains Mono"}}}
     }
   });
