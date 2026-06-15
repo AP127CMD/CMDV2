@@ -129,6 +129,16 @@
     try { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fallback; } catch (e) { return fallback; }
   }
 
+  // Lessons are sequential — done = highest curriculum position reached,
+  // not a record count. Returns a patched copy of the student object.
+  function fixStudentDone(s, cur) {
+    if (!s || !cur || !cur.length) return s;
+    const pos = {}; cur.forEach((c, i) => { if (c.lesson) pos[c.lesson] = i + 1; });
+    const maxP = (s.flown || []).reduce((m, f) => Math.max(m, pos[f.lesson] || 0), 0);
+    if (maxP <= (s.done || 0)) return s;
+    return { ...s, done: maxP, remaining: Math.max(0, cur.length - maxP), pct: cur.length ? maxP / cur.length * 100 : 0, next_lesson: maxP < cur.length ? (cur[maxP]?.lesson || 'COMPLETE') : 'COMPLETE' };
+  }
+
   // Per-student progress chart: the student's Actual vs Plan vs forward Projection,
   // overlaid with the batch-average curve and the most-advanced SP — so a student
   // sees where they stand against the cohort and the leader. Presentational only;
@@ -270,13 +280,15 @@
     const [q, setQ] = useSlQ('');
     const [chartMode, setChartMode] = React.useState('lessons');
     const [chartFilter, setChartFilter] = React.useState('today');
-    const s = d.studentLens;
+    const _sRaw = d.studentLens;
+    const s = _sRaw ? fixStudentDone(_sRaw, d.curriculum) : _sRaw;
 
     // Cohort comparison series for the chart: the batch-average cumulative curve
     // and the most-advanced SP's curve. Memoised so the chart isn't rebuilt every
     // render. Kept above the early return to preserve hook order.
     const compare = React.useMemo(() => {
-      const all = d.students || [];
+      const cur = d.curriculum || [];
+      const all = (d.students || []).map(st => fixStudentDone(st, cur));
       const perStudentDates = all.map(st => (st.flown || []).filter(x => x.date).map(x => x.date).sort());
       const allDates = [...new Set(perStudentDates.flat())].sort();
       const batchAvg = all.length ? allDates.map(dt => {
@@ -299,14 +311,14 @@
       const leaderHrs = (leaderSt && !isSelfLeader) ?
         (leaderSt.flown || []).filter(x => x.date).slice().sort((a, b) => a.date.localeCompare(b.date))
           .map(f => ({ x: f.date, y: (lhAcc += (f.actual_mins || 0) / 60) })) : [];
-      return { batchAvg, batchAvgHrs, leader, leaderHrs, leaderNick: isSelfLeader ? '' : (leaderSt ? (leaderSt.nick || leaderSt.name) : ''), isSelfLeader: !!isSelfLeader };
-    }, [d.students, s]);
+      return { all, batchAvg, batchAvgHrs, leader, leaderHrs, leaderNick: isSelfLeader ? '' : (leaderSt ? (leaderSt.nick || leaderSt.name) : ''), isSelfLeader: !!isSelfLeader };
+    }, [d.students, d.studentLens, d.curriculum]);
 
     // No student selected — show inline picker
     if (!s) {
       const matches = q
-        ? d.students.filter(st => (st.name + ' ' + (st.nick || '')).toLowerCase().includes(q.toLowerCase()))
-        : d.students;
+        ? compare.all.filter(st => (st.name + ' ' + (st.nick || '')).toLowerCase().includes(q.toLowerCase()))
+        : compare.all;
       return h('div', { style: { padding: 20, overflow: 'auto', height: '100%' } },
         h('div', { className: 'panel', style: { maxWidth: 520, margin: '0 auto' } },
           h('div', { className: 'ph' },

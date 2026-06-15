@@ -2783,7 +2783,25 @@ const MK_SIM3 = `
 </div>
 `;
 
-  function initG() { if (!G && window.NGT_CACHE) G = window.NGT_CACHE; return G; }
+  // Lessons are strictly sequential — done = highest curriculum position reached,
+  // not just a count of records. Mutates G in place once at load time.
+  function normalizeStudentDone(g) {
+    [['ap124','cur124'],['ap126','cur126'],['ap127','cur127']].forEach(([sk,ck]) => {
+      const cur = g[ck] || [];
+      if (!cur.length) return;
+      const pos = {}; cur.forEach((c, i) => { if (c.lesson) pos[c.lesson] = i + 1; });
+      (g[sk] || []).forEach(s => {
+        const maxP = (s.flown || []).reduce((m, f) => Math.max(m, pos[f.lesson] || 0), 0);
+        if (maxP > (s.done || 0)) {
+          s.done = maxP;
+          s.remaining = Math.max(0, cur.length - maxP);
+          s.pct = cur.length ? maxP / cur.length * 100 : 0;
+          s.next_lesson = maxP < cur.length ? (cur[maxP]?.lesson || 'COMPLETE') : 'COMPLETE';
+        }
+      });
+    });
+  }
+  function initG() { if (!G && window.NGT_CACHE) { G = window.NGT_CACHE; normalizeStudentDone(G); } return G; }
   function destroy() {
     try { Object.values(CHARTS).forEach(c => { try { c && c.destroy?.(); } catch (e) {} }); } catch (e) {}
     try { (CHARTS._ro||[]).forEach(ro=>ro.disconnect()); CHARTS._ro=[]; } catch(e){}
