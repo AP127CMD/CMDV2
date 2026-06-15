@@ -43,7 +43,7 @@ const BB={AP124:"rgba(75,163,247,.12)",AP126:"rgba(122,207,126,.12)",AP127:"rgba
 // Register global plugin for "NOW" vertical line on simulation capacity chart
 /* ===== NOW-line chart plugin ===== */
 Chart.register({id:"catcNowLine",afterDraw(chart){
-  const opts=chart.options?.plugins?.catcNowLine;
+  const opts=chart.config?.options?.plugins?.catcNowLine;
   if(!opts?.enabled||opts.idx==null||opts.idx<0)return;
   const xScale=chart.scales?.x;if(!xScale)return;
   const x=xScale.getPixelForValue(opts.idx);
@@ -60,18 +60,19 @@ Chart.register({id:"catcNowLine",afterDraw(chart){
 try { if(window.ChartDataLabels) Chart.register(window.ChartDataLabels); } catch(e){}
 /* ===== stackTotalLabels — draws total value above each stacked bar ===== */
 Chart.register({id:"stackTotalLabels",afterDraw(chart){
-  const opts=chart.options?.plugins?.stackTotalLabels;
+  const opts=chart.config?.options?.plugins?.stackTotalLabels;
   if(!opts?.enabled||!opts.totals)return;
   const{ctx,chartArea,scales:{x:xs,y:ys}}=chart;if(!xs||!ys)return;
   ctx.save();
   ctx.fillStyle=opts.color||'rgba(230,237,243,0.90)';
   ctx.font=`600 ${opts.fs||7}px 'JetBrains Mono',monospace`;
   ctx.textAlign='center';ctx.textBaseline='bottom';
+  const fmt=opts.fmt;
   opts.totals.forEach((t,i)=>{
     if(!t)return;
     const x=xs.getPixelForValue(i);
     const y=Math.max(chartArea.top+9,ys.getPixelForValue(t))-(opts.gap||3);
-    ctx.fillText(opts.fmt?opts.fmt(t):String(t),x,y);
+    ctx.fillText(fmt?fmt(t):String(t),x,y);
   });
   ctx.restore();
 }});
