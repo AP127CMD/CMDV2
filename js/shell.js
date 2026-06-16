@@ -13,6 +13,11 @@
     { label: 'Schedule', items: [
       { id: 'schedule', label: 'Schedule', icon: '▦' },
     ] },
+    { label: 'Progress', items: [
+      { id: 'cohort', label: 'AP127 Detail', icon: '▰' },
+      { id: 'student', label: 'Student Lens', icon: '👤' },
+      { id: 'plans', label: 'Curriculum Prog', icon: '▤' },
+    ] },
     { label: 'Operations', items: [
       { id: 'analytics', label: 'Ops Analytics', icon: '◫' },
       { id: 'aircraft', label: 'Aircraft Status', icon: '✦' },
@@ -20,21 +25,16 @@
     { label: 'Planning', items: [
       { id: 'autoslotfinder', label: 'Slot Finder', icon: '⚡' },
     ] },
-    { label: 'Progress', items: [
-      { id: 'cohort', label: 'AP127 Detail', icon: '▰' },
-      { id: 'student', label: 'Student Lens', icon: '👤' },
-    ] },
-    { label: 'Training Program', items: [
-      { id: 'plans', label: 'Curriculum Plans', icon: '▤' },
+    { label: 'School', items: [
       { id: 'performance', label: "School Perf.", icon: '◷' },
       { id: 'school-analysis', label: 'School Analysis', icon: '◐' },
       { id: 'simulation', label: 'Simulation', icon: '◈' },
       { id: 'sim2', label: 'Simulation 2', icon: '⚖' },
       { id: 'sim3', label: 'Simulation 3', icon: '◆' },
     ] },
-    { label: 'Integrity', items: [{ id: 'crosscheck', label: 'Cross-Check', icon: '⇄' }] },
-    { label: 'Help', items: [{ id: 'tutorial', label: 'User Guide', icon: '?' }] },
     { label: 'System', items: [
+      { id: 'crosscheck', label: 'Cross-Check', icon: '⇄' },
+      { id: 'tutorial', label: 'User Guide', icon: '?' },
       { id: 'watchdog', label: 'Watchdog', icon: '◉' },
       { id: 'cfusage', label: 'CF Usage', icon: '☁' },
     ] },
