@@ -92,11 +92,11 @@
       <div class="d127-h" style="flex-wrap:wrap;gap:6px">
         <span class="d127-t">Combined Progress vs Plan</span>
         <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
-          <button class="cpv-btn sel" data-f="today" onclick="setCPVFilter('today')">To Today</button>
-          <button class="cpv-btn" data-f="proj"    onclick="setCPVFilter('proj')">To Proj. End</button>
+          <button class="cpv-btn" data-f="today" onclick="setCPVFilter('today')">To Today</button>
+          <button class="cpv-btn sel" data-f="proj"    onclick="setCPVFilter('proj')">To Proj. End</button>
           <span style="width:1px;height:14px;background:var(--bd);display:inline-block;margin:0 2px"></span>
-          <button class="cpv-btn cpv-mode sel" data-m="lessons" onclick="setCPVMode('lessons')">Lessons</button>
-          <button class="cpv-btn cpv-mode"     data-m="hours"   onclick="setCPVMode('hours')">Hours</button>
+          <button class="cpv-btn cpv-mode"     data-m="lessons" onclick="setCPVMode('lessons')">Lessons</button>
+          <button class="cpv-btn cpv-mode sel" data-m="hours"   onclick="setCPVMode('hours')">Hours</button>
           <span style="width:1px;height:14px;background:var(--bd);display:inline-block;margin:0 2px"></span>
           <button class="cpv-btn" onclick="cpvResetZoom()" title="Reset zoom">⟳ Zoom</button>
         </div>
@@ -943,8 +943,8 @@ function buildAP127OverallChart(all,curriculum,maxDate){
     }
   });
 }
-let CPV_FILTER='today';
-let CPV_MODE='lessons';
+let CPV_FILTER='proj';
+let CPV_MODE='hours';
 function cpvResetZoom(){
   const chart=CHARTS.ap127combined;
   if(!chart)return;
