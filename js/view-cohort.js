@@ -1056,7 +1056,7 @@ function buildAP127CombinedChart(){
     {l:'Proj 30d Finish',v:ap127FmtDate(projEndDate30),s:`${(pace30*7).toFixed(1)} ${unit}/wk`,c:'#38bdf8'},
     {l:'Proj 15d Finish',v:ap127FmtDate(projEndDate15),s:`${(pace15*7).toFixed(1)} ${unit}/wk`,c:'#fb923c'},
     {l:'Plan Finish',v:ap127FmtDate(planEnd),s:'per curriculum',c:'#8b949e'},
-    {l:'vs Plan Today',v:`${isHrs?Math.abs(variance).toFixed(1):Math.round(Math.abs(variance))} ${unit}`,s:varStr,c:varC},
+    {l:'vs Plan Today',v:`${variance>=0?'+':''}${isHrs?variance.toFixed(1):Math.round(variance)} ${unit}`,s:varStr,c:varC},
   ].map(k=>`<div class="cpv-kpi"><div class="cpv-kl">${k.l}</div><div class="cpv-kv" style="color:${k.c}">${k.v}</div><div class="cpv-ks">${k.s}</div></div>`).join('');
 
   /* ── Chart ── */
