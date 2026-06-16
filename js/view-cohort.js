@@ -996,23 +996,28 @@ function buildAP127CombinedChart(){
   const planDates=Object.keys(planByDate).sort();
   const planEnd=planDates.at(-1)||today;
 
-  /* ── Pace (30d rolling) ── */
+  /* ── Pace (30d and 15d rolling) ── */
   const daysSinceStart=Math.max(1,Math.round((new Date(today+'T12:00:00Z')-new Date(firstDate+'T12:00:00Z'))/86400000));
   const thirtyAgo=new Date(new Date(today+'T12:00:00Z').getTime()-30*86400000).toISOString().slice(0,10);
+  const fifteenAgo=new Date(new Date(today+'T12:00:00Z').getTime()-15*86400000).toISOString().slice(0,10);
   const recent30=Object.entries(actualByDate).filter(([d])=>d>=thirtyAgo).reduce((a,[,v])=>a+v,0);
-  const pace=Math.max(recent30>0?recent30/30:totalDone/daysSinceStart,0.001);
+  const recent15=Object.entries(actualByDate).filter(([d])=>d>=fifteenAgo).reduce((a,[,v])=>a+v,0);
+  const pace30=Math.max(recent30>0?recent30/30:totalDone/daysSinceStart,0.001);
+  const pace15=Math.max(recent15>0?recent15/15:pace30,0.001);
 
-  /* ── Projected finish ── */
+  /* ── Projected finish (30d and 15d) ── */
   const remaining=Math.max(totalPlan-totalDone,0);
-  const projDaysLeft=remaining/pace;
-  const projEndDate=new Date(new Date(today+'T12:00:00Z').getTime()+projDaysLeft*86400000).toISOString().slice(0,10);
+  const projDaysLeft30=remaining/pace30;
+  const projDaysLeft15=remaining/pace15;
+  const projEndDate30=new Date(new Date(today+'T12:00:00Z').getTime()+projDaysLeft30*86400000).toISOString().slice(0,10);
+  const projEndDate15=new Date(new Date(today+'T12:00:00Z').getTime()+projDaysLeft15*86400000).toISOString().slice(0,10);
 
   /* ── Variance vs plan ── */
   const planByToday=Math.min(planDates.filter(d=>d<=today).reduce((a,d)=>a+(planByDate[d]||0),0),totalPlan);
   const variance=totalDone-planByToday;
 
   /* ── End date ── */
-  const endDate=CPV_FILTER==='today'?today:[planEnd,projEndDate].sort().at(-1);
+  const endDate=CPV_FILTER==='today'?today:[planEnd,projEndDate30,projEndDate15].sort().at(-1);
 
   /* ── Plan series (step-cumulative point objects) ── */
   const planSeries=[];let rPlan=0;
@@ -1030,9 +1035,10 @@ function buildAP127CombinedChart(){
   });
   if(actSeries.length&&actSeries.at(-1).x<today&&today<=endDate)actSeries.push({x:today,y:+rAct.toFixed(2)});
 
-  /* ── Projected line (2 points: today → end) ── */
+  /* ── Projected lines (2 points each: today → end) ── */
   const showProj=CPV_FILTER!=='today';
-  const projSeries=showProj?[{x:today,y:+totalDone.toFixed(2)},{x:endDate,y:+(Math.min(totalDone+projDaysLeft*pace,totalPlan)).toFixed(2)}]:[];
+  const projSeries30=showProj?[{x:today,y:+totalDone.toFixed(2)},{x:projEndDate30,y:+Math.min(totalDone+projDaysLeft30*pace30,totalPlan).toFixed(2)}]:[];
+  const projSeries15=showProj?[{x:today,y:+totalDone.toFixed(2)},{x:projEndDate15,y:+Math.min(totalDone+projDaysLeft15*pace15,totalPlan).toFixed(2)}]:[];
 
   /* ── Reference lines ── */
   const totalSeries=[{x:firstDate,y:+totalPlan.toFixed(2)},{x:endDate,y:+totalPlan.toFixed(2)}];
@@ -1041,15 +1047,15 @@ function buildAP127CombinedChart(){
   /* ── KPIs ── */
   const fmt=v=>isHrs?v.toFixed(1):String(Math.round(v));
   const pct=(totalDone/totalPlan*100).toFixed(1);
-  const varDays=Math.round(Math.abs(variance)/pace);
+  const varDays=Math.round(Math.abs(variance)/pace30);
   const varStr=variance>=0?`+${varDays}d ahead`:`${varDays}d behind`;
   const varC=variance>=0?'var(--done)':'#ef4444';
   const kpiEl=document.getElementById('cpv-kpis');
   if(kpiEl)kpiEl.innerHTML=[
     {l:'Done / Total',v:`${fmt(totalDone)} / ${fmt(totalPlan)}`,s:`${pct}% complete`,c:'var(--c127)'},
-    {l:'Pace (30d avg)',v:(pace*7).toFixed(1),s:`${unit} / week`,c:'var(--tx)'},
+    {l:'Proj 30d Finish',v:ap127FmtDate(projEndDate30),s:`${(pace30*7).toFixed(1)} ${unit}/wk`,c:'#38bdf8'},
+    {l:'Proj 15d Finish',v:ap127FmtDate(projEndDate15),s:`${(pace15*7).toFixed(1)} ${unit}/wk`,c:'#fb923c'},
     {l:'Plan Finish',v:ap127FmtDate(planEnd),s:'per curriculum',c:'#8b949e'},
-    {l:'Projected Finish',v:ap127FmtDate(projEndDate),s:'at current pace',c:'#38bdf8'},
     {l:'vs Plan Today',v:`${isHrs?Math.abs(variance).toFixed(1):Math.round(Math.abs(variance))} ${unit}`,s:varStr,c:varC},
   ].map(k=>`<div class="cpv-kpi"><div class="cpv-kl">${k.l}</div><div class="cpv-kv" style="color:${k.c}">${k.v}</div><div class="cpv-ks">${k.s}</div></div>`).join('');
 
@@ -1059,7 +1065,8 @@ function buildAP127CombinedChart(){
     data:{datasets:[
       {label:'Plan',    data:planSeries,  borderColor:'#cbd5e1',borderDash:[6,4],borderWidth:1.5,pointRadius:0,tension:0,order:3},
       {label:'Actual',  data:actSeries,   borderColor:'#e88aff',borderWidth:2.5, pointRadius:0,tension:0,order:1},
-      {label:'Projected',data:projSeries, borderColor:'#38bdf8',borderDash:[3,3],borderWidth:1.5,pointRadius:0,tension:0,order:2},
+      {label:'Proj 30d',data:projSeries30,borderColor:'#38bdf8',borderDash:[3,3],borderWidth:1.5,pointRadius:0,tension:0,order:2},
+      {label:'Proj 15d',data:projSeries15,borderColor:'#fb923c',borderDash:[3,3],borderWidth:1.5,pointRadius:0,tension:0,order:2},
       {label:'Total',   data:totalSeries, borderColor:'rgba(74,222,128,0.22)',borderDash:[2,5],borderWidth:1,pointRadius:0,order:4},
       {label:'Today',   data:todaySeries, borderColor:'rgba(245,158,11,0.6)',borderDash:[4,4],borderWidth:1.5,pointRadius:0,order:0},
     ]},
