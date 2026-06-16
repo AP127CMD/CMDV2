@@ -458,6 +458,24 @@ Five targeted improvements to `js/view-cohort.js`:
   removed; `setCPVFilter` and `setCPVMode` both call `CHARTS.ap127combined?.resetZoom?.()` on entry
   so zoom always resets when changing filter or mode.
 
+### Slot Finder — intra-duty-window exemption (2026-06-16, ops/)
+
+`ops/js/view-slotfinder.js` · `ops/js/view-autoslotfinder.js`
+
+**Rule change:** When an FI already has flights scheduled on a day, a proposed slot that falls
+**entirely within** their existing duty window (`t ≥ duty.first` and `end ≤ duty.last`) is now
+**always permitted** — no duty-hour check applied. The FI is already on duty during that period,
+so filling a gap adds zero new duty time.
+
+Any slot that would **extend** the duty window (start before `duty.first` or end after
+`duty.last`) still goes through the normal 7-hour span check (`SF_MAX_DUTY` / `ASF_MAX_DUTY = 420 min`).
+Exactly 7 h (420 min) is allowed; 7 h 01 m is blocked.
+
+One-line change in each file — added before the span check:
+```js
+if (t >= duty.first && end <= duty.last) return true; // within existing window — no new duty
+```
+
 ## 13. GOTCHAS / NOTES
 - No-build React: load order matters (CDNs → data → shared → ui → views → shell boot). Use `type="text/babel"` + per-file hook aliasing.
 - Babel Standalone is slow on huge files; auto-slot-finder is 1842 lines — consider splitting when porting.

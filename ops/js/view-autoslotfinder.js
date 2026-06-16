@@ -147,6 +147,7 @@ function asfHasOverlap(blocks, t, end) {
 
 function asfDutyOk(duty, t, end) {
   if (!duty) return true;
+  if (t >= duty.first && end <= duty.last) return true; // within existing window — no new duty
   return (Math.max(duty.last, end) - Math.min(duty.first, t)) <= ASF_MAX_DUTY;
 }
 
@@ -190,13 +191,16 @@ function asfBuildBusyMap(flights, gapMin) {
   return { fiBusy: toBusy(rawFI), spBusy: toBusy(rawSP), tailBusy: toBusy(rawTail), fiDuty, rawFI, rawSP, rawTail };
 }
 
-function asfFindSlotsForStudent(spName, { windowStart, windowEnd, durationMin, rwyStart, rwyEnd }, { fiBusy, spBusy, tailBusy, fiDuty }, { candFIs, candTails, tailTypeMap, fiQuals }) {
+function asfFindSlotsForStudent(spName, { windowStart, windowEnd, durationMin, rwyStart, rwyEnd }, { fiBusy, spBusy, tailBusy, fiDuty }, { candFIs, candTails, tailTypeMap, fiQuals }, isSolo = false) {
   const results = [];
   for (let t = windowStart; t <= windowEnd - durationMin; t += 15) {
     const end = t + durationMin;
     if (rwyStart != null && rwyEnd != null && t < rwyEnd && end > rwyStart) continue;
     if (asfHasOverlap(spBusy[spName], t, end)) continue;
-    const freeFIs   = candFIs.filter(fi => !asfHasOverlap(fiBusy[fi], t, end) && asfDutyOk(fiDuty[fi], t, end));
+    // Solo: FI availability/duty not checked; candFIs already excludes FIs on leave
+    const freeFIs = isSolo
+      ? candFIs
+      : candFIs.filter(fi => !asfHasOverlap(fiBusy[fi], t, end) && asfDutyOk(fiDuty[fi], t, end));
     const freeTails = candTails.filter(tail => !asfHasOverlap(tailBusy[tail], t, end));
     if (!freeFIs.length || !freeTails.length) continue;
     const pairs = [];
@@ -206,7 +210,7 @@ function asfFindSlotsForStudent(spName, { windowStart, windowEnd, durationMin, r
         if (quals.includes(tailTypeMap[tail])) pairs.push({ fi, tail });
     }
     if (!pairs.length) continue;
-    results.push({ t, end, pairs });
+    results.push({ t, end, pairs, isSolo });
   }
   return results;
 }
@@ -1077,6 +1081,14 @@ function AsfStudentCard({
         <span className="mono" style={{ fontSize:9, color:'var(--ink-2)', whiteSpace:'nowrap' }}>
           <span style={{ fontSize:7, color:'var(--ink-3)' }}>NEXT </span>{student.next_lesson || '—'}
         </span>
+        {(typeof SF_LESSON_META !== 'undefined') && SF_LESSON_META?.[student.next_lesson]?.type === 'Solo' && (
+          <span className="mono uc" style={{
+            fontSize:7, padding:'1px 5px', borderRadius:3, letterSpacing:'0.04em',
+            background:'color-mix(in oklch,oklch(0.72 0.18 200) 14%,transparent)',
+            border:'1px solid color-mix(in oklch,oklch(0.72 0.18 200) 35%,transparent)',
+            color:'oklch(0.72 0.18 200)',
+          }}>SOLO</span>
+        )}
         <span className="mono num" style={{ fontSize:9, color:idleColor, fontWeight: idle != null && idle >= 6 ? 600 : 400, whiteSpace:'nowrap' }}>
           <span style={{ fontSize:7, color:'var(--ink-3)' }}>IDLE </span>{idle == null ? '—' : `${idle}d`}
         </span>
@@ -1362,11 +1374,13 @@ function AutoSlotFinderBoard() {
       const busyMap     = asfBuildBusyMap(augmentedFlights, gap);
       const spCandFIs   = (!fiMatchSp || ovr.fi === 'Any') ? candidates.candFIs : candidates.candFIs.filter(fi => fi === ovr.fi);
       const spCandTails = ovr.seType === 'Any' ? candidates.candTails : candidates.candTails.filter(tail => tailTypeMap[tail] === ovr.seType);
+      const isSolo = !!(typeof SF_LESSON_META !== 'undefined' && SF_LESSON_META?.[rec.student?.next_lesson]?.type === 'Solo');
       const raw = asfFindSlotsForStudent(
         spKey,
         { windowStart:wStart, windowEnd:wEnd, durationMin:dur, ...rwyBand },
         busyMap,
         { candFIs:spCandFIs, candTails:spCandTails, tailTypeMap, fiQuals },
+        isSolo,
       );
       map[spKey] = asfMergeSlots(raw);
     });
@@ -1398,11 +1412,13 @@ function AutoSlotFinderBoard() {
       const busyMap     = asfBuildBusyMap(dateFlights, gap);
       const spCandFIs   = (!fiMatchSp || ovr.fi === 'Any') ? candidates.candFIs : candidates.candFIs.filter(fi => fi === ovr.fi);
       const spCandTails = ovr.seType === 'Any' ? candidates.candTails : candidates.candTails.filter(tail => tailTypeMap[tail] === ovr.seType);
+      const isSolo = !!(typeof SF_LESSON_META !== 'undefined' && SF_LESSON_META?.[rec.student?.next_lesson]?.type === 'Solo');
       const raw = asfFindSlotsForStudent(
         spKey,
         { windowStart:wStart, windowEnd:wEnd, durationMin:dur, ...rwyBand },
         busyMap,
         { candFIs:spCandFIs, candTails:spCandTails, tailTypeMap, fiQuals },
+        isSolo,
       );
       map[spKey] = asfMergeSlots(raw);
     });
@@ -1539,8 +1555,9 @@ function AutoSlotFinderBoard() {
       const busyMap     = asfBuildBusyMap(augmented, gap);
       const spCandFIs   = (!fiMatchSp || ovr.fi === 'Any') ? candidates.candFIs : candidates.candFIs.filter(fi => fi === ovr.fi);
       const spCandTails = ovr.seType === 'Any' ? candidates.candTails : candidates.candTails.filter(t => tailTypeMap[t] === ovr.seType);
+      const isSolo = !!(typeof SF_LESSON_META !== 'undefined' && SF_LESSON_META?.[rec.student?.next_lesson]?.type === 'Solo');
 
-      const raw   = asfFindSlotsForStudent(spKey, { windowStart:wStart, windowEnd:wEnd, durationMin:dur, ...rwyBand }, busyMap, { candFIs:spCandFIs, candTails:spCandTails, tailTypeMap, fiQuals });
+      const raw   = asfFindSlotsForStudent(spKey, { windowStart:wStart, windowEnd:wEnd, durationMin:dur, ...rwyBand }, busyMap, { candFIs:spCandFIs, candTails:spCandTails, tailTypeMap, fiQuals }, isSolo);
       const slots = asfMergeSlots(raw);
       if (!slots.length) continue;
 

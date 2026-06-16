@@ -65,6 +65,37 @@ Batch colours are consistent across every view (AP124 blue · AP126 green · AP1
 AP128 orange · AP129 yellow). `legacy.html` preserves the original v1 iframe shell;
 `app.html` redirects to `index.html`.
 
+## Ops Slot Finder — duty-hour logic
+
+`ops/js/view-slotfinder.js` and `ops/js/view-autoslotfinder.js` contain the manual and auto slot
+finders used by the Command Center ops page (`ops/index.html`).
+
+**Duty-hour rule (updated 2026-06-16):**
+- A proposed slot that falls **entirely within** an FI's already-committed duty window
+  (`slot_start ≥ first_flight_start` and `slot_end ≤ last_flight_end`) is **always permitted**
+  — the FI is already on duty, so inserting a flight between existing assignments adds no new
+  duty time. No duty-limit check is applied.
+- Any slot that **extends** the outer boundary (starts before the first flight or ends after the
+  last flight) goes through the normal **7-hour span check** (`SF_MAX_DUTY = 420 min`). Exactly
+  7 h is allowed; anything over is blocked.
+
+**Lesson lookup + Solo flight logic (added 2026-06-16):**
+- `ops/js/sf-lessons.js` defines `window.SF_LESSON_META` — all 96 lessons from CATC CPL-IR
+  Vol 05 keyed by lesson code (e.g. `"CSGL 14"`, `"CDGL 01"`, `"CDIF(SIM) 56"`). Each entry
+  holds `{ n, phase, title, durMin, type }` where `type` is `"Dual"`, `"Solo"`, or `"SPIC"`.
+- **Solo** (`CSGL *`, `CSXV *`, `CSNL *` — 13 lessons): student flies alone. FI availability
+  and duty limits are **not checked** — the FI may have a concurrent flight. However the FI
+  **cannot be on leave** (leave check still applies via `candFIs` construction).
+- **SPIC** (14 lessons: `CSPGL *`, `CSPXV *`, `CSPGLC *`, `CSPXVC *`, `CSPXI *`, `CSPXIC *`,
+  `CMSPXI *`, `CMSPXIC *`): FI is in the plane as safety pilot — treated identically to Dual.
+- **Dual** (all other 61 lessons): full FI availability + duty-limit checks as before.
+- The **manual Slot Finder** has a LESSON picker (grouped by phase, 96 entries) that auto-fills
+  the duration field and toggles Solo mode. Slot cards show a teal "SOLO · FI AVAIL. NOT CHECKED"
+  badge when Solo mode is active.
+- The **Auto Slot Finder** derives lesson type from each student's `next_lesson` field and shows
+  a teal "SOLO" chip on student cards where applicable.
+- Source reference: `ops/docs/lessons-96.md` (CATC CPL-IR Vol 05, Issue 02 Rev 00).
+
 ## Data
 
 Two independent feeds, each with a live fetch + a bundled snapshot fallback:

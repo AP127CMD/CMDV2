@@ -36,10 +36,10 @@ const SF_AP127_SP_NAMES = [
 ];
 
 // ─── Static option arrays ─────────────────────────────────────────────────
-// Duration: 1:00 – 5:00 in 15-min steps
+// Duration: 0:15 – 5:00 in 15-min steps
 const SF_DUR_OPTS = (() => {
   const o = [];
-  for (let m = 60; m <= 300; m += 15) {
+  for (let m = 15; m <= 300; m += 15) {
     o.push({ v: m, l: `${Math.floor(m/60)}:${String(m%60).padStart(2,'0')}` });
   }
   return o;
@@ -78,6 +78,7 @@ function sfHasOverlap(blocks, t, end) {
 
 function sfDutyOk(duty, t, end) {
   if (!duty) return true;
+  if (t >= duty.first && end <= duty.last) return true; // within existing window — no new duty
   return (Math.max(duty.last, end) - Math.min(duty.first, t)) <= SF_MAX_DUTY;
 }
 
@@ -124,7 +125,7 @@ function sfBuildBusyMap(dateFlights, gapMin) {
 // Sweep in 15-min steps; for each slot emit valid (FI × tail) pairs and
 // the list of free SPs (from those selected, if any).
 function sfRunFinder(
-  { windowStart, windowEnd, durationMin, spSelected, rwyStart, rwyEnd },
+  { windowStart, windowEnd, durationMin, spSelected, isSolo, rwyStart, rwyEnd },
   { fiBusy, spBusy, tailBusy, fiDuty },
   { candFIs, candTails, tailTypeMap }
 ) {
@@ -142,10 +143,11 @@ function sfRunFinder(
       if (!freeSPs.length) continue;
     }
 
-    // Free FIs and aircraft
-    const freeFIs   = candFIs.filter(fi =>
-      !sfHasOverlap(fiBusy[fi], t, end) && sfDutyOk(fiDuty[fi], t, end)
-    );
+    // Solo: FI availability/duty not checked (FI can have concurrent flight).
+    // candFIs already excludes FIs on leave, so leave check still applies.
+    const freeFIs = isSolo
+      ? candFIs
+      : candFIs.filter(fi => !sfHasOverlap(fiBusy[fi], t, end) && sfDutyOk(fiDuty[fi], t, end));
     const freeTails = candTails.filter(tail => !sfHasOverlap(tailBusy[tail], t, end));
     if (!freeFIs.length || !freeTails.length) continue;
 
@@ -158,7 +160,7 @@ function sfRunFinder(
     }
     if (!pairs.length) continue;
 
-    results.push({ t, end, pairs, freeSPs });
+    results.push({ t, end, pairs, freeSPs, isSolo: !!isSolo });
   }
   return results;
 }
@@ -371,6 +373,14 @@ function SfSlotCard({ slot }) {
         <span className="mono" style={{ fontSize:9, color:'var(--ink-3)' }}>
           · {nFIs} FI{nFIs>1?'s':''} · {nTails} A/C
         </span>
+        {slot.isSolo && (
+          <span className="mono uc" style={{
+            fontSize:8, padding:'2px 7px', borderRadius:999,
+            background:'color-mix(in oklch,oklch(0.72 0.18 200) 14%,transparent)',
+            border:'1px solid color-mix(in oklch,oklch(0.72 0.18 200) 35%,transparent)',
+            color:'oklch(0.72 0.18 200)',
+          }}>SOLO · FI avail. not checked</span>
+        )}
         <span style={{ flex:1 }} />
         <span className="mono" style={{ fontSize:11, fontWeight:700, color:accent }}>
           {nCombos}&thinsp;COMBO{nCombos>1?'S':''}
@@ -649,6 +659,9 @@ function SlotFinderBoard() {
   const [rwyEnabled,   setRwyEnabled]   = useS_sf(true);
   const [rwyFrom,      setRwyFrom]      = useS_sf('14:00');
   const [rwyTo,        setRwyTo]        = useS_sf('16:00');
+  const [sfLesson,     setSfLesson]     = useS_sf('');  // '' = no lesson selected
+
+  const sfIsSolo = !!(typeof SF_LESSON_META !== 'undefined' && SF_LESSON_META[sfLesson]?.type === 'Solo');
 
   // ── Dropdown option lists ─────────────────────────────────────────────
   const dateOpts = useM_sf(() =>
@@ -725,10 +738,10 @@ function SlotFinderBoard() {
     const wEnd   = minutesOf(windowTo);
     if (wStart == null || wEnd == null || wEnd <= wStart + durationMin) return [];
     return sfRunFinder(
-      { windowStart:wStart, windowEnd:wEnd, durationMin, spSelected, ...rwyBand },
+      { windowStart:wStart, windowEnd:wEnd, durationMin, spSelected, isSolo:sfIsSolo, ...rwyBand },
       busyMap, candidates,
     );
-  }, [windowFrom, windowTo, durationMin, spSelected, rwyBand, busyMap, candidates]);
+  }, [windowFrom, windowTo, durationMin, spSelected, sfIsSolo, rwyBand, busyMap, candidates]);
 
   const mergedResults = useM_sf(() => sfMergeSlots(rawResults), [rawResults]);
 
@@ -807,6 +820,40 @@ function SlotFinderBoard() {
           allLabel="No constraint"
           color="oklch(0.72 0.15 280)"
         />
+
+        {/* Lesson picker */}
+        <label style={{ display:'flex', flexDirection:'column', gap:3 }}>
+          <span className="mono uc" style={{ fontSize:9, color: sfIsSolo ? 'oklch(0.72 0.18 200)' : 'var(--ink-3)' }}>LESSON</span>
+          <select className="mono" value={sfLesson}
+            onChange={e => {
+              const code = e.target.value;
+              setSfLesson(code);
+              if (code && typeof SF_LESSON_META !== 'undefined' && SF_LESSON_META[code])
+                setDurationMin(Math.ceil(SF_LESSON_META[code].durMin / 15) * 15);
+            }}
+            style={{
+              background:'var(--surface)', color:'var(--ink)',
+              border:`1px solid ${sfIsSolo
+                ? 'color-mix(in oklch,oklch(0.72 0.18 200) 55%,transparent)'
+                : sfLesson ? 'color-mix(in oklch,var(--col-pending) 40%,var(--line))' : 'var(--line)'}`,
+              borderRadius:4, padding:'4px 8px', fontSize:10, outline:'none',
+              minWidth:220, height:28,
+            }}>
+            <option value="">(no lesson selected)</option>
+            {(typeof SF_LESSON_GROUPS !== 'undefined' ? SF_LESSON_GROUPS : []).map(g => (
+              <optgroup key={g.label} label={g.label}>
+                {g.codes.map(code => {
+                  const m = SF_LESSON_META[code];
+                  const typeLbl = m.type === 'Solo' ? ' [SOLO]' : m.type === 'SPIC' ? ' [SPIC]' : '';
+                  const h = Math.floor(m.durMin/60), min = m.durMin%60;
+                  const durLbl = min ? `${h}h${min}m` : `${h}h`;
+                  const title = m.title.length > 38 ? m.title.slice(0,38) + '…' : m.title;
+                  return <option key={code} value={code}>{code} · {title} ({durLbl}){typeLbl}</option>;
+                })}
+              </optgroup>
+            ))}
+          </select>
+        </label>
 
         {/* Divider */}
         <div style={{ width:1, height:38, background:'var(--line)', alignSelf:'flex-end', marginBottom:1, flexShrink:0 }}/>
