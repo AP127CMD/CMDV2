@@ -323,7 +323,7 @@
                           style: { color: 'var(--col-cancel)', borderColor: 'var(--col-cancel)' },
                           onClick: () => { if (!apiKey) { onNeedKey(); return; } deleteDest(i); }
                         }, 'Del')));
-                  })))))));
+                  }))))));
   }
 
   // ── Roster table ─────────────────────────────────────────────────────────────
