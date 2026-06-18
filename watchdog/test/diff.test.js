@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildSnapshot, diffSnapshots, suppressActualPairs } from '../src/diff.js';
+import { matchesBatchFilter } from '../src/index.js';
 
 const SAMPLE_FLIGHTS = [
   { id: '100', batch: 'AP-127', date: '2026-06-10', start: '08:00', end: '09:30',
@@ -81,6 +82,43 @@ describe('diffSnapshots', () => {
   it('returns empty array when nothing changed', () => {
     const events = diffSnapshots(base, { ...base });
     expect(events).toHaveLength(0);
+  });
+});
+
+describe('matchesBatchFilter', () => {
+  it("'*' matches any batch", () => {
+    expect(matchesBatchFilter('*', 'AP-127')).toBe(true);
+    expect(matchesBatchFilter('*', 'HP-55')).toBe(true);
+  });
+
+  it('null/undefined filter matches any batch', () => {
+    expect(matchesBatchFilter(null, 'AP-127')).toBe(true);
+    expect(matchesBatchFilter(undefined, 'HP-55')).toBe(true);
+  });
+
+  it('exact string matches only that batch', () => {
+    expect(matchesBatchFilter('AP-127', 'AP-127')).toBe(true);
+    expect(matchesBatchFilter('AP-127', 'AP-126')).toBe(false);
+  });
+
+  it("'!X' excludes batch X and accepts all others", () => {
+    expect(matchesBatchFilter('!AP-127', 'AP-127')).toBe(false);
+    expect(matchesBatchFilter('!AP-127', 'HP-55')).toBe(true);
+    expect(matchesBatchFilter('!AP-127', 'PPL-40')).toBe(true);
+  });
+
+  it('array filter matches any batch in the list', () => {
+    const filter = ['HP-55', 'HP-57'];
+    expect(matchesBatchFilter(filter, 'HP-55')).toBe(true);
+    expect(matchesBatchFilter(filter, 'HP-57')).toBe(true);
+    expect(matchesBatchFilter(filter, 'AP-127')).toBe(false);
+    expect(matchesBatchFilter(filter, 'PPL-40')).toBe(false);
+  });
+
+  it('Other AP array covers AP-124/126/128/129', () => {
+    const filter = ['AP-124', 'AP-126', 'AP-128', 'AP-129'];
+    expect(matchesBatchFilter(filter, 'AP-124')).toBe(true);
+    expect(matchesBatchFilter(filter, 'AP-127')).toBe(false);
   });
 });
 

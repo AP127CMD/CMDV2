@@ -49,6 +49,14 @@ async function loadStatus(kv) {
 }
 
 
+// batchFilter: '*' = all, string = exact match, '!X' = exclude X, string[] = any of list
+export function matchesBatchFilter(filter, flightBatch) {
+  if (!filter || filter === '*') return true;
+  if (Array.isArray(filter)) return filter.includes(flightBatch);
+  if (filter.startsWith('!')) return flightBatch !== filter.slice(1);
+  return flightBatch === filter;
+}
+
 async function runWatchdog(env) {
   const ts = new Date().toISOString();
   const prevStatus = await loadStatus(env.KV);
@@ -85,17 +93,7 @@ async function runWatchdog(env) {
       for (const dest of allDests) {
         // Skip disabled destinations
         if (dest.enabled === false) continue;
-        // batchFilter routing:
-        //   '*'      → all flights
-        //   'AP-127' → AP-127 only
-        //   '!AP-127'→ all except AP-127
-        if (dest.batchFilter && dest.batchFilter !== '*') {
-          if (dest.batchFilter.startsWith('!')) {
-            if (flightBatch === dest.batchFilter.slice(1)) continue;
-          } else {
-            if (flightBatch !== dest.batchFilter) continue;
-          }
-        }
+        if (!matchesBatchFilter(dest.batchFilter, flightBatch)) continue;
         // mention:true → pass roster for @username lookup; false → plain name only
         const roster = dest.mention !== false ? (config.roster || []) : [];
         const msg = formatMessage(event, roster);
@@ -104,8 +102,8 @@ async function runWatchdog(env) {
         } catch (e) {
           console.error(`Telegram send to "${dest.label}" failed:`, e.message);
         }
-        // Avoid Telegram rate limit (1 msg/sec per chat)
-        await new Promise(r => setTimeout(r, 1000));
+        // 3.5 s gap keeps per-chat rate under Telegram's 20 msg/min limit
+        await new Promise(r => setTimeout(r, 3500));
       }
       logEntries.push({
         type: event.type, flightId: event.flight.id, student: event.flight.student,

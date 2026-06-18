@@ -97,16 +97,28 @@ export function formatMessage(event, roster) {
   return lines.join('\n');
 }
 
-export async function sendTelegram(token, chatId, text, threadId) {
-  const body = { chat_id: chatId, text };
-  if (threadId) body.message_thread_id = threadId;
+async function _doSend(token, body) {
   const res = await fetch(`${TELEGRAM_BASE}${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (res.status === 429) {
+    const data = await res.json().catch(() => ({}));
+    const wait = ((data.parameters?.retry_after) || 30) * 1000;
+    await new Promise(r => setTimeout(r, wait));
+    return null; // signal retry
+  }
   if (!res.ok) throw new Error(`Telegram HTTP ${res.status}`);
   const data = await res.json();
   if (!data.ok) throw new Error(`Telegram: ${data.description || 'unknown error'}`);
   return data.result.message_id;
+}
+
+export async function sendTelegram(token, chatId, text, threadId) {
+  const body = { chat_id: chatId, text };
+  if (threadId) body.message_thread_id = threadId;
+  const result = await _doSend(token, body);
+  if (result === null) return _doSend(token, body); // one retry after rate-limit wait
+  return result;
 }
