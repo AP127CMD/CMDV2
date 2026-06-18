@@ -1,5 +1,7 @@
 # AP127 V2 — Command Center
 
+> 📚 **Master reference:** the whole AP127 ecosystem — all sites, Cloudflare Workers, data feeds, the auto-fetch pipeline, deployment, and the Telegram watchdog — is documented in **AP127_Docs**, live at **https://ap127-docs.pages.dev**.
+
 A single **native** dashboard (one React SPA, no iframes) that combines the AP127 tools
 into one place for students and leaders to monitor everything, timely and effortlessly:
 
