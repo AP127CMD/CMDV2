@@ -117,7 +117,7 @@ function WeeklyBoard() {
       </div>
 
       {/* Filter */}
-      <div style={{ padding:'4px 8px', flexShrink:0 }}>
+      <div style={{ padding:'4px 10px', flexShrink:0 }}>
         <FilterBar/>
       </div>
 

@@ -1,8 +1,16 @@
 // Gantt timeline — rows = instructor / tail / batch
 const { useMemo: useM_g, useState: useS_g, useEffect: useE_g, useRef: useR_g, useLayoutEffect: useLE_g } = React;
 
-const HOUR_START     = 6;
-const HOUR_END_MIN   = 18; // minimum end — extends dynamically if flights run later
+const DAY_FALLBACK_START = 6;  // used only when the day has no flights
+const DAY_FALLBACK_END   = 18; // used only when the day has no flights
+const EDGE_PAD_MIN       = 30; // breathing room added before first / after last flight
+
+// Current time-of-day in Bangkok, expressed as minutes since midnight.
+const bkkNowMin = () => {
+  const n = new Date();
+  const b = new Date(n.getTime() + (n.getTimezoneOffset() + 420) * 60000);
+  return b.getUTCHours() * 60 + b.getUTCMinutes();
+};
 
 // Helper: detect non-flight activities (meetings, briefings, ground school)
 const isMeetingFlt = f => /meeting|briefing|debrief|ground.school/i.test(f.lesson || '') || /meeting|recurrent/i.test(f.batch || '');
@@ -17,7 +25,7 @@ const ALL_GANTT_FI_NAMES = new Set(FLIGHTS.map(f => f.instructor).filter(Boolean
 function GanttBoard() {
   const app      = useApp();
   const { isMobile } = app;
-  const groupBy  = app.tweaks.groupBy || 'instructor';
+  const groupBy  = app.tweaks.groupBy || 'tail';
   const TRACK_LEFT  = isMobile ? 90  : 190;
   const TRACK_RIGHT = isMobile ? 64  : 180;
   const PX_PER_HOUR = 60; // minimum px per hour — drives horizontal scroll width
@@ -46,11 +54,20 @@ function GanttBoard() {
     });
   }, [app.date, app.filters, app.hideOthers, app.highlightAP127]);
 
-  // Extend end hour to cover late flights (e.g. 19:00, 20:00)
-  const hourEnd = useM_g(() => {
-    let maxMin = HOUR_END_MIN * 60;
-    flights.forEach(f => { const e = minutesOf(f.end); if (e) maxMin = Math.max(maxMin, e); });
-    return Math.max(HOUR_END_MIN, Math.ceil(maxMin / 60));
+  // Timeline bounds fit the actual day: floor(first start) → ceil(last end), each
+  // with EDGE_PAD_MIN of breathing room. No empty 06–08 / 12–18 dead space on a
+  // light day. Falls back to a sensible default window when there are no flights.
+  const { HOUR_START, hourEnd } = useM_g(() => {
+    let minMin = Infinity, maxMin = -Infinity;
+    flights.forEach(f => {
+      const s = minutesOf(f.start), e = minutesOf(f.end);
+      if (s != null) { minMin = Math.min(minMin, s); maxMin = Math.max(maxMin, e ?? s + (f.durMin || 60)); }
+      if (e != null) maxMin = Math.max(maxMin, e);
+    });
+    if (minMin === Infinity) return { HOUR_START: DAY_FALLBACK_START, hourEnd: DAY_FALLBACK_END };
+    const start = Math.max(0,  Math.floor((minMin - EDGE_PAD_MIN) / 60));
+    const end   = Math.min(24, Math.ceil ((maxMin + EDGE_PAD_MIN) / 60));
+    return { HOUR_START: start, hourEnd: Math.max(start + 1, end) };
   }, [flights]);
   const hourSpan = hourEnd - HOUR_START;
 
@@ -67,9 +84,36 @@ function GanttBoard() {
   }, []);
   const PX_FLOOR = isMobile ? 12 : 20;          // min px/hour before we allow scrolling
   const avail = viewW - TRACK_LEFT - TRACK_RIGHT;
-  const pxPerHour = (viewW > 0 && hourSpan > 0)
-    ? Math.max(PX_FLOOR, Math.min(90, avail / hourSpan))   // fit to width, clamped
+  // Auto-fit px/hour: shrink the day to fit the viewport (clamped). On mobile keep a
+  // readable floor so bar labels stay legible even if it means horizontal scroll.
+  const fitPxPerHour = (viewW > 0 && hourSpan > 0)
+    ? Math.max(isMobile ? 46 : PX_FLOOR, Math.min(90, avail / hourSpan))
     : PX_PER_HOUR;
+  // Zoom override: null = follow auto-fit; a number = explicit px/hour (enables scroll).
+  const [zoom, setZoom] = useS_g(null);
+  const pxPerHour = zoom == null ? fitPxPerHour : zoom;
+  const ZOOM_MIN = 8, ZOOM_MAX = 160, ZOOM_STEP = 1.4;
+  const zoomBy = factor => setZoom(Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, pxPerHour * factor))));
+  const ZoomChip = ({ label, title, onClick, active }) => (
+    <button onClick={onClick} title={title} className="mono uc" style={{
+      padding:'2px 7px', fontSize:9, borderRadius:3, cursor:'pointer', minWidth:22,
+      border:`1px solid ${active?'var(--ink-2)':'var(--line)'}`,
+      background:active?`color-mix(in oklch,var(--ink-2) 14%,var(--surface))`:'transparent',
+      color:active?'var(--ink-2)':'var(--ink-3)', fontWeight:active?600:400, transition:'all .1s',
+    }}>{label}</button>
+  );
+
+  // "Now" marker — only when viewing today (Bangkok) and within the visible window.
+  const isToday = app.date === bkkToday();
+  const [nowMin, setNowMin] = useS_g(bkkNowMin());
+  useE_g(() => {
+    if (!isToday) return;
+    setNowMin(bkkNowMin());
+    const id = setInterval(() => setNowMin(bkkNowMin()), 60000);
+    return () => clearInterval(id);
+  }, [isToday]);
+  const nowPct = (isToday && nowMin >= HOUR_START*60 && nowMin <= hourEnd*60)
+    ? ((nowMin - HOUR_START*60) / (hourSpan*60)) * 100 : null;
 
   const rows = useM_g(()=>{
     const map = {};
@@ -99,14 +143,14 @@ function GanttBoard() {
 
   const { wd, mo, day } = fmtDay(app.date);
 
-  const GrpChip = ({ g }) => (
+  const GrpChip = ({ g, label }) => (
     <button onClick={()=>app.setTweak('groupBy',g)} className="mono uc" style={{
       padding:'2px 8px', fontSize:8, borderRadius:3, cursor:'pointer',
       border:`1px solid ${app.tweaks.groupBy===g?'var(--ink-2)':'var(--line)'}`,
       background:app.tweaks.groupBy===g?`color-mix(in oklch,var(--ink-2) 14%,var(--surface))`:'transparent',
       color:app.tweaks.groupBy===g?'var(--ink-2)':'var(--ink-3)',
       fontWeight:app.tweaks.groupBy===g?600:400, transition:'all .1s',
-    }}>{g}</button>
+    }}>{label||g}</button>
   );
 
   return (
@@ -121,9 +165,15 @@ function GanttBoard() {
         </div>
         <div style={{ display:'flex',gap:4,alignItems:'center' }}>
           <span className="mono uc" style={{ fontSize:8,color:'var(--ink-3)' }}>FOCUS</span>
+          <GrpChip g="tail" label="A/C"/>
           <GrpChip g="instructor"/>
-          <GrpChip g="tail"/>
           <GrpChip g="batch"/>
+        </div>
+        <div style={{ display:'flex',gap:3,alignItems:'center' }}>
+          <span className="mono uc" style={{ fontSize:8,color:'var(--ink-3)' }}>ZOOM</span>
+          <ZoomChip label="−" title="Zoom out" onClick={()=>zoomBy(1/ZOOM_STEP)}/>
+          <ZoomChip label="FIT" title="Fit timeline to width" onClick={()=>setZoom(null)} active={zoom==null}/>
+          <ZoomChip label="+" title="Zoom in" onClick={()=>zoomBy(ZOOM_STEP)}/>
         </div>
         <div style={{flex:1}}/>
         <FocusControls/>
@@ -132,14 +182,8 @@ function GanttBoard() {
         <LastUpdate/>
       </div>
 
-      {/* Date + filter */}
-      <div style={{ padding:'4px 8px', display:'flex', flexDirection:'column', gap:4, flexShrink:0 }}>
-        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          <DateCalendarTrigger/>
-          <span className="mono uc" style={{ fontSize:9, color:'var(--ink-3)' }}>SELECT DATE</span>
-        </div>
-        <FilterBar/>
-      </div>
+      {/* Date + filter — shared canonical block */}
+      <DateFilterRow/>
 
       {/* Timeline */}
       <div style={{ margin:'2px 6px 6px', flex:1, minHeight:0, border:'1px solid var(--line)', borderRadius:6, background:'var(--surface)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
@@ -171,6 +215,12 @@ function GanttBoard() {
                     }}>{showLabel ? `${h}` : ''}</div>
                   );
                 })}
+                {nowPct != null && (
+                  <div style={{ position:'absolute', left:`${nowPct}%`, top:0, bottom:0, display:'flex', alignItems:'center', transform:'translateX(-1px)', pointerEvents:'none', zIndex:1 }}>
+                    <div style={{ width:2, position:'absolute', top:0, bottom:0, background:'var(--highlight)', opacity:0.85 }}/>
+                    <span className="mono uc" style={{ fontSize:7, fontWeight:700, color:'var(--highlight)', background:'var(--bg-2)', padding:'0 2px', marginLeft:3 }}>NOW</span>
+                  </div>
+                )}
               </div>
               <div className="mono uc" style={{ padding:'9px 14px', fontSize:9, color:'var(--ink-3)', borderLeft:'1px solid var(--line)' }}>
                 {groupBy==='instructor' ? `DUTY ${HOUR_START}–${hourEnd}` : groupBy==='tail' ? 'TAIL HRS' : 'BATCH HRS'}
@@ -254,6 +304,11 @@ function GanttBoard() {
                   {Array.from({length:hourSpan+1}).map((_,i)=>(
                     <div key={i} style={{ position:'absolute',left:`${(i/hourSpan)*100}%`,top:0,bottom:0,borderLeft:'1px solid var(--line-soft)',opacity:i%2?0.5:1 }}/>
                   ))}
+                  {nowPct != null && (
+                    <div style={{ position:'absolute', left:`${nowPct}%`, top:0, bottom:0, width:2,
+                      background:'var(--highlight)', boxShadow:'0 0 6px var(--highlight)', opacity:0.85,
+                      zIndex:0, pointerEvents:'none' }}/>
+                  )}
                   {r.flights.map((f,fi)=>{
                     if (!f.start) return null;
                     const startMin  = (minutesOf(f.start)||0) - HOUR_START*60;
@@ -288,36 +343,24 @@ function GanttBoard() {
                           textDecoration: dim?'line-through':'none',
                           zIndex: 1,
                         }}>
-                        <div className="mono num" style={{ fontSize:9,display:'flex',justifyContent:'space-between',gap:4 }}>
-                          <span>{f.start}</span>
-                          {isFiSP && <span style={{color:'var(--col-stby)',fontSize:7,fontWeight:600}}>AS SP</span>}
-                          {!isFiSP && isSolo && <span style={{color:'var(--col-solo)',fontSize:7,fontWeight:700}}>SOLO</span>}
-                          {!isFiSP && !isSolo && done && <span style={{color:'var(--col-done)'}}>✓</span>}
-                          {!isFiSP && !isSolo && stby && <span style={{color:'var(--col-stby)',fontSize:8}}>STBY</span>}
-                          {!isFiSP && !isSolo && isMtg && <span style={{color:'var(--ink-3)',fontSize:7}}>MTG</span>}
+                        {/* Line 1 — SP name (time is already encoded by the bar position) + status marker */}
+                        <div style={{ display:'flex', alignItems:'center', gap:4, lineHeight:1.15 }}>
+                          <span style={{ fontSize:isMobile?9:11, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>
+                            {isMtg ? (f.lesson || f.batch || '—') : (f.student || f.instructor || '—')}
+                          </span>
+                          {isFiSP && <span style={{color:'var(--col-stby)',fontSize:7,fontWeight:600,flexShrink:0}}>AS SP</span>}
+                          {!isFiSP && isSolo && <span style={{color:'var(--col-solo)',fontSize:7,fontWeight:700,flexShrink:0}}>SOLO</span>}
+                          {!isFiSP && !isSolo && done && <span style={{color:'var(--col-done)',fontSize:9,flexShrink:0}}>✓</span>}
+                          {!isFiSP && !isSolo && stby && <span style={{color:'var(--col-stby)',fontSize:8,flexShrink:0}}>STBY</span>}
+                          {!isFiSP && !isSolo && isMtg && <span style={{color:'var(--ink-3)',fontSize:7,flexShrink:0}}>MTG</span>}
                         </div>
-                        <div style={{ fontSize:isMobile?9:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.2 }}>
-                          {isFiSP
-                            ? `▾ ${f.lesson}`
-                            : isSolo
-                              ? (f.lesson || '—')
-                              : isMtg
-                                ? (f.lesson || f.batch || '—')
-                                : f.student}
+                        {/* Line 2 — Batch · A/C, always shown (incl. mobile) */}
+                        <div className="mono uc" style={{ fontSize:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',gap:4,alignItems:'center',marginTop:1 }}>
+                          <span style={{color:f.batch===HIGHLIGHT_BATCH?'var(--highlight)':'var(--ink-3)',fontWeight:f.batch===HIGHLIGHT_BATCH?600:400}}>{f.batch||'—'}</span>
+                          <span style={{color:'var(--ink-3)'}}>·</span>
+                          <span style={{color:isTailMaint(f.tail)?'var(--col-cancel)':'var(--ink-3)',fontWeight:isTailMaint(f.tail)?600:400}}>{f.tail||'TBD'}</span>
+                          {isTailMaint(f.tail) && <GndBadge/>}
                         </div>
-                        {!isMobile && (
-                          <div className="mono uc" style={{ fontSize:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',gap:4,alignItems:'center' }}>
-                            {isFiSP
-                              ? <span style={{color:'var(--ink-3)'}}>instr: {f.instructor||'—'}</span>
-                              : <>
-                                  <span style={{color:f.batch===HIGHLIGHT_BATCH?'var(--highlight)':'var(--ink-3)',fontWeight:f.batch===HIGHLIGHT_BATCH?600:400}}>{f.batch}</span>
-                                  <span style={{color:'var(--ink-3)'}}>·</span>
-                                  <span style={{color:isTailMaint(f.tail)?'var(--col-cancel)':'var(--ink-3)',fontWeight:isTailMaint(f.tail)?600:400}}>{f.tail||'TBD'}</span>
-                                  {isTailMaint(f.tail) && <GndBadge/>}
-                                </>
-                            }
-                          </div>
-                        )}
                       </button>
                     );
                   })}

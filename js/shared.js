@@ -558,6 +558,20 @@ function RefreshButton() {
   );
 }
 
+// Canonical date-picker + filter block shared by the Schedule boards (Day, Gantt)
+// so the row lines up pixel-identically when switching layouts.
+function DateFilterRow() {
+  return (
+    <div style={{ padding:'4px 10px', display:'flex', flexDirection:'column', gap:4, flexShrink:0 }}>
+      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+        <DateCalendarTrigger/>
+        <span className="mono uc" style={{ fontSize:9, color:'var(--ink-3)' }}>SELECT DATE</span>
+      </div>
+      <FilterBar/>
+    </div>
+  );
+}
+
 // ─── Filter Bar ───────────────────────────────────────────────────────────
 function FilterBar() {
   const { filters, setFilters } = useApp();

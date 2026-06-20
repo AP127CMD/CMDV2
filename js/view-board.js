@@ -110,14 +110,8 @@ function OpsBoard() {
         <StatHero label="SIM"       value={stats.sim}       color="var(--col-sim)"     small={isMobile} sub={`${brdHours(stats.simHours)}H`}/>
       </div>
 
-      {/* Date + filter */}
-      <div style={{ padding: isMobile?'0 8px 4px':'0 10px 4px', display:'flex', flexDirection:'column', gap:4, flexShrink:0 }}>
-        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          <DateCalendarTrigger/>
-          <span className="mono uc" style={{ fontSize:9, color:'var(--ink-3)' }}>SELECT DATE</span>
-        </div>
-        <FilterBar/>
-      </div>
+      {/* Date + filter — shared canonical block */}
+      <DateFilterRow/>
 
       {/* Table */}
       <div style={{ margin: isMobile?'0 4px 4px':'0 6px 6px', flex:1, minHeight:0, border:'1px solid var(--line)', borderRadius:6, background:'var(--surface)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
@@ -191,6 +185,26 @@ function OpsBoard() {
               </div>
             );
           })}
+          {/* Totals row — sticky to the bottom of the scroll area, aligned to the grid columns */}
+          {sorted.length>0 && (
+            <div className="mono uc" style={{
+              display:'grid', gridTemplateColumns:'110px 90px 1.3fr 1.3fr 100px 68px 52px 68px 76px 105px',
+              minWidth:900, gap:10, padding:'8px 16px', alignItems:'center',
+              position:'sticky', bottom:0, zIndex:1,
+              background:'var(--bg-2)', borderTop:'2px solid var(--line)', fontSize:9, color:'var(--ink-3)',
+            }}>
+              <span style={{ fontWeight:600, color:'var(--ink-2)' }}>TOTALS</span>
+              <span/>
+              <span className="num" style={{ fontSize:11, color:'var(--ink)' }}>{stats.total} FLIGHTS</span>
+              <span className="num" style={{ color:'var(--col-done)' }}>{stats.Completed} ✓ {brdHours(stats.completedHours)}H</span>
+              <span/>
+              <span/>
+              <span className="num" style={{ fontSize:11, color:'var(--ink)' }} title="Total scheduled hours">{brdHours(stats.totalHours)}H</span>
+              <span/>
+              <span/>
+              <span/>
+            </div>
+          )}
         </div>
         {/* Footer legend */}
         <div className="mono uc" style={{ padding:'7px 16px', fontSize:9, color:'var(--ink-3)', borderTop:'1px solid var(--line)', background:'var(--bg-2)', display:'flex', gap:16, alignItems:'center', flexShrink:0, flexWrap:'wrap' }}>
