@@ -223,7 +223,7 @@ function GanttBoard() {
                 )}
               </div>
               <div className="mono uc" style={{ padding:'9px 14px', fontSize:9, color:'var(--ink-3)', borderLeft:'1px solid var(--line)' }}>
-                {groupBy==='instructor' ? `DUTY ${HOUR_START}–${hourEnd}` : groupBy==='tail' ? 'TAIL HRS' : 'BATCH HRS'}
+                {groupBy==='instructor' ? `DUTY ${HOUR_START}–${hourEnd}` : groupBy==='tail' ? 'A/C HRS' : 'BATCH HRS'}
               </div>
             </div>
 
@@ -249,7 +249,7 @@ function GanttBoard() {
                 return { label:'DUTY', value:`${h}h${String(m).padStart(2,'0')}`, sub:`${firstStart}–${lastEnd}` };
               }
               const h = Math.floor(totalMin/60), m = totalMin%60;
-              return { label: groupBy==='tail'?'TAIL HRS':'FLT HRS', value:`${h}h${String(m).padStart(2,'0')}`, sub:`${r.flights.length} FLT` };
+              return { label: groupBy==='tail'?'A/C HRS':'FLT HRS', value:`${h}h${String(m).padStart(2,'0')}`, sub:`${r.flights.length} FLT` };
             })();
 
             // Overlap lanes: pack flights into sub-rows so overlapping schedules are
@@ -318,12 +318,17 @@ function GanttBoard() {
                     const isFiSP    = !!f._asFiStudent;
                     const isMtg     = isMeetingFlt(f);
                     const isSolo    = !isFiSP && isSoloFlt(f);
-                    const color     = isFiSP ? 'var(--col-stby)' : isSolo ? 'var(--col-solo)' : isMtg ? 'var(--ink-3)' : STATUS_COLOR(f);
+                    // SOLO uses status color (dashed border marks it visually); SIM uses status color with dotted border.
+                    const color     = isFiSP ? 'var(--col-stby)' : isMtg ? 'var(--ink-3)' : STATUS_COLOR(f);
                     const done      = f.status==='Completed';
                     const dim       = f.status==='Canceled';
                     const stby      = f.isStandby;
-                    const dashed    = stby||isFiSP||isSolo;
+                    const dotted    = f.isSim && !isFiSP;           // SIM → dotted border, status color
+                    const dashed    = !dotted && (stby||isFiSP||isSolo); // SOLO/STBY/FI-AS-SP → dashed
                     const lane      = flightLane.get(f) || 0;
+                    // Short display labels
+                    const shortBatch = (f.batch||'').replace('-','');  // "AP-127" → "AP127"
+                    const shortTail  = f.tail ? f.tail[0]+f.tail.slice(-2) : 'TBD'; // "HS-TVG" → "HVG"
                     return (
                       <button key={f.id+fi+(isFiSP?'s':'')} onClick={()=>app.setDrawer(f.id)}
                         title={isFiSP
@@ -335,30 +340,29 @@ function GanttBoard() {
                           position:'absolute', left:`${left}%`, width:`calc(${width}% - 2px)`,
                           top: lane*LANE_H + 3, height: LANE_H - 6,
                           background:`color-mix(in oklch,${color} ${stby?8:isFiSP?10:18}%,var(--surface))`,
-                          border:`${dashed?'1px dashed':'1px solid'} ${color}`,
-                          borderLeft:`3px ${dashed?'dashed':'solid'} ${color}`,
+                          border:`${dotted?'1px dotted':dashed?'1px dashed':'1px solid'} ${color}`,
+                          borderLeft:`3px ${dotted?'dotted':dashed?'dashed':'solid'} ${color}`,
                           borderRadius:4, padding:'2px 5px', textAlign:'left',
                           cursor:'pointer', overflow:'hidden', color:'var(--ink)',
                           opacity: dim?0.4:isFiSP?0.75:1,
                           textDecoration: dim?'line-through':'none',
                           zIndex: 1,
                         }}>
-                        {/* Line 1 — SP name (time is already encoded by the bar position) + status marker */}
+                        {/* Line 1 — SP name + status marker (no SOLO badge; dashed border marks solo) */}
                         <div style={{ display:'flex', alignItems:'center', gap:4, lineHeight:1.15 }}>
                           <span style={{ fontSize:isMobile?9:11, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>
                             {isMtg ? (f.lesson || f.batch || '—') : (f.student || f.instructor || '—')}
                           </span>
                           {isFiSP && <span style={{color:'var(--col-stby)',fontSize:7,fontWeight:600,flexShrink:0}}>AS SP</span>}
-                          {!isFiSP && isSolo && <span style={{color:'var(--col-solo)',fontSize:7,fontWeight:700,flexShrink:0}}>SOLO</span>}
-                          {!isFiSP && !isSolo && done && <span style={{color:'var(--col-done)',fontSize:9,flexShrink:0}}>✓</span>}
-                          {!isFiSP && !isSolo && stby && <span style={{color:'var(--col-stby)',fontSize:8,flexShrink:0}}>STBY</span>}
-                          {!isFiSP && !isSolo && isMtg && <span style={{color:'var(--ink-3)',fontSize:7,flexShrink:0}}>MTG</span>}
+                          {!isFiSP && done && <span style={{color:'var(--col-done)',fontSize:9,flexShrink:0}}>✓</span>}
+                          {!isFiSP && stby && <span style={{color:'var(--col-stby)',fontSize:8,flexShrink:0}}>STBY</span>}
+                          {!isFiSP && isMtg && <span style={{color:'var(--ink-3)',fontSize:7,flexShrink:0}}>MTG</span>}
                         </div>
-                        {/* Line 2 — Batch · A/C, always shown (incl. mobile) */}
+                        {/* Line 2 — short Batch · short A/C, always shown (incl. mobile) */}
                         <div className="mono uc" style={{ fontSize:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',gap:4,alignItems:'center',marginTop:1 }}>
-                          <span style={{color:f.batch===HIGHLIGHT_BATCH?'var(--highlight)':'var(--ink-3)',fontWeight:f.batch===HIGHLIGHT_BATCH?600:400}}>{f.batch||'—'}</span>
+                          <span style={{color:f.batch===HIGHLIGHT_BATCH?'var(--highlight)':'var(--ink-3)',fontWeight:f.batch===HIGHLIGHT_BATCH?600:400}}>{shortBatch||'—'}</span>
                           <span style={{color:'var(--ink-3)'}}>·</span>
-                          <span style={{color:isTailMaint(f.tail)?'var(--col-cancel)':'var(--ink-3)',fontWeight:isTailMaint(f.tail)?600:400}}>{f.tail||'TBD'}</span>
+                          <span style={{color:isTailMaint(f.tail)?'var(--col-cancel)':'var(--ink-3)',fontWeight:isTailMaint(f.tail)?600:400}}>{shortTail}</span>
                           {isTailMaint(f.tail) && <GndBadge/>}
                         </div>
                       </button>
@@ -382,12 +386,20 @@ function GanttBoard() {
 
         {/* Legend */}
         <div className="mono uc" style={{ display:'flex',gap:10,padding:'7px 16px',fontSize:9,color:'var(--ink-3)',borderTop:'1px solid var(--line)',background:'var(--bg-2)',flexShrink:0,flexWrap:'wrap' }}>
-          {[['PENDING','var(--col-pending)'],['COMPLETED','var(--col-done)'],['CANCELED','var(--col-cancel)'],['SIM','var(--col-sim)'],['STANDBY','var(--col-stby)']].map(([l,c])=>(
+          {[['PENDING','var(--col-pending)'],['COMPLETED','var(--col-done)'],['CANCELED','var(--col-cancel)'],['STANDBY','var(--col-stby)']].map(([l,c])=>(
             <span key={l} style={{ display:'flex',gap:5,alignItems:'center' }}>
               <span style={{ width:12,height:7,background:`color-mix(in oklch,${c} 20%,var(--surface))`,border:`1px ${l==='STANDBY'?'dashed':'solid'} ${c}`,borderRadius:2 }}/>
               {l}
             </span>
           ))}
+          <span style={{ display:'flex',gap:5,alignItems:'center' }}>
+            <span style={{ width:12,height:7,background:`color-mix(in oklch,var(--col-pending) 18%,var(--surface))`,border:'1px dotted var(--col-pending)',borderRadius:2 }}/>
+            SIM
+          </span>
+          <span style={{ display:'flex',gap:5,alignItems:'center' }}>
+            <span style={{ width:12,height:7,background:`color-mix(in oklch,var(--col-pending) 18%,var(--surface))`,border:'1px dashed var(--col-pending)',borderRadius:2 }}/>
+            SOLO
+          </span>
           <span style={{ display:'flex',gap:5,alignItems:'center' }}>
             <span style={{ width:12,height:7,background:`color-mix(in oklch,var(--col-stby) 10%,var(--surface))`,border:'1px dashed var(--col-stby)',borderRadius:2 }}/>
             FI AS SP
@@ -395,10 +407,6 @@ function GanttBoard() {
           <span style={{ display:'flex',gap:5,alignItems:'center' }}>
             <span style={{ width:12,height:7,background:'color-mix(in oklch,var(--ink-3) 15%,var(--surface))',border:'1px solid var(--ink-3)',borderRadius:2 }}/>
             MTG/OTHER
-          </span>
-          <span style={{ display:'flex',gap:5,alignItems:'center' }}>
-            <span style={{ width:12,height:7,background:`color-mix(in oklch,var(--col-solo) 20%,var(--surface))`,border:'1px dashed var(--col-solo)',borderRadius:2 }}/>
-            SOLO
           </span>
           <span style={{flex:1}}/>
           <span>CLICK A BAR FOR DETAILS</span>
