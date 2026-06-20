@@ -5,13 +5,14 @@ Unified ops + progress SPA for AP127. Combines CMD CTR (operations) and DB001 (s
 GitHub: `AP127CMD/CMDV2`. Live: `https://ap127-ngt2.pages.dev`. Local: `/Users/nugui/AP127_V2/`.
 
 ## Current state
-- Version token: `?v=p86` — **BUMP ON EVERY JS CHANGE** (`p86` → `p87` etc.)
-- Last significant change: 2026-06-16 (p86 — Combined Progress chart defaults; Proj 30d/15d lines; signed vs-Plan-Today)
+- Version token: most files at `?v=p86`; `view-watchdog.js` is at `?v=p87` (post-p86 Telegram rate-limit hotfix) — **BUMP ALL to `p88` on next JS change**
+- Last significant change: 2026-06-16 (p86/p87 — Combined Progress chart defaults; Proj 30d/15d lines; signed vs-Plan-Today; watchdog rate-limit fix)
 - Active branch: main (direct-to-main)
 
 ## Key facts
-- 11 Babel JSX views + 7 plain-script views; check each file's `<script>` tag before adding `type="text/babel"`
-- `shell.js`, `view-watchdog.js`, `view-cf-usage.js`, `view-crosscheck.js`, `view-overview.js` are plain `<script>` — **NOT** Babel; do not add `type="text/babel"` to them
+- Multiple Babel JSX views + plain-script views — **always check the actual `<script>` tag in `index.html`** before editing; the type differs per file
+- Plain `<script>` (NOT Babel): `shell.js`, `view-watchdog.js`, `view-cf-usage.js`, `view-crosscheck.js`
+- `view-overview.js` uses `type="text/babel"` (confirmed in index.html) — do NOT remove it
 - Drive views in preview via: `window.dispatchEvent(new CustomEvent('ap127-go',{detail:'<viewId>'}))`  (not hash change)
 - Cache-busting = bump `?v=pNN` token on ALL `<script>` tags — NOT `?cb=`; find-replace across `index.html`
 - Watchdog worker redeploy: `cd /Users/nugui/AP127_V2/watchdog && npx wrangler deploy`
