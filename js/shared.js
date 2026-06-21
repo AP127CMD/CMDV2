@@ -2,6 +2,23 @@
 const { useState, useMemo, useEffect, useRef, useCallback, createContext, useContext } = React;
 
 // ─── Data ────────────────────────────────────────────────────────────────
+// Deduplicate: when ACTUAL_ONLY_X_ACT_N exists, remove the planned X entry if Completed.
+// Planned completed entries have to=0/ldg=0/airborne=null — the actual entry is the truth.
+(function() {
+  const raw = window.FLIGHT_DATA.flights;
+  const hasActual = new Set();
+  raw.forEach(f => {
+    if (f.id && f.id.startsWith('ACTUAL_ONLY_')) {
+      const base = f.id.slice('ACTUAL_ONLY_'.length).replace(/_ACT_\d+$/, '');
+      hasActual.add(base);
+    }
+  });
+  if (hasActual.size) {
+    window.FLIGHT_DATA.flights = raw.filter(f =>
+      !f.id || f.id.startsWith('ACTUAL_ONLY_') || !(f.status === 'Completed' && hasActual.has(f.id))
+    );
+  }
+})();
 const FLIGHTS     = window.FLIGHT_DATA.flights;
 const INSTRUCTORS = window.FLIGHT_DATA.instructors;
 const RESOURCES   = window.FLIGHT_DATA.resources;
