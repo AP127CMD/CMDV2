@@ -1503,6 +1503,133 @@ function getThreeMonthsAgo(){
   d.setUTCMonth(d.getUTCMonth()-3);
   return d.toISOString().slice(0,10);
 }
+function renderScorecard(actualAllRec, from, to, batch) {
+  const today = ap127TodayBKK();
+  const thisMonth = today.slice(0, 7);
+
+  // Restore collapse state on re-render
+  try {
+    const body = document.getElementById('pf-scorecard-body');
+    const chev = document.getElementById('pf-sc-chevron');
+    const collapsed = localStorage.getItem('pf-scorecard-collapsed') === '1';
+    if (body) body.style.display = collapsed ? 'none' : '';
+    if (chev) chev.textContent = collapsed ? '▼' : '▲';
+  } catch(e) {}
+
+  // ── Shared month maps (all batches, full date range) ──
+  const planMapAll = buildMonthMap(collectCurriculumPlan('ALL'), from, to);
+  const actMapAll  = buildMonthMap(actualAllRec, from, to);
+  const allMonths  = [...new Set([...Object.keys(planMapAll), ...Object.keys(actMapAll)])].sort();
+
+  // ── KPI computation for a given batch filter ──
+  function scKpis(batchF) {
+    const planM = batchF === 'ALL' ? planMapAll
+      : buildMonthMap(collectCurriculumPlan(batchF), from, to);
+    const actM  = batchF === 'ALL' ? actMapAll
+      : buildMonthMap(actualAllRec.filter(r => r.batch === batchF), from, to);
+
+    const months   = [...new Set([...Object.keys(planM), ...Object.keys(actM)])].sort();
+    const elapsed  = months.filter(m => m <= thisMonth);
+    const complete = elapsed.filter(m => m < thisMonth);
+
+    const planTotFl = elapsed.reduce((s,m) => s + (planM[m]?.total || 0), 0);
+    const planTotH  = elapsed.reduce((s,m) => s + (planM[m]?.h    || 0), 0);
+    const actTotFl  = elapsed.reduce((s,m) => s + (actM[m]?.total || 0), 0);
+    const actTotH   = elapsed.reduce((s,m) => s + (actM[m]?.h    || 0), 0);
+
+    const achPctFl = planTotFl ? Math.round(actTotFl / planTotFl * 100) : null;
+    const achPctH  = planTotH  ? Math.round(actTotH  / planTotH  * 100) : null;
+
+    const planThisFl = planM[thisMonth]?.total || 0;
+    const planThisH  = planM[thisMonth]?.h    || 0;
+    const actThisFl  = actM[thisMonth]?.total || 0;
+    const actThisH   = actM[thisMonth]?.h    || 0;
+
+    const shortFl = actTotFl - planTotFl;
+    const shortH  = actTotH  - planTotH;
+
+    // 3-month pace — avg achievement % of last 3 complete months
+    const last3 = complete.slice(-3);
+    function pace3(field) {
+      if (!last3.length) return null;
+      return Math.round(last3.reduce((s, m) => {
+        const p = planM[m]?.[field] || 0;
+        const a = actM[m]?.[field]  || 0;
+        return s + (p ? a / p * 100 : 100);
+      }, 0) / last3.length);
+    }
+    const pace3Fl = pace3('total');
+    const pace3H  = pace3('h');
+
+    // Pace status (based on hours %)
+    const pctH = achPctH ?? 0;
+    const statusLabel = achPctH === null ? '—'
+      : pctH >= 95 ? 'ON TRACK' : pctH >= 80 ? 'CAUTION' : 'BEHIND';
+    const statusColor = achPctH === null ? 'var(--tx2)'
+      : pctH >= 95 ? 'var(--ok,#4ade80)' : pctH >= 80 ? 'var(--wa,#fbbf24)' : 'var(--er,#f87171)';
+
+    // Monthly trend — last 2 complete months
+    function trendArrow(prev, curr) {
+      if (prev === null || curr === null) return '—';
+      return curr > prev + 2 ? '↑' : curr < prev - 2 ? '↓' : '→';
+    }
+    function monthPct(m, field) {
+      const p = planM[m]?.[field] || 0; const a = actM[m]?.[field] || 0;
+      return p ? Math.round(a / p * 100) : null;
+    }
+    const last2 = complete.slice(-2);
+    const moTrendFl = last2.length === 2 ? trendArrow(monthPct(last2[0],'total'), monthPct(last2[1],'total')) : '—';
+    const moTrendH  = last2.length === 2 ? trendArrow(monthPct(last2[0],'h'),     monthPct(last2[1],'h'))    : '—';
+
+    // Weekly trend — last 7 vs prior 7 days
+    function daysAgoStr(n) {
+      const d = new Date(today + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() - n);
+      return d.toISOString().slice(0, 10);
+    }
+    const ds7 = daysAgoStr(7); const ds14 = daysAgoStr(14);
+    const filtRec = batchF === 'ALL' ? actualAllRec : actualAllRec.filter(r => r.batch === batchF);
+    const cur7Fl  = filtRec.filter(r => r.date >= ds7  && r.date <= today).length;
+    const pri7Fl  = filtRec.filter(r => r.date >= ds14 && r.date <  ds7 ).length;
+    const cur7H   = filtRec.filter(r => r.date >= ds7  && r.date <= today).reduce((s,r) => s + (r.mins||60)/60, 0);
+    const pri7H   = filtRec.filter(r => r.date >= ds14 && r.date <  ds7 ).reduce((s,r) => s + (r.mins||60)/60, 0);
+    const wkTrendFl = trendArrow(pri7Fl, cur7Fl);
+    const wkTrendH  = trendArrow(pri7H,  cur7H);
+
+    // ── Tile builder ──
+    function pctStr(v) { return v === null ? '—' : v + '%'; }
+    function fmtH(h) { return h.toFixed(1) + 'h'; }
+    function fmtShort(v, isH) {
+      const s = v >= 0 ? '+' : '';
+      return s + (isH ? v.toFixed(1) + 'h' : v);
+    }
+    function tile(label, primary, secondary, sub, color) {
+      return `<div class="sc ca">` +
+        `<div class="sl">${label}</div>` +
+        `<div class="sv" style="color:${color||'inherit'};font-size:clamp(13px,1.8vw,18px)">${primary}</div>` +
+        (secondary ? `<div style="font-size:11px;color:var(--tx2);margin-top:1px">${secondary}</div>` : '') +
+        (sub ? `<div class="ss2">${sub}</div>` : '') +
+        `</div>`;
+    }
+
+    const shortColor = shortFl < 0 ? 'var(--er,#f87171)' : shortFl > 0 ? 'var(--ok,#4ade80)' : 'inherit';
+
+    return [
+      tile('Overall Achievement', pctStr(achPctFl) + ' fl', pctStr(achPctH) + ' hrs', 'actual ÷ plan'),
+      tile('This Month', `${actThisFl} / ${planThisFl} fl`, `${fmtH(actThisH)} / ${fmtH(planThisH)}`, 'actual / planned'),
+      tile('3-Month Pace', pctStr(pace3Fl) + ' fl', pctStr(pace3H) + ' hrs', 'avg last 3 months'),
+      tile('Shortfall', fmtShort(shortFl, false) + ' fl', fmtShort(shortH, true), shortFl < 0 ? 'behind plan' : 'ahead of plan', shortColor),
+      tile('Pace Status', statusLabel, '', '', statusColor),
+      tile('Monthly Trend', moTrendFl + ' fl', moTrendH + ' hrs', 'vs prior month'),
+      tile('Weekly Trend', wkTrendFl + ' fl', wkTrendH + ' hrs', 'vs prior 7 days'),
+    ].join('');
+  }
+
+  const kpiAll = document.getElementById('pf-sc-kpis-all');
+  const kpi127 = document.getElementById('pf-sc-kpis-127');
+  if (kpiAll) kpiAll.innerHTML = scKpis('ALL');
+  if (kpi127) kpi127.innerHTML = scKpis('AP127');
+}
 function pfToggleScorecard() {
   const body = document.getElementById('pf-scorecard-body');
   const chev = document.getElementById('pf-sc-chevron');
@@ -1794,6 +1921,7 @@ function renderPerformance(){
       </tbody></table>`;
     }
   }
+  renderScorecard(recAll.filter(r => r.date >= from && r.date <= to), from, to, batch);
 }
 
 function resetPerformanceFilters(){
