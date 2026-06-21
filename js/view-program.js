@@ -1450,7 +1450,19 @@ function collectEffectiveFlights() {
     (G?.[k] || []).forEach(s => {
       (s.flown || []).forEach(f => {
         if (!f.date) return;
-        const effMins = (f.lesson && curMap[f.lesson]) ? curMap[f.lesson] : ap127FlightMins(f);
+        let effMins;
+        if (f.lesson && curMap[f.lesson]) {
+          // Normal lesson — exact curriculum match
+          effMins = curMap[f.lesson];
+        } else if (f.lesson && f.lesson.includes('/')) {
+          // Split lesson (e.g. "CDGL 10/1", "CDGL 10/2") — credit planned_mins once on first part
+          const base = f.lesson.replace(/\/\d+$/, '');
+          const part = parseInt(f.lesson.split('/').pop(), 10) || 1;
+          effMins = part === 1 ? (curMap[base] || ap127FlightMins(f)) : 0;
+        } else {
+          // Unknown lesson — fall back to actual
+          effMins = ap127FlightMins(f);
+        }
         rec.push({ date: f.date, batch: b, mins: effMins });
       });
     });
