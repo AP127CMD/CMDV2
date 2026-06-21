@@ -1629,6 +1629,92 @@ function renderScorecard(actualAllRec, from, to, batch) {
   const kpi127 = document.getElementById('pf-sc-kpis-127');
   if (kpiAll) kpiAll.innerHTML = scKpis('ALL');
   if (kpi127) kpi127.innerHTML = scKpis('AP127');
+
+  // ── Monthly Variance Table ──
+  const scTbl = document.getElementById('pf-sc-table');
+  if (!scTbl) return;
+
+  // Batches shown in sub-rows depend on batch filter
+  const BATCHES_SHOW = batch === 'ALL'
+    ? ['AP124','AP126','AP127','AP129']
+    : [batch];
+
+  function rowCls(pctH) {
+    if (pctH === null) return 'pc-row-grey';
+    return pctH >= 95 ? 'pc-row-green' : pctH >= 80 ? 'pc-row-amber' : 'pc-row-red';
+  }
+  function fmtDelta(a, p, isH) {
+    const d = a - p;
+    const s = d >= 0 ? '+' : '';
+    return s + (isH ? d.toFixed(1) + 'h' : d);
+  }
+  function pct(a, p) { return p ? Math.round(a / p * 100) + '%' : '—'; }
+
+  // Build table HTML — each month is its own <tbody> pair (header row + sub-rows tbody)
+  // This avoids invalid nested <tbody> and lets display:none work cleanly on sub-rows.
+  let html = `<table class="pc-month-tbl">
+    <thead><tr>
+      <th>Month</th>
+      <th>Pl fl</th><th>Act fl</th><th>Δ fl</th>
+      <th class="pc-col-h">Pl h</th><th class="pc-col-h">Act h</th><th class="pc-col-h">Δ h</th>
+      <th>% fl</th><th class="pc-col-h">% h</th><th>Status</th>
+    </tr></thead>`;
+
+  allMonths.forEach(m => {
+    const isFuture  = m > thisMonth;
+    const isCurrent = m === thisMonth;
+
+    const pFl = planMapAll[m]?.total || 0;
+    const pH  = planMapAll[m]?.h    || 0;
+    const aFl = isFuture ? 0 : (actMapAll[m]?.total || 0);
+    const aH  = isFuture ? 0 : (actMapAll[m]?.h    || 0);
+
+    const pctFl = isFuture ? null : (pFl ? Math.round(aFl / pFl * 100) : null);
+    const pctH  = isFuture ? null : (pH  ? Math.round(aH  / pH  * 100) : null);
+    const cls   = isFuture ? 'pc-row-grey' : rowCls(pctH);
+
+    const monthLabel = m + (isCurrent ? ' ◑' : '');
+    const aFlStr = isFuture ? '—' : aFl;
+    const aHStr  = isFuture ? '—' : aH.toFixed(1) + 'h';
+    const dFlStr = isFuture ? '—' : fmtDelta(aFl, pFl, false);
+    const dHStr  = isFuture ? '—' : fmtDelta(aH,  pH,  true);
+    const statusIcon = isFuture ? '⋯'
+      : cls === 'pc-row-green' ? '✓'
+      : cls === 'pc-row-amber' ? '△' : '✗';
+
+    // Month header row — its own <tbody> so the sub-rows <tbody> can be a sibling
+    html += `<tbody>
+      <tr class="${cls}" onclick="pfToggleMonthRow('${m}')">
+        <td>▸ ${monthLabel}</td>
+        <td>${pFl}</td><td>${aFlStr}</td><td>${dFlStr}</td>
+        <td class="pc-col-h">${pH.toFixed(1)}h</td><td class="pc-col-h">${aHStr}</td><td class="pc-col-h">${dHStr}</td>
+        <td>${pct(aFl,pFl)}</td><td class="pc-col-h">${pct(aH,pH)}</td><td>${statusIcon}</td>
+      </tr>
+    </tbody>`;
+
+    // Per-batch sub-rows in a sibling <tbody> (hidden by default)
+    html += `<tbody id="pf-sc-sub-${m}" style="display:none">`;
+    BATCHES_SHOW.forEach(b => {
+      const bn   = b.replace('AP', '');
+      const bPFl = planMapAll[m]?.[b]        || 0;
+      const bPH  = planMapAll[m]?.['h' + b]  || 0;
+      const bAFl = isFuture ? 0 : (actMapAll[m]?.[b]        || 0);
+      const bAH  = isFuture ? 0 : (actMapAll[m]?.['h' + b]  || 0);
+      const bPctH = isFuture ? null : (bPH ? Math.round(bAH / bPH * 100) : null);
+      const bCls  = isFuture ? 'pc-row-grey' : rowCls(bPctH);
+      html += `<tr class="pc-sub-row ${bCls}">
+        <td style="color:var(--c${bn})">${b}</td>
+        <td>${bPFl}</td><td>${isFuture ? '—' : bAFl}</td><td>${isFuture ? '—' : fmtDelta(bAFl, bPFl, false)}</td>
+        <td class="pc-col-h">${bPH.toFixed(1)}h</td>
+        <td class="pc-col-h">${isFuture ? '—' : bAH.toFixed(1) + 'h'}</td>
+        <td class="pc-col-h">${isFuture ? '—' : fmtDelta(bAH, bPH, true)}</td>
+        <td>${pct(bAFl, bPFl)}</td><td class="pc-col-h">${pct(bAH, bPH)}</td><td></td>
+      </tr>`;
+    });
+    html += `</tbody>`;
+  });
+  html += `</table>`;
+  scTbl.innerHTML = html;
 }
 function pfToggleScorecard() {
   const body = document.getElementById('pf-scorecard-body');
