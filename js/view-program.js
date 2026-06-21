@@ -1664,10 +1664,10 @@ function renderScorecard(actualAllRec, from, to, batch) {
     const isFuture  = m > thisMonth;
     const isCurrent = m === thisMonth;
 
-    const pFl = planMapAll[m]?.total || 0;
-    const pH  = planMapAll[m]?.h    || 0;
-    const aFl = isFuture ? 0 : (actMapAll[m]?.total || 0);
-    const aH  = isFuture ? 0 : (actMapAll[m]?.h    || 0);
+    const pFl = batch === 'ALL' ? (planMapAll[m]?.total || 0) : (planMapAll[m]?.[batch] || 0);
+    const pH  = batch === 'ALL' ? (planMapAll[m]?.h    || 0) : (planMapAll[m]?.['h' + batch] || 0);
+    const aFl = isFuture ? 0 : (batch === 'ALL' ? (actMapAll[m]?.total || 0) : (actMapAll[m]?.[batch] || 0));
+    const aH  = isFuture ? 0 : (batch === 'ALL' ? (actMapAll[m]?.h    || 0) : (actMapAll[m]?.['h' + batch] || 0));
 
     const pctFl = isFuture ? null : (pFl ? Math.round(aFl / pFl * 100) : null);
     const pctH  = isFuture ? null : (pH  ? Math.round(aH  / pH  * 100) : null);
