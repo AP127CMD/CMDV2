@@ -1,7 +1,7 @@
 # CMDV2 — Claude Code Context
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p94` (all currently at p93)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p95` (all currently at p94)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
