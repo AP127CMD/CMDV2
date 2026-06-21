@@ -1538,8 +1538,6 @@ function getThreeMonthsAgo(){
   return d.toISOString().slice(0,10);
 }
 function renderScorecard(actualAllRec, from, to, batch) {
-  _scLastParams = [actualAllRec, from, to, batch];
-  const effMode = (() => { try { return localStorage.getItem('pf-sc-hours-mode') === 'eff'; } catch(e) { return false; } })();
   const today = ap127TodayBKK();
   const thisMonth = today.slice(0, 7);
 
@@ -1552,27 +1550,17 @@ function renderScorecard(actualAllRec, from, to, batch) {
     if (chev) chev.textContent = collapsed ? '▼' : '▲';
   } catch(e) {}
 
-  // Sync toggle button active state
-  try {
-    const btnAct = document.getElementById('pf-sc-btn-actual');
-    const btnEff = document.getElementById('pf-sc-btn-eff');
-    if (btnAct) btnAct.classList.toggle('pf-sc-mode-active', !effMode);
-    if (btnEff) btnEff.classList.toggle('pf-sc-mode-active',  effMode);
-  } catch(e) {}
-
   // ── Shared month maps (all batches, full date range) ──
   const planMapAll = buildMonthMap(collectCurriculumPlan('ALL'), from, to);
-  const effRec     = effMode ? collectEffectiveFlights().filter(r => r.date >= from && r.date <= to) : null;
-  const actMapAll  = buildMonthMap(effMode ? effRec : actualAllRec, from, to);
+  const actMapAll  = buildMonthMap(actualAllRec, from, to);
   const allMonths  = [...new Set([...Object.keys(planMapAll), ...Object.keys(actMapAll)])].sort();
 
   // ── KPI computation for a given batch filter ──
   function scKpis(batchF) {
     const planM = batchF === 'ALL' ? planMapAll
       : buildMonthMap(collectCurriculumPlan(batchF), from, to);
-    const _recForKpi = effMode ? effRec : actualAllRec;
     const actM  = batchF === 'ALL' ? actMapAll
-      : buildMonthMap(_recForKpi.filter(r => r.batch === batchF), from, to);
+      : buildMonthMap(actualAllRec.filter(r => r.batch === batchF), from, to);
 
     const months   = [...new Set([...Object.keys(planM), ...Object.keys(actM)])].sort();
     const elapsed  = months.filter(m => m <= thisMonth);
@@ -1820,7 +1808,7 @@ function pfToggleScorecard() {
 }
 function pfToggleHoursMode(mode) {
   try { localStorage.setItem('pf-sc-hours-mode', mode); } catch(e) {}
-  if (_scLastParams) renderScorecard(..._scLastParams);
+  renderPerformance();
 }
 function pfToggleMonthRow(m) {
   const sub = document.getElementById('pf-sc-sub-' + m);
@@ -1829,7 +1817,17 @@ function pfToggleMonthRow(m) {
 function renderPerformance(){
   const today=ap127TodayBKK();
   const threeMonthsAgo=getThreeMonthsAgo();
-  const recAll=collectHistoricalFlights().filter(r=>r.date<=today);
+  const effMode=(() => { try { return localStorage.getItem('pf-sc-hours-mode')==='eff'; } catch(e) { return false; } })();
+  const recAll=(effMode ? collectEffectiveFlights() : collectHistoricalFlights()).filter(r=>r.date<=today);
+  // Sync hours-mode toggle buttons and banner
+  try {
+    const btnAct=document.getElementById('pf-sc-btn-actual');
+    const btnEff=document.getElementById('pf-sc-btn-eff');
+    if(btnAct) btnAct.classList.toggle('pf-sc-mode-active',!effMode);
+    if(btnEff) btnEff.classList.toggle('pf-sc-mode-active', effMode);
+    const banner=document.getElementById('pf-eff-banner');
+    if(banner) banner.style.display=effMode ? '' : 'none';
+  } catch(e) {}
   const fromRaw=document.getElementById("pf-from")?.value||"";
   const toRaw=document.getElementById("pf-to")?.value||"";
   const from=fromRaw||threeMonthsAgo;
@@ -2558,17 +2556,19 @@ const MK_PERF = `
       <button class="btn-s" onclick="resetPerformanceFilters()">Reset Filter</button>
       <span id="pf-filter-note" class="d127-meta">Historical view</span>
     </div>
+    <div class="pf-mode-row">
+      <span class="pf-mode-label">Hours view:</span>
+      <button id="pf-sc-btn-actual" class="pf-sc-mode-btn pf-sc-mode-active" onclick="pfToggleHoursMode('actual')">Actual hrs</button>
+      <button id="pf-sc-btn-eff"    class="pf-sc-mode-btn"                   onclick="pfToggleHoursMode('eff')">Effective hrs</button>
+    </div>
   </div>
+  <div id="pf-eff-banner" style="display:none">◆ EFFECTIVE HOURS MODE — each completed lesson counted at its curriculum planned duration</div>
   <div id="pf-scorecard" class="pf-sc-wrap">
     <div class="pf-sc-hdr" onclick="pfToggleScorecard()">
       <span>◆ SCHOOL PACE SCORECARD</span>
       <span id="pf-sc-chevron">▲</span>
     </div>
     <div id="pf-scorecard-body" class="pf-sc-body">
-      <div class="pf-sc-mode-bar">
-        <button id="pf-sc-btn-actual" class="pf-sc-mode-btn pf-sc-mode-active" onclick="event.stopPropagation();pfToggleHoursMode('actual')">Actual hrs</button>
-        <button id="pf-sc-btn-eff"    class="pf-sc-mode-btn"                   onclick="event.stopPropagation();pfToggleHoursMode('eff')">Effective hrs</button>
-      </div>
       <div class="ss" id="pf-sc-kpis-all" style="margin-bottom:8px"></div>
       <div style="font-size:9px;color:var(--c127);font-family:'JetBrains Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;margin:8px 0 4px">AP127 Only</div>
       <div class="ss" id="pf-sc-kpis-127" style="margin-bottom:12px"></div>

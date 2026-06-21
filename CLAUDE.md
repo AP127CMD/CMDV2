@@ -17,7 +17,7 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p93` (2026-06-21 — Effective Hours toggle on Scorecard: switches all hours KPIs/table/bars between actual block time and curriculum planned_mins per lesson). Next → `p94`.
+**Last known:** all files `p94` (2026-06-22 — Extended Effective Hours toggle tab-wide: toggle in filter bar affects all KPI cards, charts, weekly table, and scorecard; mode indicator banner appears when effective mode is active). Next → `p95`.
 
 ## Key facts — things that trip up new sessions
 - **Check `<script>` type per file before editing** — `view-overview.js` uses `type="text/babel"`; `shell.js`, `view-watchdog.js`, `view-cf-usage.js`, `view-crosscheck.js` are plain `<script>`. Run the grep above to confirm.
