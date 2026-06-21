@@ -1435,6 +1435,48 @@ function collectHistoricalFlights(){
   });
   return rec.sort((a,b)=>a.date.localeCompare(b.date));
 }
+function collectCurriculumPlan(batchFilter) {
+  const BATCH_CUR = [
+    ['AP124','ap124','cur124'],
+    ['AP126','ap126','cur126'],
+    ['AP127','ap127','cur127'],
+    ['AP129','ap129','cur127'], // AP129 shares AP127 curriculum
+  ];
+  const rec = [];
+  BATCH_CUR.forEach(([batch, key, curKey]) => {
+    if (batchFilter && batchFilter !== 'ALL' && batchFilter !== batch) return;
+    const cur = G?.[curKey] || [];
+    const n = (G?.[key] || []).length;
+    if (!n) return;
+    cur.forEach(c => {
+      if (!c.planned_date) return;
+      for (let i = 0; i < n; i++) {
+        rec.push({ date: c.planned_date, batch, mins: c.planned_mins || 60 });
+      }
+    });
+  });
+  return rec.sort((a, b) => a.date.localeCompare(b.date));
+}
+function buildMonthMap(flights, from, to) {
+  const map = {};
+  flights.forEach(r => {
+    if (!r.date || r.date < from || r.date > to) return;
+    const m = r.date.slice(0, 7);
+    if (!map[m]) map[m] = {
+      total:0, h:0,
+      AP124:0, AP126:0, AP127:0, AP129:0,
+      hAP124:0, hAP126:0, hAP127:0, hAP129:0,
+    };
+    map[m].total++;
+    const hrs = (r.mins || 60) / 60;
+    map[m].h += hrs;
+    if (r.batch in map[m]) {
+      map[m][r.batch]++;
+      map[m]['h' + r.batch] += hrs;
+    }
+  });
+  return map;
+}
 function perfIsBusinessDay(ds){
   const d=new Date(ds+"T12:00:00Z");
   const dw=d.getUTCDay();
