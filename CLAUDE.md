@@ -1,7 +1,7 @@
 # CMDV2 — Claude Code Context
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p90` (all currently at p89)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p91` (all currently at p90)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -17,7 +17,7 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p89` (2026-06-20 — Gantt card: no SOLO badge, SOLO/SIM status colors + dashed/dotted border, short batch "AP127", short tail "HVG"; Schedule TYPE filter row AP/HP/PPL/TCAR/MEP/OTHER default AP). Next → `p90`.
+**Last known:** all files `p90` (2026-06-21 — School Perf Scorecard: collapsible planned vs actual section; dual flight+hour KPI strips, monthly variance table, per-batch bars). Next → `p91`.
 
 ## Key facts — things that trip up new sessions
 - **Check `<script>` type per file before editing** — `view-overview.js` uses `type="text/babel"`; `shell.js`, `view-watchdog.js`, `view-cf-usage.js`, `view-crosscheck.js` are plain `<script>`. Run the grep above to confirm.

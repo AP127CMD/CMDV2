@@ -1715,6 +1715,53 @@ function renderScorecard(actualAllRec, from, to, batch) {
   });
   html += `</table>`;
   scTbl.innerHTML = html;
+
+  // ── Per-Batch Achievement Bars ──
+  const scBars = document.getElementById('pf-sc-bars');
+  if (!scBars) return;
+
+  const elapsed = allMonths.filter(m => m <= thisMonth);
+  const barsForBatch = batch === 'ALL'
+    ? ['AP127','AP126','AP124','AP129']  // AP127 first (primary interest)
+    : [batch];
+
+  const barData = barsForBatch.map(b => {
+    const totPFl = elapsed.reduce((s,m) => s + (planMapAll[m]?.[b]       || 0), 0);
+    const totAFl = elapsed.reduce((s,m) => s + (actMapAll[m]?.[b]        || 0), 0);
+    const totPH  = elapsed.reduce((s,m) => s + (planMapAll[m]?.['h' + b] || 0), 0);
+    const totAH  = elapsed.reduce((s,m) => s + (actMapAll[m]?.['h'  + b] || 0), 0);
+    const pctFl  = totPFl ? Math.round(totAFl / totPFl * 100) : 0;
+    const pctH   = totPH  ? Math.round(totAH  / totPH  * 100) : 0;
+    return { b, pctFl, pctH, totAFl, totPFl, totAH, totPH };
+  }).sort((x, y) => y.pctH - x.pctH);
+
+  scBars.innerHTML =
+    `<div style="font-size:11px;color:var(--tx2);font-family:'JetBrains Mono',monospace;letter-spacing:1px;margin-bottom:8px">BATCH ACHIEVEMENT</div>` +
+    barData.map(({ b, pctFl, pctH, totAFl, totPFl, totAH, totPH }) => {
+      const bn  = b.replace('AP', '');
+      const col = `var(--c${bn})`;
+      const wFl = Math.min(pctFl, 100);
+      const wH  = Math.min(pctH,  100);
+      return `<div class="pc-batch-row">
+        <div class="pc-batch-label" style="color:${col}">${b}</div>
+        <div class="pc-bar-wrap">
+          <span class="pc-bar-unit">fl</span>
+          <div class="pc-bar-track">
+            <div class="pc-bar-fill" style="width:${wFl}%;background:${col}"></div>
+          </div>
+          <span class="pc-bar-pct" style="color:${col}">${pctFl}%</span>
+          <span class="pc-bar-detail">${totAFl} / ${totPFl} fl</span>
+        </div>
+        <div class="pc-bar-wrap">
+          <span class="pc-bar-unit">h</span>
+          <div class="pc-bar-track">
+            <div class="pc-bar-fill pc-bar-h" style="width:${wH}%;background:${col}"></div>
+          </div>
+          <span class="pc-bar-pct" style="color:${col};opacity:.7">${pctH}%</span>
+          <span class="pc-bar-detail">${totAH.toFixed(1)}h / ${totPH.toFixed(1)}h</span>
+        </div>
+      </div>`;
+    }).join('');
 }
 function pfToggleScorecard() {
   const body = document.getElementById('pf-scorecard-body');
