@@ -495,3 +495,8 @@ body.s3-present .s3-topbar{display:none;}
 .pc-row-red{color:var(--er,#f87171)}
 .pc-row-grey{color:var(--tx2);font-style:italic}
 @media(max-width:700px){.pc-col-h{display:none}}
+/* ── Scorecard hours-mode toggle ── */
+.pf-sc-mode-bar{display:flex;gap:6px;margin-bottom:10px}
+.pf-sc-mode-btn{padding:3px 10px;border-radius:12px;border:1px solid var(--bd);background:transparent;color:var(--tx2);font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.5px;cursor:pointer;transition:all .15s;user-select:none}
+.pf-sc-mode-btn:hover{border-color:var(--tx2);color:var(--tx)}
+.pf-sc-mode-btn.pf-sc-mode-active{background:var(--c127);border-color:var(--c127);color:#000}

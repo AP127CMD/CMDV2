@@ -15,6 +15,7 @@
   let SIM2_CFG = { cap: 25, n129: 13, ap129start: "2026-06-01", horizon: 800, hourMode: false, weekendCap: 13, holidayCap: 13, _weAuto: true, _holAuto: true, restReg: false, priority: null, schedulingMode: 'balanced', batchWeights: { AP124: 1.0, AP126: 1.0, AP127: 1.0, AP129: 1.0 } };
   // ---- Simulation 3 ("Decision Cockpit") globals — realism engine + multi-scenario, fully isolated from SIM1/SIM2 ----
   let SIM3_G = null, SIM3_EXTRA_BATCHES = [], SIM3_SCENARIOS = [], SIM3_BASELINE_ID = null, SIM3_ACTIVE_ID = null;
+  let _scLastParams = null; // [actualAllRec, from, to, batch] stored for hours-mode toggle re-render
   let SIM3_CFG = null;                 // live editing config (active scenario mirror); seeded lazily from data
   let SIM3_MC_RUNNING = false, SIM3_MC_TOKEN = 0;
   let SIM3_PRESENT = false, SIM3_NARR_STEP = 0, SIM3_COMPARE_TAB = 'cards', SIM3_BEFORE_AFTER = false;
@@ -1435,6 +1436,27 @@ function collectHistoricalFlights(){
   });
   return rec.sort((a,b)=>a.date.localeCompare(b.date));
 }
+function buildCurMap() {
+  const map = {};
+  [G?.cur124 || [], G?.cur126 || [], G?.cur127 || []].forEach(cur => {
+    cur.forEach(c => { if (c.lesson && c.planned_mins) map[c.lesson] = c.planned_mins; });
+  });
+  return map;
+}
+function collectEffectiveFlights() {
+  const curMap = buildCurMap();
+  const rec = [];
+  [["ap124","AP124"],["ap126","AP126"],["ap127","AP127"],["ap129","AP129"]].forEach(([k, b]) => {
+    (G?.[k] || []).forEach(s => {
+      (s.flown || []).forEach(f => {
+        if (!f.date) return;
+        const effMins = (f.lesson && curMap[f.lesson]) ? curMap[f.lesson] : ap127FlightMins(f);
+        rec.push({ date: f.date, batch: b, mins: effMins });
+      });
+    });
+  });
+  return rec.sort((a, b) => a.date.localeCompare(b.date));
+}
 function collectCurriculumPlan(batchFilter) {
   const BATCH_CUR = [
     ['AP124','ap124','cur124'],
@@ -1504,6 +1526,8 @@ function getThreeMonthsAgo(){
   return d.toISOString().slice(0,10);
 }
 function renderScorecard(actualAllRec, from, to, batch) {
+  _scLastParams = [actualAllRec, from, to, batch];
+  const effMode = (() => { try { return localStorage.getItem('pf-sc-hours-mode') === 'eff'; } catch(e) { return false; } })();
   const today = ap127TodayBKK();
   const thisMonth = today.slice(0, 7);
 
@@ -1516,17 +1540,27 @@ function renderScorecard(actualAllRec, from, to, batch) {
     if (chev) chev.textContent = collapsed ? '▼' : '▲';
   } catch(e) {}
 
+  // Sync toggle button active state
+  try {
+    const btnAct = document.getElementById('pf-sc-btn-actual');
+    const btnEff = document.getElementById('pf-sc-btn-eff');
+    if (btnAct) btnAct.classList.toggle('pf-sc-mode-active', !effMode);
+    if (btnEff) btnEff.classList.toggle('pf-sc-mode-active',  effMode);
+  } catch(e) {}
+
   // ── Shared month maps (all batches, full date range) ──
   const planMapAll = buildMonthMap(collectCurriculumPlan('ALL'), from, to);
-  const actMapAll  = buildMonthMap(actualAllRec, from, to);
+  const effRec     = effMode ? collectEffectiveFlights().filter(r => r.date >= from && r.date <= to) : null;
+  const actMapAll  = buildMonthMap(effMode ? effRec : actualAllRec, from, to);
   const allMonths  = [...new Set([...Object.keys(planMapAll), ...Object.keys(actMapAll)])].sort();
 
   // ── KPI computation for a given batch filter ──
   function scKpis(batchF) {
     const planM = batchF === 'ALL' ? planMapAll
       : buildMonthMap(collectCurriculumPlan(batchF), from, to);
+    const _recForKpi = effMode ? effRec : actualAllRec;
     const actM  = batchF === 'ALL' ? actMapAll
-      : buildMonthMap(actualAllRec.filter(r => r.batch === batchF), from, to);
+      : buildMonthMap(_recForKpi.filter(r => r.batch === batchF), from, to);
 
     const months   = [...new Set([...Object.keys(planM), ...Object.keys(actM)])].sort();
     const elapsed  = months.filter(m => m <= thisMonth);
@@ -1771,6 +1805,10 @@ function pfToggleScorecard() {
   body.style.display = isOpen ? 'none' : '';
   if (chev) chev.textContent = isOpen ? '▼' : '▲';
   try { localStorage.setItem('pf-scorecard-collapsed', isOpen ? '1' : '0'); } catch(e) {}
+}
+function pfToggleHoursMode(mode) {
+  try { localStorage.setItem('pf-sc-hours-mode', mode); } catch(e) {}
+  if (_scLastParams) renderScorecard(..._scLastParams);
 }
 function pfToggleMonthRow(m) {
   const sub = document.getElementById('pf-sc-sub-' + m);
@@ -2436,7 +2474,8 @@ function renderAnalysis(){
   // Expose inline-handler targets referenced by the embedded markup + generated rows.
   Object.assign(window, { renderPerformance, resetPerformanceFilters, renderAnalysis, anSetBatch, anSetStatus, runSimulation, renderSimulation, addExtraBatch, removeExtraBatch, updateExtraBatch, toggleHourMode, onWeHolCapInput, propagateCapToWeHol, renderPlans, setPlansBatch, onRestRegChange, onPriorityChange, renderPriorityChips,
     runSimulation2, renderSimulation2, addExtraBatch2, removeExtraBatch2, updateExtraBatch2, toggleHourMode2, onWeHolCapInput2, propagateCapToWeHol2, onRestRegChange2, onPriorityChange2, renderPriorityChips2, onModeChange2, onWeightChange2, resetWeights2, renderSchedulingModeUI2,
-    runSimulation3, sim3Field3, sim3Weather3, sim3Toggle3, sim3OnMcToggle3, sim3OnHardCapInput3, sim3OnModeChange3, sim3OnWeightChange3, sim3ResetWeights3, sim3OnPriorityChange3, sim3OnHourMode3, sim3AddExtra3, sim3RemoveExtra3, sim3UpdateExtra3, sim3AddScenario3, sim3DeleteScenario3, sim3DuplicateScenario3, sim3SetBaseline3, sim3PinScenario3, sim3RenameScenario3, sim3SelectScenario3, sim3ResetDefaults3, sim3SetCompareTab3, sim3EnterPresent3, sim3ExitPresent3, sim3NarrativeStep3, sim3ToggleBeforeAfter3, sim3AddAnnotation3, sim3SetAp129Start3 });
+    runSimulation3, sim3Field3, sim3Weather3, sim3Toggle3, sim3OnMcToggle3, sim3OnHardCapInput3, sim3OnModeChange3, sim3OnWeightChange3, sim3ResetWeights3, sim3OnPriorityChange3, sim3OnHourMode3, sim3AddExtra3, sim3RemoveExtra3, sim3UpdateExtra3, sim3AddScenario3, sim3DeleteScenario3, sim3DuplicateScenario3, sim3SetBaseline3, sim3PinScenario3, sim3RenameScenario3, sim3SelectScenario3, sim3ResetDefaults3, sim3SetCompareTab3, sim3EnterPresent3, sim3ExitPresent3, sim3NarrativeStep3, sim3ToggleBeforeAfter3, sim3AddAnnotation3, sim3SetAp129Start3,
+    pfToggleScorecard, pfToggleMonthRow, pfToggleHoursMode });
 
   // ---- page markups (verbatim from NGT_001 index.html) ----
 const MK_OVERVIEW = `
@@ -2514,6 +2553,10 @@ const MK_PERF = `
       <span id="pf-sc-chevron">▲</span>
     </div>
     <div id="pf-scorecard-body" class="pf-sc-body">
+      <div class="pf-sc-mode-bar">
+        <button id="pf-sc-btn-actual" class="pf-sc-mode-btn pf-sc-mode-active" onclick="event.stopPropagation();pfToggleHoursMode('actual')">Actual hrs</button>
+        <button id="pf-sc-btn-eff"    class="pf-sc-mode-btn"                   onclick="event.stopPropagation();pfToggleHoursMode('eff')">Effective hrs</button>
+      </div>
       <div class="ss" id="pf-sc-kpis-all" style="margin-bottom:8px"></div>
       <div style="font-size:9px;color:var(--c127);font-family:'JetBrains Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;margin:8px 0 4px">AP127 Only</div>
       <div class="ss" id="pf-sc-kpis-127" style="margin-bottom:12px"></div>
