@@ -1503,6 +1503,19 @@ function getThreeMonthsAgo(){
   d.setUTCMonth(d.getUTCMonth()-3);
   return d.toISOString().slice(0,10);
 }
+function pfToggleScorecard() {
+  const body = document.getElementById('pf-scorecard-body');
+  const chev = document.getElementById('pf-sc-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chev) chev.textContent = isOpen ? '▼' : '▲';
+  try { localStorage.setItem('pf-scorecard-collapsed', isOpen ? '1' : '0'); } catch(e) {}
+}
+function pfToggleMonthRow(m) {
+  const sub = document.getElementById('pf-sc-sub-' + m);
+  if (sub) sub.style.display = sub.style.display === 'none' ? '' : 'none';
+}
 function renderPerformance(){
   const today=ap127TodayBKK();
   const threeMonthsAgo=getThreeMonthsAgo();
@@ -2232,6 +2245,19 @@ const MK_PERF = `
       <button id="pf-inc-hol" class="bt" onclick="this.classList.toggle('active');renderPerformance()">Incl HOL</button>
       <button class="btn-s" onclick="resetPerformanceFilters()">Reset Filter</button>
       <span id="pf-filter-note" class="d127-meta">Historical view</span>
+    </div>
+  </div>
+  <div id="pf-scorecard" class="pf-sc-wrap">
+    <div class="pf-sc-hdr" onclick="pfToggleScorecard()">
+      <span>◆ SCHOOL PACE SCORECARD</span>
+      <span id="pf-sc-chevron">▲</span>
+    </div>
+    <div id="pf-scorecard-body" class="pf-sc-body">
+      <div class="ss" id="pf-sc-kpis-all" style="margin-bottom:8px"></div>
+      <div style="font-size:9px;color:var(--c127);font-family:'JetBrains Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;margin:8px 0 4px">AP127 Only</div>
+      <div class="ss" id="pf-sc-kpis-127" style="margin-bottom:12px"></div>
+      <div id="pf-sc-table" style="overflow-x:auto;margin-bottom:12px"></div>
+      <div id="pf-sc-bars"></div>
     </div>
   </div>
   <div class="ss">

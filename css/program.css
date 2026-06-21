@@ -463,3 +463,35 @@ body.s3-present .s3-topbar{display:none;}
 .bt[data-ans="atrisk"].active{background:#ef4444;border-color:#ef4444;color:#fff!important;}
 .bt[data-ans="below"].active{background:#f97316;border-color:#f97316;color:#fff!important;}
 .bt[data-ans="onpace"].active{background:#22c55e;border-color:#22c55e;color:#000!important;}
+/* ── School Pace Scorecard ─────────────────────────────────────────── */
+.pf-sc-wrap{margin-bottom:14px;border:1px solid var(--bd);border-radius:7px;overflow:hidden}
+.pf-sc-hdr{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;
+  background:var(--s1);cursor:pointer;font-size:11px;letter-spacing:1.5px;
+  text-transform:uppercase;font-family:'JetBrains Mono',monospace;user-select:none}
+.pf-sc-hdr:hover{background:var(--s2)}
+.pf-sc-body{padding:10px 12px 14px}
+/* Batch achievement bars */
+.pc-batch-row{margin-bottom:10px}
+.pc-batch-label{font-size:11px;font-family:'JetBrains Mono',monospace;letter-spacing:1px;margin-bottom:4px}
+.pc-bar-wrap{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.pc-bar-unit{width:22px;text-align:right;font-size:10px;color:var(--tx2);font-family:'JetBrains Mono',monospace}
+.pc-bar-track{flex:1;height:7px;background:var(--s2);border-radius:4px;overflow:hidden}
+.pc-bar-fill{height:100%;border-radius:4px;transition:width .3s}
+.pc-bar-fill.pc-bar-h{opacity:.5}
+.pc-bar-pct{width:36px;text-align:right;font-size:11px;font-weight:600}
+.pc-bar-detail{font-size:10px;color:var(--tx2)}
+/* Monthly variance table */
+.pc-month-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.pc-month-tbl th{color:var(--tx2);font-weight:500;padding:4px 8px;text-align:right;
+  border-bottom:1px solid var(--bd);white-space:nowrap}
+.pc-month-tbl th:first-child{text-align:left}
+.pc-month-tbl td{padding:4px 8px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pc-month-tbl td:first-child{text-align:left;cursor:pointer}
+.pc-month-tbl tr:last-child td{border-bottom:none}
+.pc-sub-row td{font-size:11px;color:var(--tx2)}
+.pc-sub-row td:first-child{padding-left:22px;cursor:default}
+.pc-row-green{color:var(--ok,#4ade80)}
+.pc-row-amber{color:var(--wa,#fbbf24)}
+.pc-row-red{color:var(--er,#f87171)}
+.pc-row-grey{color:var(--tx2);font-style:italic}
+@media(max-width:700px){.pc-col-h{display:none}}
