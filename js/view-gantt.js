@@ -44,7 +44,7 @@ function GanttBoard() {
         const matchStby   = filters.statuses.includes('Standby') && x.isStandby;
         if (!matchStatus && !matchStby) return false;
       }
-      if (hideOthers && highlightAP127 && x.batch !== HIGHLIGHT_BATCH) return false;
+      if (hideOthers && highlightAP127 && !isAP127Batch(x.batch)) return false;
       if (filters.search) {
         const q = filters.search.toLowerCase();
         const hay = [x.student, x.instructor, x.batch, x.lesson, x.tail, x.type].filter(Boolean).join(' ').toLowerCase();

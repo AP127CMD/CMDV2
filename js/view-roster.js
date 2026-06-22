@@ -28,7 +28,7 @@ function RosterBoard() {
 
     FLIGHTS.forEach(f => {
       // AP-127 only filter applies to full dataset
-      if (ap127Only && f.batch !== HIGHLIGHT_BATCH) return;
+      if (ap127Only && !isAP127Batch(f.batch)) return;
 
       const key = groupBy === 'instructor'
         ? (f.instructor || '—')
@@ -67,7 +67,7 @@ function RosterBoard() {
     const t = {};
     ALL_DATES.forEach(d => { t[d] = { flights:0, hours:0 }; });
     FLIGHTS.forEach(f => {
-      if (ap127Only && f.batch !== HIGHLIGHT_BATCH) return;
+      if (ap127Only && !isAP127Batch(f.batch)) return;
       if (!t[f.date]) return;
       t[f.date].flights++;
       t[f.date].hours += (f.durMin||0)/60;

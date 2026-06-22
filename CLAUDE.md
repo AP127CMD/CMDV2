@@ -1,7 +1,7 @@
 # CMDV2 — Claude Code Context
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p95` (all currently at p94)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p96` (all currently at p95)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -17,7 +17,7 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p94` (2026-06-22 — Extended Effective Hours toggle tab-wide: toggle in filter bar affects all KPI cards, charts, weekly table, and scorecard; mode indicator banner appears when effective mode is active). Next → `p95`.
+**Last known:** all files `p95` (2026-06-22 — Integrity-led hardening: (I1) all "today" anchored to Asia/Bangkok via one Intl helper — `bkkToday()`/`localToday` unified; (I2) new tolerant `isAP127Batch` shared by the AP-127 focus filter + AP-127-only toggles, matching Cross-Check; (I3) `ACTUAL_ONLY` dedup gained a student|date|lesson fallback that caught a real double-count, warns on fire; (I4) `validDate()` + malformed-date canary + holiday yearly-update note; (U2) progress fetch sets `'error'` source → red ⚠ PROG freshness dot with explanatory tooltip on live-refresh failure). Next → `p96`.
 
 ## Key facts — things that trip up new sessions
 - **Check `<script>` type per file before editing** — `view-overview.js` uses `type="text/babel"`; `shell.js`, `view-watchdog.js`, `view-cf-usage.js`, `view-crosscheck.js` are plain `<script>`. Run the grep above to confirm.

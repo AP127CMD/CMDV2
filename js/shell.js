@@ -54,12 +54,20 @@
   const _sharePreset = _shareParam ? (SHARE_PRESETS[_shareParam.toLowerCase()] || null) : null;
 
   function FreshnessDot({ kind, fresh }) {
-    const cls = fresh.source === 'live' ? 'live' : fresh.at ? 'snap' : 'err';
+    // 'error' = live refresh failed (snapshot shown, possibly stale) → red even though a
+    // snapshot timestamp exists. 'live' = fetched fresh. 'snap' = bundled snapshot (no live source).
+    const cls = fresh.source === 'error' ? 'err' : fresh.source === 'live' ? 'live' : fresh.at ? 'snap' : 'err';
     const col = cls === 'live' ? 'var(--col-done)' : cls === 'snap' ? 'var(--col-pending)' : 'var(--col-cancel)';
     let label = '—'; if (fresh.at) { try { label = new Date(fresh.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + new Date(fresh.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); } catch { label = String(fresh.at); } }
-    return h('div', { className: 'mono', title: kind + ' feed', style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, color: 'var(--ink-3)' } },
+    const title = kind + ' feed — ' + (cls === 'live' ? 'live (updated ' + label + ')'
+      : cls === 'err' && fresh.source === 'error' ? 'live refresh FAILED — showing snapshot' + (fresh.at ? ' from ' + label : '') + ' (may be stale). Try SYNC.'
+      : cls === 'snap' ? 'snapshot (' + label + ')'
+      : 'no data');
+    return h('div', { className: 'mono', title, style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, color: 'var(--ink-3)' } },
       h('span', { style: { width: 7, height: 7, borderRadius: 999, background: col, boxShadow: cls !== 'err' ? `0 0 6px ${col}` : 'none' } }),
-      h('span', { className: 'uc' }, kind), h('b', { style: { color: 'var(--ink-2)', fontWeight: 500 } }, label));
+      h('span', { className: 'uc' }, kind),
+      cls === 'err' && fresh.source === 'error' && h('span', { style: { color: 'var(--col-cancel)' } }, '⚠'),
+      h('b', { style: { color: 'var(--ink-2)', fontWeight: 500 } }, label));
   }
 
   function TopBar({ view, mobile, onMenu }) {

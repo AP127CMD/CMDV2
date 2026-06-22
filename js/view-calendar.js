@@ -29,7 +29,7 @@ function CalendarBoard() {
   // Unified flight filter applied to all counts/lists in this view.
   const passF = f => (statusF === 'all' || f.status === statusF)
     && (batchF === 'all' || f.batch === batchF)
-    && (!ap127Only || f.batch === HIGHLIGHT_BATCH);
+    && (!ap127Only || isAP127Batch(f.batch));
   const CAL_BATCHES = useM_cal(() => [...new Set(FLIGHTS.map(f => f.batch).filter(b => b && /^AP-?\d/i.test(b)))].sort(), []);
 
   const calYear  = parseInt(calYM.slice(0,4));

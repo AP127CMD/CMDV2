@@ -47,7 +47,7 @@ function WeeklyBoard() {
         const matchStby   = app.filters.statuses.includes('Standby') && f.isStandby;
         if (!matchStatus && !matchStby) return false;
       }
-      if (app.hideOthers && app.highlightAP127 && f.batch !== HIGHLIGHT_BATCH)         return false;
+      if (app.hideOthers && app.highlightAP127 && !isAP127Batch(f.batch))              return false;
       if (app.filters.search) {
         const q = app.filters.search.toLowerCase();
         const hay = [f.student,f.instructor,f.batch,f.lesson,f.tail,f.type].filter(Boolean).join(' ').toLowerCase();

@@ -6,17 +6,34 @@ const { useState, useMemo, useEffect, useRef, useCallback, createContext, useCon
 // Planned completed entries have to=0/ldg=0/airborne=null — the actual entry is the truth.
 (function() {
   const raw = window.FLIGHT_DATA.flights;
-  const hasActual = new Set();
+  // Identity of a flight independent of its id: who / when / which lesson (split suffix
+  // stripped). Used as a fallback when the id-based match below misses its planned twin.
+  const norm = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ').replace(/\/\d+\s*$/, '');
+  const evtKey = f => norm(f.student) + '|' + (f.date || '') + '|' + norm(f.lesson);
+  const hasActual = new Set();   // base ids derived from ACTUAL_ONLY rows
+  const actualKeys = new Set();  // student|date|lesson of completed actuals
   raw.forEach(f => {
     if (f.id && f.id.startsWith('ACTUAL_ONLY_')) {
-      const base = f.id.slice('ACTUAL_ONLY_'.length).replace(/_ACT_\d+$/, '');
-      hasActual.add(base);
+      hasActual.add(f.id.slice('ACTUAL_ONLY_'.length).replace(/_ACT_\d+$/, ''));
+      if (f.status === 'Completed' && f.student && f.lesson) actualKeys.add(evtKey(f));
     }
   });
+  let keyFallback = 0;  // planned rows the id-match missed but the event-key caught
   if (hasActual.size) {
-    window.FLIGHT_DATA.flights = raw.filter(f =>
-      !f.id || f.id.startsWith('ACTUAL_ONLY_') || !(f.status === 'Completed' && hasActual.has(f.id))
-    );
+    window.FLIGHT_DATA.flights = raw.filter(f => {
+      if (!f.id || f.id.startsWith('ACTUAL_ONLY_')) return true;
+      if (f.status !== 'Completed') return true;
+      if (hasActual.has(f.id)) return false;                 // primary: id matches an actual
+      if (f.student && f.lesson && actualKeys.has(evtKey(f))) { keyFallback++; return false; }  // fallback: same flight, drifted id
+      return true;
+    });
+  }
+  // The fallback path firing means an ACTUAL_ONLY id no longer derives back to its planned
+  // id — the original cause of the SANGYAI P. / PDXC 30 double-count. Removal is still
+  // correct (the actual is the truth), but warn so a wholesale upstream ID-format change is
+  // noticed instead of silently inflating hours.
+  if (keyFallback) {
+    console.warn('[AP127] dedup: ' + keyFallback + ' planned Completed row(s) removed via student|date|lesson fallback (ACTUAL_ONLY id did not derive to a planned id — check upstream ID format).');
   }
 })();
 const FLIGHTS     = window.FLIGHT_DATA.flights;
@@ -24,6 +41,11 @@ const INSTRUCTORS = window.FLIGHT_DATA.instructors;
 const RESOURCES   = window.FLIGHT_DATA.resources;
 const LEAVES      = window.FLIGHT_DATA.leaves;
 const HIGHLIGHT_BATCH = 'AP-127';
+// Canonical AP-127 test — reuse the reconciliation engine's normalizer (loaded before
+// this file) so the AP-127 focus filter and Cross-Check classify batches by the SAME
+// rule. Tolerant of "AP-127" / "AP127" / trailing spaces; falls back to a local copy.
+const isAP127Batch = (window.AP127Reconcile && window.AP127Reconcile.isAP127)
+  || (b => String(b || '').replace(/[^a-z0-9]/gi, '').toUpperCase().includes('AP127'));
 
 // ─── Progress feed (AP127 V2 revamp) ──────────────────────────────────────
 // The canonical AP127 roster (28 students). Each row pairs a full name with its
@@ -65,9 +87,32 @@ const AP127_NICKS = AP127_ROSTER.map(r => r[1]);
 const AP127_FIS   = AP127_ROSTER.map(r => r[2]);
 const AP127_SES   = AP127_ROSTER.map(r => r[3]);
 const AP127_FI_FULL = {"W-CHAI":"WUTTHICHAI L.","P-YUTH":"PHAHOLYUTH P.","P-YA":"PARINYA B.","S-TI":"SANTI SUK.","N-TORN":"NAPATTORN S.","I-POL":"ITTIPOL P.","SN-TI":"SANTI PO.","A-WAT":"THAWATANAN P.","W-NU":"WISANU T.","K-POL":"KOONPHOL U.","C-CHAI":"CHAROENCHAI U.","E-PHOB":"EKKAPHOP R.","S-WAN":"SOWAN C.","K-CHAI":"KITTICHAI C."};
+// ⚠ MANUAL YEARLY UPDATE — Thai public holidays are hardcoded (no upstream feed). Refresh
+// this set each year (and whenever the academy declares an extra non-flying day) or the
+// pace/idle-day projections will treat holidays as workable days. Format: "YYYY-MM-DD".
 const AP127_HOLIDAYS = new Set(["2026-05-01","2026-05-04","2026-05-13","2026-06-01","2026-06-03","2026-07-28","2026-07-29","2026-07-30","2026-08-12","2026-10-13","2026-10-23","2026-12-07","2026-12-10","2026-12-31"]);
+// Cheap guard for feed-supplied date strings: true only for a well-formed YYYY-MM-DD that
+// the Date parser accepts. Callers can use this to skip/flag junk instead of silently
+// producing NaN diffs. See the load-time validation pass below.
+const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00').getTime());
+// One-time sanity pass: flag any malformed flight dates at load so bad upstream data is
+// visible in the console rather than silently collapsing to NaN diffs / wrong day buckets.
+(function() {
+  const bad = FLIGHTS.filter(f => f.date && !validDate(f.date)).map(f => f.date);
+  if (bad.length) console.warn('[AP127] ' + bad.length + ' flight(s) with malformed date — ignored in date math:', [...new Set(bad)].slice(0, 8));
+})();
 const PROGRESS_WORKER_URL = 'https://ap127-data-api.anusorn-tanmetha.workers.dev';
-const bkkToday = () => { const n = new Date(); return new Date(n.getTime() + (n.getTimezoneOffset() + 420) * 60000).toISOString().slice(0, 10); };
+// Canonical "today" for the whole app: the current calendar date in Asia/Bangkok,
+// independent of the viewer's device clock/timezone. CATC operates UTC+7 (no DST),
+// so the ops day must always be the Bangkok day — every view's "today", idle-days,
+// day-deltas and the Gantt NOW-line read from here. en-CA yields YYYY-MM-DD.
+const _bkkFmt = (() => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }); } catch (e) { return null; } })();
+const bkkToday = () => {
+  if (_bkkFmt) return _bkkFmt.format(new Date());
+  // Fallback if Intl/timezone data is unavailable: manual UTC+7 offset.
+  const n = new Date();
+  return new Date(n.getTime() + (n.getTimezoneOffset() + 420) * 60000).toISOString().slice(0, 10);
+};
 
 // "Akaravit Khwanngam" → "AKARAVIT K." (same rule as reconcile.ccKeyFromFull); used
 // to look the roster up by name regardless of order or who is present.
@@ -121,8 +166,10 @@ const ALL_DATES = (() => {
   return result;
 })();
 
-// Use local date (not UTC) so Bangkok users see the correct "today" at all hours
-const localToday = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+// localToday is an alias of bkkToday: the app is Bangkok-only, so "today" is always the
+// Asia/Bangkok calendar day regardless of the viewer's device clock. (Kept as a named
+// export so existing call sites in the view files don't need to change.)
+const localToday = bkkToday;
 
 // Default to today if available, else nearest future date
 const DEFAULT_DATE = (() => {
@@ -272,8 +319,16 @@ function AppProvider({ children, tweaks, setTweak, isMobile=false, setView=null 
     (async () => {
       try {
         const r = await fetch(PROGRESS_WORKER_URL, { cache: 'no-store' });
-        if (r.ok) { const d = await r.json(); if (alive && d.ap127 && d.ap127.length) { injectNicks(d.ap127); setProgress(d); setProgressSource('live'); } }
-      } catch (e) { /* keep snapshot */ }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        if (!alive) return;
+        if (d.ap127 && d.ap127.length) { injectNicks(d.ap127); setProgress(d); setProgressSource('live'); }
+        else throw new Error('empty payload');
+      } catch (e) {
+        // Keep the bundled snapshot, but mark the source as 'error' so the freshness dot
+        // can show that the live refresh failed (snapshot data may be stale).
+        if (alive) setProgressSource('error');
+      }
     })();
     return () => { alive = false; };
   }, []);
@@ -299,7 +354,7 @@ function AppProvider({ children, tweaks, setTweak, isMobile=false, setView=null 
         const matchStby   = filters.statuses.includes('Standby') && x.isStandby;
         if (!matchStatus && !matchStby) return false;
       }
-      if (hideOthers && highlightAP127 && x.batch !== HIGHLIGHT_BATCH)         return false;
+      if (hideOthers && highlightAP127 && !isAP127Batch(x.batch))              return false;
       if (filters.search) {
         const q = filters.search.toLowerCase();
         const hay = [x.student, x.instructor, x.batch, x.lesson, x.tail, x.type].filter(Boolean).join(' ').toLowerCase();
@@ -1033,9 +1088,9 @@ function FocusControls() {
 
 Object.assign(window, {
   AppCtx, AppProvider, useApp, ThemeStyle, ArtboardShell,
-  FLIGHTS, INSTRUCTORS, RESOURCES, LEAVES, ALL_DATES, DEFAULT_DATE, HIGHLIGHT_BATCH,
+  FLIGHTS, INSTRUCTORS, RESOURCES, LEAVES, ALL_DATES, DEFAULT_DATE, HIGHLIGHT_BATCH, isAP127Batch,
   MAINT_TAILS, isTailMaint, leavesOnDate,
-  localToday, fmtDay, minutesOf, fmtHM, isPast, isToday, STATUS_COLOR, flightAlpha, STATUS,
+  localToday, bkkToday, validDate, fmtDay, minutesOf, fmtHM, isPast, isToday, STATUS_COLOR, flightAlpha, STATUS,
   FlightDot, ConditionTag, StatusPill, Tag, StandbyTag, HighlightBar, GndBadge, LeaveBadge,
   DateCalendarPopup, DateCalendarTrigger, RefreshButton, FilterBar, InlineSettings, Drawer,
   ViewIcon, FocusControls, LastUpdate,
