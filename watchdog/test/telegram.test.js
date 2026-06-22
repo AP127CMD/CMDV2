@@ -75,6 +75,8 @@ describe('formatMessage', () => {
     );
     const lines = msg.split('\n');
     expect(lines[0]).toBe('🔄 Status update');
+    expect(lines[1]).toContain('SIWAKORN P.');
+    expect(lines[1]).toContain('@siwakorn_p');
     expect(lines[2]).toContain('ITTIPOL P.');
     expect(msg).toContain('Pending');
     expect(msg).toContain('Canceled');
