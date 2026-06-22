@@ -75,13 +75,31 @@
     const flights = (flightData && flightData.flights) || [];
     const students = (progressData && progressData.ap127) || [];
 
-    // Completed AP127 ops flights, grouped by normalised student key.
+    // The progress side keys students as "FIRST L." (ccKeyFromFull). The ops side is
+    // usually the same form, but "(Unplanned)" ops records store the student differently:
+    // a FULL name ("AKARAVIT KHWANNGAM") or a CALLSIGN ("P-KORN"). Both must bridge to the
+    // same key or the flight is orphaned — making the student's progress lessons look
+    // missing-in-ops AND the ops flight look missing-in-progress (a phantom conflict).
+    const progKeySet = new Set(students.map(s => ccKeyFromFull(s.name)));
+    const nickToKey = {};   // CALLSIGN → "FIRST L." (nicks are injected onto progress rows upstream)
+    students.forEach(s => { if (s.nick) nickToKey[String(s.nick).toUpperCase()] = ccKeyFromFull(s.name); });
+    // Reduce any ops student string to the canonical "FIRST L." key: drop "(Unplanned)",
+    // collapse a full name to first+initial, and bridge a bare callsign via the nick map.
+    function opsStudentKey(raw) {
+      const norm = ccNameNorm(raw);
+      const reduced = ccKeyFromFull(norm);
+      if (progKeySet.has(reduced)) return reduced;   // full name or already "FIRST L."
+      if (nickToKey[norm]) return nickToKey[norm];    // ops stored the callsign instead
+      return reduced;                                 // unresolved (e.g. spelling variant) — stays orphan
+    }
+
+    // Completed AP127 ops flights, grouped by canonical student key.
     const ccByStudent = {};
     let ccMinDate = null;
     flights
       .filter(f => isAP127(f.batch) && f.status === 'Completed' && f.student && f.lesson)
       .forEach(f => {
-        const k = ccNameNorm(f.student);
+        const k = opsStudentKey(f.student);
         (ccByStudent[k] = ccByStudent[k] || []).push(f);
         if (f.date && (!ccMinDate || f.date < ccMinDate)) ccMinDate = f.date;
       });
