@@ -174,6 +174,7 @@
     const [showSims,   setShowSims]   = useState(false);
     const [metric,     setMetric]     = useState('block');
     const [incPend,    setIncPend]    = useState(false);
+    const [ap127Only,  setAp127Only]  = useState(false);
     const [drawer,     setDrawer]     = useState(null); // {tail, tailLabel, date} | null
     const [collapsed,  setCollapsed]  = useState({});
 
@@ -238,6 +239,7 @@
         const acType = info ? info.acType : 'Unknown';
         if (uIsSim(acType) && !showSims) return;
         if (typeFilter.length > 0 && !typeFilter.includes(acType)) return;
+        if (ap127Only && !isAP127Batch(f.batch)) return;
 
         const blockMins  = f.durMin || 0;
         const airborneMin = f.airborne ? uParseAirborneMin(f.airborne) : 0;
@@ -273,7 +275,7 @@
       };
 
       return { flightsByTailDay, tailTotals, dayTotals, typeDayTotals, kpi };
-    }, [from, to, typeFilter, showSims, metric, incPend, normOps]);
+    }, [from, to, typeFilter, showSims, metric, incPend, ap127Only, normOps]);
 
     // ── Max cell hours (for heatmap color scale) ────────────────────────────
     const hmTypes = U_TYPE_ORDER.filter(t => fleetByType[t] && fleetByType[t].length > 0);
@@ -432,6 +434,12 @@
           <div style={{ width: 1, background: 'var(--line)', height: 14, margin: '0 2px' }} />
           <button className={'chip' + (incPend ? ' sel' : '')} onClick={() => setIncPend(s => !s)} style={{ fontSize: 10, padding: '3px 8px' }}>+ Pending</button>
 
+          <div style={{ width: 1, background: 'var(--line)', height: 14, margin: '0 2px' }} />
+          <button onClick={() => setAp127Only(s => !s)}
+            style={{ fontSize: 10, padding: '3px 10px', borderRadius: 5, border: `1px solid ${ap127Only ? 'var(--highlight)' : 'var(--line)'}`, background: ap127Only ? 'color-mix(in oklch,var(--highlight) 14%,var(--surface))' : 'transparent', color: ap127Only ? 'var(--highlight)' : 'var(--ink-3)', fontWeight: ap127Only ? 700 : 400, cursor: 'pointer', fontFamily: 'monospace', letterSpacing: 0.3, transition: 'all .1s' }}>
+            ◆ AP-127
+          </button>
+
           <span className="mono" style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
             {uFmtDate(from)} – {uFmtDate(to)} · {days.length}d · {kpi.compCount} flights · {kpi.totalHours.toFixed(1)}h
           </span>
@@ -587,6 +595,9 @@
                     const isCollapsed = collapsed[acType];
                     const typeH    = tails.reduce((s, ac) => s + (tailTotals[ac.normTail] || 0), 0);
                     const col      = U_TYPE_COLORS[acType] || '#64748b';
+                    // Hide entire type group when no aircraft have flights (e.g. filtered by AP127)
+                    if (typeH === 0) return null;
+                    const visibleTails = tails.filter(ac => (tailTotals[ac.normTail] || 0) > 0);
                     return (
                       <React.Fragment key={acType}>
                         {/* Type group header */}
@@ -596,12 +607,12 @@
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={{ color: col, fontSize: 10 }}>{isCollapsed ? '▶' : '▼'}</span>
                               <span className="mono" style={{ fontSize: 10, fontWeight: 700, color: col }}>{U_TYPE_LABELS[acType] || acType}</span>
-                              <span className="mono" style={{ fontSize: 9, color: 'var(--ink-3)' }}>{tails.length} aircraft · {uFmtH(typeH)}</span>
+                              <span className="mono" style={{ fontSize: 9, color: 'var(--ink-3)' }}>{visibleTails.length} aircraft · {uFmtH(typeH)}</span>
                             </div>
                           </td>
                         </tr>
-                        {/* Aircraft rows */}
-                        {!isCollapsed && tails.map(ac => {
+                        {/* Aircraft rows — skip tails with no matching flights */}
+                        {!isCollapsed && visibleTails.map(ac => {
                           const totalH  = tailTotals[ac.normTail] || 0;
                           const isSelected = drawer && drawer.tail === ac.normTail;
                           return (
