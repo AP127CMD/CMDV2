@@ -491,6 +491,16 @@ One-line change in each file — added before the span check:
 if (t >= duty.first && end <= duty.last) return true; // within existing window — no new duty
 ```
 
+### Time Travel — full data filter fix (2026-06-25, p102)
+
+`js/view-cohort.js`
+
+Root-cause fix for time travel. Previous implementation (p101) replaced `ap127TodayBKK()` date cutoffs but left raw `G.ap127` student data (with pre-computed `s.done`, unfiltered `s.flown`) feeding all render functions — so KPI tiles, table rows, sort order, Pace Monitor, and charts all showed live data regardless of selected date.
+
+**`ap127AsOfStudents()`** added: returns `G.ap127` with each student's `flown` filtered to `≤ asOf` date and `done`/`pct`/`remaining`/`next_lesson` recomputed. In live mode (`COHORT_AS_OF === null`) returns the raw array reference unchanged (zero cost). Used in: `renderAP127Detail`, `renderAP127Pace`, `buildAP127CombinedChart`, `buildAP127HistBatch`, `buildAP127HistSolo`, `setAP127RaceMode`.
+
+Also fixed: `today0` was declared AFTER it was used at lines 435–436 in `renderAP127Detail` (temporal dead zone bug, pre-existing). Hoisted `today0` to top of function; removed dead `sortedLead`/`sortedLag`/`aheadNames`/`lagNames` block that referenced it; collapsed duplicate `today0`/`today` into one.
+
 ### Time Travel — sticky scrubber + amber banner + date picker (2026-06-25, p101)
 
 `js/view-cohort.js`, `index.html`

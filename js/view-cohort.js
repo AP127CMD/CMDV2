@@ -218,6 +218,20 @@ function copts(sx={},sy={},extra={}){return{responsive:true,maintainAspectRatio:
 // ── AP127 DETAIL ──
 function ap127TodayBKK(){const now=new Date();const bkk=new Date(now.getTime()+(now.getTimezoneOffset()+420)*60000);return bkk.toISOString().slice(0,10);}
 function ap127AsOf(){return COHORT_AS_OF||ap127TodayBKK();}
+function ap127AsOfStudents(){
+  const asOf=ap127AsOf();
+  const all=G?.ap127||[];
+  if(!COHORT_AS_OF)return all;
+  const cur=G?.cur127||[];
+  return all.map(s=>{
+    const flown=(s.flown||[]).filter(f=>f.date&&f.date<=asOf);
+    const total=s.total||0;
+    const done=flown.length;
+    const flownSet=new Set(flown.map(f=>(f.lesson||'').toUpperCase().trim()));
+    const nx=cur.find(c=>!flownSet.has((c.lesson||'').toUpperCase().trim()));
+    return{...s,flown,done,pct:total?+(done/total*100).toFixed(1):0,remaining:Math.max(0,total-done),next_lesson:nx?nx.lesson:'COMPLETE'};
+  });
+}
 function _scrBatchStart(){const all=G?.ap127||[];return all.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort()[0]||ap127TodayBKK();}
 function _scrDateFromFrac(frac){const s=new Date(_scrBatchStart()+'T00:00:00').getTime(),e=new Date(ap127TodayBKK()+'T00:00:00').getTime();return new Date(s+frac*(e-s)).toISOString().slice(0,10);}
 function _scrSetThumb(frac){const th=document.getElementById('tt-thumb'),ch=document.getElementById('tt-chip');if(!th)return;th.style.left=(frac*100)+'%';if(ch){const ds=frac>=0.99?ap127TodayBKK():_scrDateFromFrac(frac);ch.textContent=ds?ap127ShortDate(ds):'';}}
@@ -288,7 +302,7 @@ function ap127RankClass(rank,total){if(rank<=3)return"bad";if(rank<=Math.ceil(to
 // ── Pace Monitor ──
 function renderAP127Pace(){
   if(!G||!G.ap127)return;
-  const all=G.ap127||[];const n=all.length;if(!n)return;
+  const all=ap127AsOfStudents();const n=all.length;if(!n)return;
   const cur=G.cur127||[];
   const today=ap127AsOf();
 
@@ -424,7 +438,8 @@ function renderAP127Pace(){
 
 function renderAP127Detail(){
   if(!G||!G.ap127)return;
-  const all=[...(G.ap127||[])];
+  const today0=ap127AsOf();
+  const all=ap127AsOfStudents();
   const total=all.length;
   const curriculum=all[0]?.total||0;
   const doneAll=all.reduce((a,s)=>a+(s.done||0),0);
@@ -432,13 +447,8 @@ function renderAP127Detail(){
   const totalHours=ap127CurriculumHours()*total;
   const avgDone=total?doneAll/total:0;
   const maxDate=all.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"";
-  const sortedLead=ap127PaceSort(all,today0);
-  const sortedLag=ap127BehindSort(all,today0);
-  const aheadNames=sortedLead.slice(0,3).map(s=>ap127ShortName(s.name)).join(", ");
-  const lagNames=sortedLag.slice(0,3).map(s=>ap127ShortName(s.name)).join(", ");
   const prg=(total&&curriculum)?(doneAll/(total*curriculum)*100):0;
   const planMap={};(G.cur127||[]).forEach(c=>{if(c.lesson&&c.planned_date)planMap[c.lesson]=c.planned_date;});
-  const today0=ap127AsOf();
   const expDone=(G.cur127||[]).filter(c=>c.planned_date&&c.planned_date<=today0).length;
   // "On track" measured against the cohort's own average pace (the curriculum plan
   // is aggressive — everyone trails it — so a vs-cohort split is the useful read).
@@ -466,7 +476,7 @@ function renderAP127Detail(){
   setH("d127-k-les-s",`<span style="color:${lesVarColor}">${lesVariance>=0?"ahead":"behind"} plan</span> <span style="color:var(--tx3)">(${doneAll} / ${totalExpectedLessons})</span>`);
   setT("d127-meta",`${doneAll} lessons done · Avg ${avgDone.toFixed(1)} · ${onTrack}/${total} on track`);
 
-  const today=ap127AsOf();
+  const today=today0;
   const q=(document.getElementById("d127-q")?.value||"").toLowerCase().trim();
   let rows=ap127SortRows(all,today,planMap,today);
   if(q)rows=rows.filter(s=>s.name.toLowerCase().includes(q)||(s.nick||"").toLowerCase().includes(q)||(s.fi||"").toLowerCase().includes(q));
@@ -812,8 +822,9 @@ let AP127_RACE_SOLO=null;
 let AP127_RACE_MODE='lessons';
 function setAP127RaceMode(m){
   AP127_RACE_MODE=m;
-  const maxD=(G.ap127||[]).flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"";
-  buildAP127RaceChart(G.ap127,G.cur127?.length||101,maxD);
+  const allR=ap127AsOfStudents();
+  const maxD=allR.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"";
+  buildAP127RaceChart(allR,G.cur127?.length||101,maxD);
   buildAP127HistSolo();
 }
 function buildAP127RaceChart(all,curriculum,maxDate){
@@ -1018,7 +1029,7 @@ function setCPVMode(m){
   buildAP127CombinedChart();
 }
 function buildAP127CombinedChart(){
-  const all=G?.ap127||[];if(!all.length)return;
+  const all=ap127AsOfStudents();if(!all.length)return;
   const today=ap127AsOf();
   const n=all.length;
   const curriculum=G.cur127||[];
@@ -1161,7 +1172,7 @@ function setHistBatchMode(m){
   buildAP127HistBatch();
 }
 function buildAP127HistBatch(){
-  const all=G?.ap127||[];if(!all.length)return;
+  const all=ap127AsOfStudents();if(!all.length)return;
   const today=ap127AsOf();
   const curriculum=G.cur127||[];
   const isHrs=HIST_BATCH_MODE==='hours';
@@ -1239,7 +1250,7 @@ function buildAP127HistBatch(){
   });
 }
 function buildAP127HistSolo(){
-  const all=G?.ap127||[];if(!all.length)return;
+  const all=ap127AsOfStudents();if(!all.length)return;
   const today=ap127AsOf();
   const curriculum=G.cur127||[];
   const isHrs=AP127_RACE_MODE==='hours';
