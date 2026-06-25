@@ -17,7 +17,7 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p102` (2026-06-25 — Time Travel data-filter fix: ap127AsOfStudents() filters G.ap127 per-student flown to ≤asOf, recomputes done/pct/next_lesson; fixed TDZ bug in renderAP127Detail). p101 (2026-06-25 — Time Travel scrubber/banner/date picker). p100 (2026-06-25 — Panel reorder). p99 (2026-06-25 — History Charts). Next → `p103`. **Watchdog (2026-06-23):** `telegram.test.js` — added missing SP `@username` assertion to `STATUS → Canceled` test; all 6 notification types now verified. Implementation was already correct; test coverage gap only (no deploy needed).
+**Last known:** all files `p103` (2026-06-26 — Aircraft Utilization tab: 3rd tab in view-aircraft.js with heatmap roster, daily stacked chart, fleet load bars, KPI strip, full filter bar, detail drawer; block/airborne toggle, sim toggle, collapsible type groups). p102 (2026-06-25 — Time Travel data-filter fix). Next → `p104`. **Watchdog (2026-06-23):** `telegram.test.js` — added missing SP `@username` assertion to `STATUS → Canceled` test; all 6 notification types now verified. Implementation was already correct; test coverage gap only (no deploy needed).
 
 ## Key facts — things that trip up new sessions
 - **Check `<script>` type per file before editing** — `view-overview.js` uses `type="text/babel"`; `shell.js`, `view-watchdog.js`, `view-cf-usage.js`, `view-crosscheck.js` are plain `<script>`. Run the grep above to confirm.
