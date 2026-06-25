@@ -9,6 +9,23 @@
   const MARKUP = `
 <div class="d127-wrap">
   <div class="d127-wrap">
+    <div id="tt-banner" style="display:none;background:rgba(245,158,11,0.12);border-bottom:1px solid rgba(245,158,11,0.35);padding:6px 16px;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#f59e0b">
+      <span>⏪ TIME TRAVEL MODE — data as of <span id="tt-banner-date">-</span></span>
+      <span style="flex:1"></span>
+      <button onclick="setCohortAsOf(null)" style="background:#f59e0b;color:#000;border:0;border-radius:3px;padding:2px 8px;font-size:10px;font-family:'JetBrains Mono',monospace;cursor:pointer">Return to Live</button>
+    </div>
+    <div id="tt-scrubber-wrap" style="position:sticky;top:48px;z-index:90;background:var(--bg);border-bottom:1px solid var(--bd);padding:8px 16px 26px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#6e7681">HISTORY</span>
+        <div id="tt-track" style="position:relative;flex:1;height:14px;background:var(--s2);border-radius:3px;cursor:pointer;touch-action:none;user-select:none">
+          <div id="tt-ticks" style="position:absolute;inset:0;pointer-events:none"></div>
+          <div id="tt-thumb" style="position:absolute;top:-3px;left:100%;transform:translateX(-50%);width:4px;height:20px;background:#38bdf8;border-radius:2px;cursor:grab;touch-action:none">
+            <div id="tt-chip" style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:#30363d;border:1px solid #444;border-radius:3px;padding:1px 6px;font-size:9px;font-family:'JetBrains Mono',monospace;color:#e6edf3;white-space:nowrap;pointer-events:none">Today</div>
+          </div>
+        </div>
+        <button onclick="setCohortAsOf(null)" id="tt-live-btn" style="background:#1a2f1a;border:1px solid #4ade80;color:#4ade80;border-radius:3px;padding:2px 7px;font-size:9px;font-family:'JetBrains Mono',monospace;cursor:pointer">LIVE ●</button>
+      </div>
+    </div>
     <div class="d127-title">
       <h1>AP<b>127</b> PROGRESS</h1>
       <div class="d127-subtitle" id="d127-subtitle">Progress retrieved from CATC FTC records and master plan</div>
@@ -46,6 +63,8 @@
         <option value="hours">Sort: Most hours first</option>
         <option value="name">Sort: Name A-Z</option>
       </select>
+      <input type="date" id="tt-date-input" style="background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:3px;padding:3px 6px;font-size:11px;font-family:'JetBrains Mono',monospace" onchange="setCohortAsOf(this.value||null)">
+      <button onclick="setCohortAsOf(null)" style="background:var(--s2);border:1px solid var(--bd);color:var(--tx3);border-radius:3px;padding:3px 8px;font-size:10px;font-family:'JetBrains Mono',monospace;cursor:pointer">Live</button>
       <span class="d127-meta" id="d127-meta">-</span>
     </div>
     <div class="d127-grid">
@@ -198,6 +217,11 @@ function copts(sx={},sy={},extra={}){return{responsive:true,maintainAspectRatio:
 // ##AP127JS_START##
 // ── AP127 DETAIL ──
 function ap127TodayBKK(){const now=new Date();const bkk=new Date(now.getTime()+(now.getTimezoneOffset()+420)*60000);return bkk.toISOString().slice(0,10);}
+function ap127AsOf(){return COHORT_AS_OF||ap127TodayBKK();}
+function _scrBatchStart(){const all=G?.ap127||[];return all.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort()[0]||ap127TodayBKK();}
+function _scrDateFromFrac(frac){const s=new Date(_scrBatchStart()+'T00:00:00').getTime(),e=new Date(ap127TodayBKK()+'T00:00:00').getTime();return new Date(s+frac*(e-s)).toISOString().slice(0,10);}
+function _scrSetThumb(frac){const th=document.getElementById('tt-thumb'),ch=document.getElementById('tt-chip');if(!th)return;th.style.left=(frac*100)+'%';if(ch){const ds=frac>=0.99?ap127TodayBKK():_scrDateFromFrac(frac);ch.textContent=ds?ap127ShortDate(ds):'';}}
+let _scrDebounce=null;
 const AP127_PHASE_DEFS=[
   {k:"CDGL",label:"CDGL",test:/^CDGL/i,c:"#fb923c"},
   {k:"GL",  label:"GL",  test:/^GL/i,  c:"#4ade80"},
@@ -266,7 +290,7 @@ function renderAP127Pace(){
   if(!G||!G.ap127)return;
   const all=G.ap127||[];const n=all.length;if(!n)return;
   const cur=G.cur127||[];
-  const today=ap127TodayBKK();
+  const today=ap127AsOf();
 
   // Plan end date & curriculum per student
   const planEndDate=cur.map(c=>c.planned_date).filter(Boolean).sort().at(-1)||"";
@@ -414,7 +438,7 @@ function renderAP127Detail(){
   const lagNames=sortedLag.slice(0,3).map(s=>ap127ShortName(s.name)).join(", ");
   const prg=(total&&curriculum)?(doneAll/(total*curriculum)*100):0;
   const planMap={};(G.cur127||[]).forEach(c=>{if(c.lesson&&c.planned_date)planMap[c.lesson]=c.planned_date;});
-  const today0=ap127TodayBKK();
+  const today0=ap127AsOf();
   const expDone=(G.cur127||[]).filter(c=>c.planned_date&&c.planned_date<=today0).length;
   // "On track" measured against the cohort's own average pace (the curriculum plan
   // is aggressive — everyone trails it — so a vs-cohort split is the useful read).
@@ -442,7 +466,7 @@ function renderAP127Detail(){
   setH("d127-k-les-s",`<span style="color:${lesVarColor}">${lesVariance>=0?"ahead":"behind"} plan</span> <span style="color:var(--tx3)">(${doneAll} / ${totalExpectedLessons})</span>`);
   setT("d127-meta",`${doneAll} lessons done · Avg ${avgDone.toFixed(1)} · ${onTrack}/${total} on track`);
 
-  const today=ap127TodayBKK();
+  const today=ap127AsOf();
   const q=(document.getElementById("d127-q")?.value||"").toLowerCase().trim();
   let rows=ap127SortRows(all,today,planMap,today);
   if(q)rows=rows.filter(s=>s.name.toLowerCase().includes(q)||(s.nick||"").toLowerCase().includes(q)||(s.fi||"").toLowerCase().includes(q));
@@ -518,6 +542,7 @@ function renderAP127Detail(){
   buildAP127OverallChart(all,curriculum,maxDate);
   buildAP127HistBatch();
   buildAP127HistSolo();
+  updateScrubber();
   renderAP127Pace();
 }
 function openAP127Drawer(idx){
@@ -527,7 +552,7 @@ function openAP127Drawer(idx){
   document.getElementById("d127-d-name").textContent=s.name;
   document.getElementById("d127-d-meta").textContent=`${s.catc_id||"-"} · ${s.nick||"-"} · FI: ${s.fi||"-"} · ${s.se||"-"}`;
   // KPI strip
-  const today0=ap127TodayBKK();
+  const today0=ap127AsOf();
   const planMap={};(G.cur127||[]).forEach(c=>{if(c.lesson&&c.planned_date)planMap[c.lesson]=c.planned_date;});
   const idle=ap127IdleDays(s,today0);
   const dayDelta=ap127DayDelta(s,planMap,today0);
@@ -552,10 +577,10 @@ function closeAP127Drawer(){document.getElementById("d127-draw-ov").classList.re
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeAP127Drawer();});
 
 function buildAP127Timeline(all,curriculum,maxDate){
-  const sorted=ap127PaceSort(all,ap127TodayBKK());
+  const sorted=ap127PaceSort(all,ap127AsOf());
   const wrap=document.getElementById("d127-timeline-wrap");
   if(wrap)wrap.style.height=Math.max(420,sorted.length*22)+"px";
-  const today=ap127TodayBKK();
+  const today=ap127AsOf();
   const DAY=86400000;
   const toDayNum=ds=>{const d=new Date(ds+"T12:00:00Z");return Math.floor(d.getTime()/DAY);};
   const allDates=[];
@@ -792,7 +817,7 @@ function setAP127RaceMode(m){
   buildAP127HistSolo();
 }
 function buildAP127RaceChart(all,curriculum,maxDate){
-  const today=ap127TodayBKK();
+  const today=ap127AsOf();
   const racers=ap127PaceSort(all,today);
   const isHrs=AP127_RACE_MODE==='hours';
   const curMap={};(G.cur127||[]).forEach(c=>{curMap[c.lesson]=c.planned_mins||0;});
@@ -930,7 +955,7 @@ function buildAP127RaceChart(all,curriculum,maxDate){
 }
 
 function buildAP127OverallChart(all,curriculum,maxDate){
-  const sorted=ap127PaceSort(all,ap127TodayBKK());
+  const sorted=ap127PaceSort(all,ap127AsOf());
   const maxDone=Math.max(...sorted.map(s=>s.done||0),1);
   CHARTS.ap127overall=mkC("d127-overall",{
     type:"bar",
@@ -973,6 +998,7 @@ function buildAP127OverallChart(all,curriculum,maxDate){
 let CPV_FILTER='proj';
 let CPV_MODE='hours';
 let HIST_BATCH_MODE='hours';
+let COHORT_AS_OF=null;
 function cpvResetZoom(){
   const chart=CHARTS.ap127combined;
   if(!chart)return;
@@ -993,7 +1019,7 @@ function setCPVMode(m){
 }
 function buildAP127CombinedChart(){
   const all=G?.ap127||[];if(!all.length)return;
-  const today=ap127TodayBKK();
+  const today=ap127AsOf();
   const n=all.length;
   const curriculum=G.cur127||[];
   const isHrs=CPV_MODE==='hours';
@@ -1136,7 +1162,7 @@ function setHistBatchMode(m){
 }
 function buildAP127HistBatch(){
   const all=G?.ap127||[];if(!all.length)return;
-  const today=ap127TodayBKK();
+  const today=ap127AsOf();
   const curriculum=G.cur127||[];
   const isHrs=HIST_BATCH_MODE==='hours';
   const n=all.length;
@@ -1214,7 +1240,7 @@ function buildAP127HistBatch(){
 }
 function buildAP127HistSolo(){
   const all=G?.ap127||[];if(!all.length)return;
-  const today=ap127TodayBKK();
+  const today=ap127AsOf();
   const curriculum=G.cur127||[];
   const isHrs=AP127_RACE_MODE==='hours';
   const lessonsMap={};curriculum.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
@@ -1330,6 +1356,55 @@ function ap127FitY(chart){
     chart.update('none');
   }catch(e){}
 }
+function setCohortAsOf(ds){
+  COHORT_AS_OF=ds||null;
+  renderAP127Detail();
+}
+function updateScrubber(){
+  if(!G?.ap127)return;
+  const bs=_scrBatchStart(),rt=ap127TodayBKK();
+  const msS=new Date(bs+'T00:00:00').getTime(),msE=new Date(rt+'T00:00:00').getTime(),span=msE-msS||1;
+  const frac=COHORT_AS_OF?Math.max(0,Math.min(0.99,(new Date(COHORT_AS_OF+'T00:00:00').getTime()-msS)/span)):1;
+  _scrSetThumb(frac);
+  const ticks=document.getElementById('tt-ticks');
+  if(ticks){
+    ticks.innerHTML='';
+    let d=new Date(bs+'T00:00:00');d.setDate(1);d.setMonth(d.getMonth()+1);
+    while(d.getTime()<=msE){
+      const f=(d.getTime()-msS)/span;
+      const t=document.createElement('span');
+      t.style.cssText=`position:absolute;left:${f*100}%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:9px;color:#6e7681;top:14px;pointer-events:none;white-space:nowrap`;
+      t.textContent=d.toLocaleDateString('en-GB',{month:'short',year:'2-digit'});
+      ticks.appendChild(t);
+      d.setMonth(d.getMonth()+1);
+    }
+  }
+  const banner=document.getElementById('tt-banner');
+  const bdate=document.getElementById('tt-banner-date');
+  if(banner){banner.style.display=COHORT_AS_OF?'flex':'none';}
+  if(bdate&&COHORT_AS_OF)bdate.textContent=ap127FmtDate(COHORT_AS_OF);
+  const dateInput=document.getElementById('tt-date-input');
+  if(dateInput){dateInput.min=bs;dateInput.max=rt;dateInput.value=COHORT_AS_OF||rt;}
+  const sub=document.getElementById('d127-subtitle');
+  if(sub)sub.textContent=COHORT_AS_OF?`Viewing data as of ${ap127FmtDate(COHORT_AS_OF)} — live data paused`:'Progress retrieved from CATC FTC records and master plan';
+  const liveBtn=document.getElementById('tt-live-btn');
+  if(liveBtn){liveBtn.style.background=COHORT_AS_OF?'var(--s2)':'#1a2f1a';liveBtn.style.borderColor=COHORT_AS_OF?'var(--bd)':'#4ade80';liveBtn.style.color=COHORT_AS_OF?'var(--tx3)':'#4ade80';}
+}
+function initScrubber(){
+  const track=document.getElementById('tt-track');
+  if(!track||track._init)return;
+  track._init=true;
+  let drag=false;
+  const px=e=>{const r=track.getBoundingClientRect();return Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));};
+  const move=f=>{
+    _scrSetThumb(f);
+    clearTimeout(_scrDebounce);
+    _scrDebounce=setTimeout(()=>setCohortAsOf(f>=0.99?null:_scrDateFromFrac(f)),150);
+  };
+  track.addEventListener('pointerdown',e=>{drag=true;track.setPointerCapture(e.pointerId);move(px(e));});
+  track.addEventListener('pointermove',e=>{if(drag)move(px(e));});
+  track.addEventListener('pointerup',()=>{drag=false;});
+}
 // ##AP127JS_END##
   // ---------- end DashboardR1 logic ----------
 
@@ -1337,9 +1412,9 @@ function ap127FitY(chart){
   function setSS(){ /* no-op: freshness shown in the unified top bar */ }
 
   // expose inline-handler targets used inside the reused markup/row HTML
-  Object.assign(window, { renderAP127Detail, renderAP127Pace, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, cpvResetZoom, openAP127Drawer, closeAP127Drawer, setAP127RaceMode, setHistBatchMode, buildAP127HistBatch, buildAP127HistSolo, CHARTS });
+  Object.assign(window, { renderAP127Detail, renderAP127Pace, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, cpvResetZoom, openAP127Drawer, closeAP127Drawer, setAP127RaceMode, setHistBatchMode, buildAP127HistBatch, buildAP127HistSolo, setCohortAsOf, ap127AsOf, CHARTS });
 
-  function mountProgress(data){ G = data; renderAP127Detail(); }
+  function mountProgress(data){ G = data; initScrubber(); renderAP127Detail(); }
   function destroyProgress(){ try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch(e){} }); } catch(e){} }
 
   // Reconcile each student's Progress record against the Operations feed, which is

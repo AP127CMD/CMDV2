@@ -491,6 +491,19 @@ One-line change in each file — added before the span check:
 if (t >= duty.first && end <= duty.last) return true; // within existing window — no new duty
 ```
 
+### Time Travel — sticky scrubber + amber banner + date picker (2026-06-25, p101)
+
+`js/view-cohort.js`, `index.html`
+
+AP127 Detail tab now supports time travel — every chart, KPI, table row, and panel can show data as of any past date.
+
+- **`COHORT_AS_OF`** state var (null = live). **`ap127AsOf()`** helper replaces all 11 inline `ap127TodayBKK()` render-scope call sites across renderAP127Pace, renderAP127Detail, openAP127Drawer, buildAP127Timeline, buildAP127RaceChart, buildAP127OverallChart, buildAP127CombinedChart, buildAP127HistBatch, buildAP127HistSolo.
+- **Sticky scrubber bar** (`#tt-scrubber-wrap`, `position:sticky;top:48px`): custom div-based track + draggable thumb + date chip, pointer-event-driven, 150ms debounce on re-render. Month ticks auto-generated from batch start to real today.
+- **Amber banner** (`#tt-banner`): hidden in live mode, shows `⏪ TIME TRAVEL MODE — data as of DATE` + "Return to Live" button when time-travel active.
+- **Date picker** in `.d127-controls` row (`#tt-date-input`): synced bidirectionally with scrubber. "Live" button resets both.
+- `setCohortAsOf(ds)`, `updateScrubber()`, `initScrubber()` functions added. `initScrubber()` called from `mountProgress`. `updateScrubber()` called at end of `renderAP127Detail`. `setCohortAsOf` and `ap127AsOf` exposed on `window`.
+- History charts (HistBatch, HistSolo) x-axis naturally caps at selected as-of date — no extra logic needed.
+
 ### Progress view panel reorder (2026-06-25, p100)
 
 `js/view-cohort.js` MARKUP only — no logic changes.
