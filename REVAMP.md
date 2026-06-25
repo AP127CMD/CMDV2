@@ -491,6 +491,16 @@ One-line change in each file — added before the span check:
 if (t >= duty.first && end <= duty.last) return true; // within existing window — no new duty
 ```
 
+### History Charts — Batch Lead/Lag & Individual Lead/Lag (2026-06-25, p99)
+
+`js/view-cohort.js`
+
+Two new panels added at the bottom of the Progress view showing lead/lag (actual − planned cumulative) over time:
+
+- **Batch Lead/Lag History** (`d127-hist-batch`): Single line chart — batch-wide delta (Σ actual − Σ planned × 28SP) over time. Fill green above zero / red below. KPI strip: Now / Best / Worst delta. Independent Hours/Lessons toggle (default hours). `HIST_BATCH_MODE` state var. `setHistBatchMode(m)` / `buildAP127HistBatch()` functions.
+- **Individual Lead/Lag vs Plan** (`d127-hist-solo`): Per-student delta lines (28 lines, same hue-per-index as race chart) + bold magenta batch avg. Zero reference line. Shares `AP127_RACE_MODE` and `AP127_RACE_SOLO` with the Actual vs Planned race chart — student toggles and mode chips above the race chart control both. `buildAP127HistSolo()` called from `setAP127RaceMode` + toggle click handlers.
+- Delta computation: cumulative actual − cumulative planned, derived purely from in-memory `flown[]` + `cur127[]` data. No new fetch.
+
 ## 13. GOTCHAS / NOTES
 - No-build React: load order matters (CDNs → data → shared → ui → views → shell boot). Use `type="text/babel"` + per-file hook aliasing.
 - Babel Standalone is slow on huge files; auto-slot-finder is 1842 lines — consider splitting when porting.

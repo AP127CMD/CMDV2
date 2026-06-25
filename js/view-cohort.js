@@ -129,6 +129,30 @@
         <div style="position:relative;height:560px;width:100%"><canvas id="d127-overall"></canvas></div>
       </div>
     </div>
+    <div class="d127-panel">
+      <div class="d127-h" style="flex-wrap:wrap;gap:6px">
+        <span class="d127-t">Batch Lead/Lag History</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="cpv-btn hist-batch-mode sel" data-m="hours"   onclick="setHistBatchMode('hours')">Hours</button>
+          <button class="cpv-btn hist-batch-mode"     data-m="lessons" onclick="setHistBatchMode('lessons')">Lessons</button>
+        </div>
+      </div>
+      <div class="d127-body">
+        <div class="d127-note">Batch-wide cumulative actual − planned. Above zero = ahead of curriculum schedule; below = behind. Zero line = on plan.</div>
+        <div class="cpv-kpis" id="hist-batch-kpis"></div>
+        <div style="position:relative;height:220px"><canvas id="d127-hist-batch"></canvas></div>
+      </div>
+    </div>
+    <div class="d127-panel">
+      <div class="d127-h">
+        <span class="d127-t">Individual Lead/Lag vs Plan</span>
+        <span class="d127-s">Shares hours/lessons mode &amp; student filters with Actual vs Planned</span>
+      </div>
+      <div class="d127-body">
+        <div class="d127-note">Per-student delta (actual − planned). Above zero = ahead; below zero = behind. Thick magenta = batch avg. Use student toggles above to focus.</div>
+        <div style="position:relative;height:300px"><canvas id="d127-hist-solo"></canvas></div>
+      </div>
+    </div>
   </div>
 <div class="toast" id="toast"></div>
 <div class="d127-draw-ov" id="d127-draw-ov" onclick="closeAP127Drawer()">
@@ -492,6 +516,8 @@ function renderAP127Detail(){
   buildAP127Timeline(all,curriculum,maxDate);
   buildAP127RaceChart(all,curriculum,maxDate);
   buildAP127OverallChart(all,curriculum,maxDate);
+  buildAP127HistBatch();
+  buildAP127HistSolo();
   renderAP127Pace();
 }
 function openAP127Drawer(idx){
@@ -763,6 +789,7 @@ function setAP127RaceMode(m){
   AP127_RACE_MODE=m;
   const maxD=(G.ap127||[]).flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort().at(-1)||"";
   buildAP127RaceChart(G.ap127,G.cur127?.length||101,maxD);
+  buildAP127HistSolo();
 }
 function buildAP127RaceChart(all,curriculum,maxDate){
   const today=ap127TodayBKK();
@@ -888,7 +915,7 @@ function buildAP127RaceChart(all,curriculum,maxDate){
   const allBtn=document.createElement("button");
   allBtn.textContent="ALL";
   allBtn.style.cssText=`padding:4px 10px;background:${AP127_RACE_SOLO===null?"#4ade80":"#30363d"};color:${AP127_RACE_SOLO===null?"#000":"#8b949e"};border:0;border-radius:3px;cursor:pointer;font-weight:700;font-size:10px;font-family:'JetBrains Mono',monospace`;
-  allBtn.onclick=()=>{AP127_RACE_SOLO=null;buildAP127RaceChart(all,curriculum,maxDate);};
+  allBtn.onclick=()=>{AP127_RACE_SOLO=null;buildAP127RaceChart(all,curriculum,maxDate);buildAP127HistSolo();};
   togglesDiv.appendChild(allBtn);
   racers.forEach(s=>{
     const nick=ap127ShortName(s.name);
@@ -896,7 +923,7 @@ function buildAP127RaceChart(all,curriculum,maxDate){
     const btn=document.createElement("button");
     btn.textContent=nick;
     btn.style.cssText=`padding:4px 8px;background:${active?"#38bdf8":"#30363d"};color:${active?"#000":"#8b949e"};border:0;border-radius:3px;cursor:pointer;font-size:10px;font-family:'JetBrains Mono',monospace`;
-    btn.onclick=()=>{AP127_RACE_SOLO=active?null:nick;buildAP127RaceChart(all,curriculum,maxDate);};
+    btn.onclick=()=>{AP127_RACE_SOLO=active?null:nick;buildAP127RaceChart(all,curriculum,maxDate);buildAP127HistSolo();};
     togglesDiv.appendChild(btn);
   });
   document.getElementById("d127-race-meta").textContent=`${all.length} students · to ${ap127FmtDate(today)} · ${isHrs?"hours":"lessons"} mode · planned baseline`;
@@ -945,6 +972,7 @@ function buildAP127OverallChart(all,curriculum,maxDate){
 }
 let CPV_FILTER='proj';
 let CPV_MODE='hours';
+let HIST_BATCH_MODE='hours';
 function cpvResetZoom(){
   const chart=CHARTS.ap127combined;
   if(!chart)return;
@@ -1101,6 +1129,189 @@ function buildAP127CombinedChart(){
   });
   ap127FitY(CHARTS.ap127combined);
 }
+function setHistBatchMode(m){
+  HIST_BATCH_MODE=m;
+  document.querySelectorAll('.hist-batch-mode').forEach(b=>b.classList.toggle('sel',b.dataset.m===m));
+  buildAP127HistBatch();
+}
+function buildAP127HistBatch(){
+  const all=G?.ap127||[];if(!all.length)return;
+  const today=ap127TodayBKK();
+  const curriculum=G.cur127||[];
+  const isHrs=HIST_BATCH_MODE==='hours';
+  const n=all.length;
+  const lessonsMap={};curriculum.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
+  const dateSet=new Set();
+  all.forEach(s=>(s.flown||[]).forEach(f=>{if(f.date&&f.date<=today)dateSet.add(f.date);}));
+  curriculum.forEach(c=>{if(c.planned_date&&c.planned_date<=today)dateSet.add(c.planned_date);});
+  const labels=[...dateSet].sort();
+  if(!labels.length)return;
+  const actualByDate={};
+  all.forEach(s=>(s.flown||[]).forEach(f=>{
+    if(!f.date||f.date>today)return;
+    const v=isHrs?(ap127FlightMins(f)||lessonsMap[f.lesson]||0)/60:1;
+    actualByDate[f.date]=(actualByDate[f.date]||0)+v;
+  }));
+  const planByDate={};
+  curriculum.forEach(c=>{
+    if(!c.planned_date||c.planned_date>today)return;
+    const v=isHrs?(c.planned_mins||0)*n/60:n;
+    planByDate[c.planned_date]=(planByDate[c.planned_date]||0)+v;
+  });
+  let rAct=0,rPlan=0;
+  const deltas=[];
+  const batchData=labels.map(d=>{
+    rAct+=(actualByDate[d]||0);
+    rPlan+=(planByDate[d]||0);
+    const delta=+(rAct-rPlan).toFixed(2);
+    deltas.push(delta);
+    return{x:d,y:delta};
+  });
+  const nowDelta=deltas.at(-1)||0;
+  const bestDelta=Math.max(...deltas);
+  const worstDelta=Math.min(...deltas);
+  const fmt=v=>(v>=0?'+':'')+(isHrs?v.toFixed(1)+'h':Math.round(v)+' les');
+  const kpiEl=document.getElementById('hist-batch-kpis');
+  if(kpiEl)kpiEl.innerHTML=[
+    {l:'Now',  v:fmt(nowDelta),   c:nowDelta>=0?'var(--done)':'#ef4444', s:'vs plan today'},
+    {l:'Best', v:fmt(bestDelta),  c:'var(--done)',                        s:'peak lead ever'},
+    {l:'Worst',v:fmt(worstDelta), c:'#ff6b6b',                           s:'peak lag ever'},
+  ].map(k=>`<div class="cpv-kpi"><div class="cpv-kl">${k.l}</div><div class="cpv-kv" style="color:${k.c}">${k.v}</div><div class="cpv-ks">${k.s}</div></div>`).join('');
+  CHARTS.ap127histBatch=mkC('d127-hist-batch',{
+    type:'line',
+    data:{datasets:[{
+      label:'Batch Δ',
+      data:batchData,
+      borderColor:'#e88aff',
+      borderWidth:2,
+      pointRadius:0,
+      pointHoverRadius:4,
+      pointHoverBackgroundColor:'#e88aff',
+      tension:0.15,
+      fill:{target:{value:0},above:'rgba(74,222,128,0.12)',below:'rgba(239,68,68,0.12)'}
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      parsing:{xAxisKey:'x',yAxisKey:'y'},
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        datalabels:{display:false},
+        legend:{display:false},
+        tooltip:{callbacks:{
+          title:ctx=>{const r=ctx[0]?.raw;return r?ap127FmtDate(r.x):'';},
+          label:ctx=>{const v=ctx.raw?.y;if(v==null)return null;return`Batch Δ: ${isHrs?v.toFixed(1)+'h':Math.round(v)+' les'}`;}
+        }}
+      },
+      scales:{
+        x:{type:'time',time:{unit:'month',displayFormats:{day:'d MMM',week:'d MMM',month:'MMM yy'}},
+          ticks:{font:{family:'JetBrains Mono',size:8},color:'#6e7681',maxTicksLimit:14,source:'auto'},
+          grid:{color:'#21262d'}},
+        y:{ticks:{font:{family:'JetBrains Mono',size:9},color:'#8b949e',callback:v=>isHrs?v.toFixed(0)+'h':v},
+          grid:{color:'#21262d'}}
+      }
+    }
+  });
+}
+function buildAP127HistSolo(){
+  const all=G?.ap127||[];if(!all.length)return;
+  const today=ap127TodayBKK();
+  const curriculum=G.cur127||[];
+  const isHrs=AP127_RACE_MODE==='hours';
+  const lessonsMap={};curriculum.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
+  const racers=ap127PaceSort(all,today);
+  const dateSet=new Set();
+  racers.forEach(s=>(s.flown||[]).forEach(f=>{if(f.date&&f.date<=today)dateSet.add(f.date);}));
+  curriculum.forEach(c=>{if(c.planned_date&&c.planned_date<=today)dateSet.add(c.planned_date);});
+  const labels=[...dateSet].sort();
+  if(!labels.length)return;
+  const planByDate={};
+  curriculum.forEach(c=>{
+    if(!c.planned_date||c.planned_date>today)return;
+    const v=isHrs?(c.planned_mins||0)/60:1;
+    planByDate[c.planned_date]=(planByDate[c.planned_date]||0)+v;
+  });
+  let rPlan=0;
+  const planCum=labels.map(d=>{rPlan+=(planByDate[d]||0);return +rPlan.toFixed(2);});
+  const datasets=[{
+    label:'Zero',
+    data:labels.map(d=>({x:d,y:0})),
+    borderColor:'rgba(255,255,255,0.18)',
+    borderWidth:1,
+    borderDash:[4,3],
+    pointRadius:0,
+    tension:0,
+    order:0
+  }];
+  const allDeltas=[];
+  racers.forEach((s,i)=>{
+    const hue=(i*360/Math.max(racers.length,1)).toFixed(0);
+    const col=`hsla(${hue},85%,62%,0.8)`;
+    const nick=ap127ShortName(s.name);
+    const visible=AP127_RACE_SOLO===null||AP127_RACE_SOLO===nick;
+    const flightsByDate={};
+    (s.flown||[]).filter(f=>f.date&&f.date<=today).forEach(f=>{
+      const v=isHrs?(ap127FlightMins(f)||lessonsMap[f.lesson]||0)/60:1;
+      flightsByDate[f.date]=(flightsByDate[f.date]||0)+v;
+    });
+    let rAct=0;
+    const data=labels.map((d,li)=>{
+      rAct+=(flightsByDate[d]||0);
+      return{x:d,y:+(rAct-planCum[li]).toFixed(2)};
+    });
+    allDeltas.push(data.map(p=>p.y));
+    datasets.push({
+      label:nick,
+      data,
+      borderColor:col,
+      borderWidth:visible?1.5:0,
+      pointRadius:0,
+      tension:0.15,
+      hidden:!visible,
+      order:1
+    });
+  });
+  const avgData=labels.map((d,li)=>{
+    const vals=allDeltas.map(sd=>sd[li]);
+    return{x:d,y:vals.length?+(vals.reduce((a,v)=>a+v,0)/vals.length).toFixed(2):0};
+  });
+  datasets.push({
+    label:'Batch Avg',
+    data:avgData,
+    borderColor:'#e88aff',
+    borderWidth:3,
+    pointRadius:0,
+    tension:0.15,
+    order:999
+  });
+  CHARTS.ap127histSolo=mkC('d127-hist-solo',{
+    type:'line',
+    data:{datasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      parsing:{xAxisKey:'x',yAxisKey:'y'},
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        datalabels:{display:false},
+        legend:{display:false},
+        tooltip:{callbacks:{
+          title:ctx=>{const r=ctx[0]?.raw;return r?ap127FmtDate(r.x):'';},
+          label:ctx=>{
+            if(ctx.dataset.label==='Zero')return null;
+            const v=ctx.raw?.y;if(v==null)return null;
+            return`${ctx.dataset.label}: ${isHrs?v.toFixed(1)+'h':Math.round(v)+' les'}`;
+          }
+        }}
+      },
+      scales:{
+        x:{type:'time',time:{unit:'month',displayFormats:{day:'d MMM',week:'d MMM',month:'MMM yy'}},
+          ticks:{font:{family:'JetBrains Mono',size:8},color:'#6e7681',maxTicksLimit:14,source:'auto'},
+          grid:{color:'#21262d'}},
+        y:{ticks:{font:{family:'JetBrains Mono',size:9},color:'#8b949e',callback:v=>isHrs?v.toFixed(0)+'h':v},
+          grid:{color:'#21262d'}}
+      }
+    }
+  });
+}
 function ap127FitY(chart){
   try{
     const xMin=chart.scales.x.min,xMax=chart.scales.x.max;
@@ -1126,7 +1337,7 @@ function ap127FitY(chart){
   function setSS(){ /* no-op: freshness shown in the unified top bar */ }
 
   // expose inline-handler targets used inside the reused markup/row HTML
-  Object.assign(window, { renderAP127Detail, renderAP127Pace, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, cpvResetZoom, openAP127Drawer, closeAP127Drawer, setAP127RaceMode, CHARTS });
+  Object.assign(window, { renderAP127Detail, renderAP127Pace, ap127ResetSort, ap127HeaderClick, setCPVFilter, setCPVMode, cpvResetZoom, openAP127Drawer, closeAP127Drawer, setAP127RaceMode, setHistBatchMode, buildAP127HistBatch, buildAP127HistSolo, CHARTS });
 
   function mountProgress(data){ G = data; renderAP127Detail(); }
   function destroyProgress(){ try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch(e){} }); } catch(e){} }
