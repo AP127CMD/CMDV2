@@ -1,7 +1,7 @@
 # CMDV2 — Claude Code Context
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p100` (all currently at p99)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p101` (all currently at p100)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -17,7 +17,7 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p99` (2026-06-25 — History Charts: two new panels at bottom of Progress view — Batch Lead/Lag History (`d127-hist-batch`, independent hours/lessons toggle, green/red fill, Now/Best/Worst KPIs) + Individual Lead/Lag vs Plan (`d127-hist-solo`, 28SP lines + batch avg, shares race chart mode + student filters). p98 (2026-06-23 — SCHOOL PERF SIM separation: SIM lessons split from normal flights in all 5 charts + KPI tiles show "(N SIM)"). p96 (2026-06-22 — Cross-Check keying fix). Next → `p100`. **Watchdog (2026-06-23):** `telegram.test.js` — added missing SP `@username` assertion to `STATUS → Canceled` test; all 6 notification types now verified. Implementation was already correct; test coverage gap only (no deploy needed).
+**Last known:** all files `p100` (2026-06-25 — Panel reorder in Progress view: Combined Progress vs Plan → Batch Lead/Lag History → Actual vs Planned → Individual Lead/Lag vs Plan → Flight Timeline → Overall Progress Bar). p99 (2026-06-25 — History Charts added). p98 (2026-06-23 — SCHOOL PERF SIM separation). Next → `p101`. **Watchdog (2026-06-23):** `telegram.test.js` — added missing SP `@username` assertion to `STATUS → Canceled` test; all 6 notification types now verified. Implementation was already correct; test coverage gap only (no deploy needed).
 
 ## Key facts — things that trip up new sessions
 - **Check `<script>` type per file before editing** — `view-overview.js` uses `type="text/babel"`; `shell.js`, `view-watchdog.js`, `view-cf-usage.js`, `view-crosscheck.js` are plain `<script>`. Run the grep above to confirm.

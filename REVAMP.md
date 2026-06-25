@@ -491,6 +491,12 @@ One-line change in each file — added before the span check:
 if (t >= duty.first && end <= duty.last) return true; // within existing window — no new duty
 ```
 
+### Progress view panel reorder (2026-06-25, p100)
+
+`js/view-cohort.js` MARKUP only — no logic changes.
+
+New order: Combined Progress vs Plan → Batch Lead/Lag History → Actual vs Planned → Individual Lead/Lag vs Plan → Flight Timeline vs Progress → Overall Progress Bar View.
+
 ### History Charts — Batch Lead/Lag & Individual Lead/Lag (2026-06-25, p99)
 
 `js/view-cohort.js`

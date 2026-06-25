@@ -107,11 +107,35 @@
       </div>
     </div>
     <div class="d127-panel">
+      <div class="d127-h" style="flex-wrap:wrap;gap:6px">
+        <span class="d127-t">Batch Lead/Lag History</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="cpv-btn hist-batch-mode sel" data-m="hours"   onclick="setHistBatchMode('hours')">Hours</button>
+          <button class="cpv-btn hist-batch-mode"     data-m="lessons" onclick="setHistBatchMode('lessons')">Lessons</button>
+        </div>
+      </div>
+      <div class="d127-body">
+        <div class="d127-note">Batch-wide cumulative actual − planned. Above zero = ahead of curriculum schedule; below = behind. Zero line = on plan.</div>
+        <div class="cpv-kpis" id="hist-batch-kpis"></div>
+        <div style="position:relative;height:220px"><canvas id="d127-hist-batch"></canvas></div>
+      </div>
+    </div>
+    <div class="d127-panel">
       <div class="d127-h"><span class="d127-t">Actual vs Planned</span><span class="d127-s" id="d127-race-meta">All 28 students with planned baseline</span></div>
       <div class="d127-body">
         <div class="d127-note">Solid lines are actual cumulative lessons to current date. Dashed line is planned target from curriculum dates.</div>
         <div style="position:relative;height:330px"><canvas id="d127-race"></canvas></div>
         <div id="d127-race-toggles" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding:8px;background:var(--s2);border-radius:4px;font-size:11px"></div>
+      </div>
+    </div>
+    <div class="d127-panel">
+      <div class="d127-h">
+        <span class="d127-t">Individual Lead/Lag vs Plan</span>
+        <span class="d127-s">Shares hours/lessons mode &amp; student filters with Actual vs Planned</span>
+      </div>
+      <div class="d127-body">
+        <div class="d127-note">Per-student delta (actual − planned). Above zero = ahead; below zero = behind. Thick magenta = batch avg. Use student toggles above to focus.</div>
+        <div style="position:relative;height:300px"><canvas id="d127-hist-solo"></canvas></div>
       </div>
     </div>
     <div class="d127-panel">
@@ -127,30 +151,6 @@
       <div class="d127-body">
         <div class="d127-note">X-axis = lesson number, Y-axis = all 28 students.</div>
         <div style="position:relative;height:560px;width:100%"><canvas id="d127-overall"></canvas></div>
-      </div>
-    </div>
-    <div class="d127-panel">
-      <div class="d127-h" style="flex-wrap:wrap;gap:6px">
-        <span class="d127-t">Batch Lead/Lag History</span>
-        <div style="display:flex;gap:6px;align-items:center">
-          <button class="cpv-btn hist-batch-mode sel" data-m="hours"   onclick="setHistBatchMode('hours')">Hours</button>
-          <button class="cpv-btn hist-batch-mode"     data-m="lessons" onclick="setHistBatchMode('lessons')">Lessons</button>
-        </div>
-      </div>
-      <div class="d127-body">
-        <div class="d127-note">Batch-wide cumulative actual − planned. Above zero = ahead of curriculum schedule; below = behind. Zero line = on plan.</div>
-        <div class="cpv-kpis" id="hist-batch-kpis"></div>
-        <div style="position:relative;height:220px"><canvas id="d127-hist-batch"></canvas></div>
-      </div>
-    </div>
-    <div class="d127-panel">
-      <div class="d127-h">
-        <span class="d127-t">Individual Lead/Lag vs Plan</span>
-        <span class="d127-s">Shares hours/lessons mode &amp; student filters with Actual vs Planned</span>
-      </div>
-      <div class="d127-body">
-        <div class="d127-note">Per-student delta (actual − planned). Above zero = ahead; below zero = behind. Thick magenta = batch avg. Use student toggles above to focus.</div>
-        <div style="position:relative;height:300px"><canvas id="d127-hist-solo"></canvas></div>
       </div>
     </div>
   </div>
