@@ -521,12 +521,13 @@
                 });
               });
               entries.sort((a, b) => b.hours - a.hours);
-              const maxH = Math.max(...entries.map(a => a.hours), 0.1);
+              const visEntries = entries.filter(ac => ac.hours > 0);
+              const maxH = Math.max(...visEntries.map(a => a.hours), 0.1);
               const avgPct = Math.min(100, (kpi.avgPerTail / maxH) * 100);
 
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {entries.map(ac => {
+                  {visEntries.map(ac => {
                     const pct = (ac.hours / maxH) * 100;
                     const col = U_TYPE_COLORS[ac.acType] || '#64748b';
                     const isEmpty = ac.hours < 0.01;
