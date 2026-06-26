@@ -166,6 +166,27 @@
 
   function uFmtH(h) { return (!h || h < 0.04) ? '—' : h.toFixed(1) + 'h'; }
 
+  function uBuildCurMap() {
+    const G = window.NGT_CACHE;
+    const map = {};
+    [G?.cur124 || [], G?.cur126 || [], G?.cur127 || []].forEach(cur =>
+      cur.forEach(c => { if (c.lesson && c.planned_mins != null) map[c.lesson] = c.planned_mins; })
+    );
+    return map;
+  }
+
+  function uEffectiveMins(f, curMap) {
+    const lesson = (f.lesson || '').trim();
+    if (!lesson) return f.durMin || 0;
+    if (curMap[lesson] != null) return curMap[lesson];
+    if (lesson.includes('/')) {
+      const base = lesson.replace(/\/\d+$/, '');
+      const part = parseInt(lesson.split('/').pop(), 10) || 1;
+      return part === 1 ? (curMap[base] != null ? curMap[base] : f.durMin || 0) : 0;
+    }
+    return f.durMin || 0;
+  }
+
   function UtilizationTab() {
     const today = typeof localToday === 'function' ? localToday() : new Date().toISOString().slice(0, 10);
 
@@ -229,6 +250,7 @@
       const dayTotals = {};
       const typeDayTotals = {};
       let compCount = 0;
+      const curMap = metric === 'effective' ? uBuildCurMap() : {};
 
       flights.forEach(f => {
         if (!f.date || f.date < from || f.date > to) return;
@@ -243,10 +265,11 @@
         if (typeFilter.length > 0 && !typeFilter.includes(acType)) return;
         if (ap127Only && !isAP127Batch(f.batch)) return;
 
-        const blockMins  = f.durMin || 0;
+        const blockMins   = f.durMin || 0;
         const airborneMin = f.airborne ? uParseAirborneMin(f.airborne) : 0;
-        const useMins    = (metric === 'airborne' && airborneMin > 0) ? airborneMin : blockMins;
-        const h          = useMins / 60;
+        const useMins     = metric === 'effective' ? uEffectiveMins(f, curMap)
+          : (metric === 'airborne' && airborneMin > 0) ? airborneMin : blockMins;
+        const h           = useMins / 60;
         const usedFallback = metric === 'airborne' && airborneMin === 0 && blockMins > 0;
 
         const rec = { ...f, _h: h, _block: blockMins / 60, _airborne: airborneMin / 60, _acType: acType, _usedFallback: usedFallback };
@@ -357,7 +380,7 @@
               stacked: true,
               ticks: { color: ink3, font: { family: 'monospace', size: 9 }, callback: v => v + 'h' },
               grid: { color: lineC },
-              title: { display: true, text: metric === 'block' ? 'Block Hours' : 'Airborne Hours', color: ink3, font: { size: 10 } },
+              title: { display: true, text: metric === 'block' ? 'Block Hours' : metric === 'airborne' ? 'Airborne Hours' : 'Effective Hours', color: ink3, font: { size: 10 } },
             },
           },
         },
@@ -430,8 +453,9 @@
 
           <div style={{ width: 1, background: 'var(--line)', height: 14, margin: '0 2px' }} />
           <span className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>Metric:</span>
-          <button className={'chip' + (metric === 'block'    ? ' sel' : '')} onClick={() => setMetric('block')}    style={{ fontSize: 10, padding: '3px 8px' }}>Block</button>
-          <button className={'chip' + (metric === 'airborne' ? ' sel' : '')} onClick={() => setMetric('airborne')} style={{ fontSize: 10, padding: '3px 8px' }}>Airborne</button>
+          <button className={'chip' + (metric === 'block'     ? ' sel' : '')} onClick={() => setMetric('block')}     style={{ fontSize: 10, padding: '3px 8px' }}>Block</button>
+          <button className={'chip' + (metric === 'airborne'  ? ' sel' : '')} onClick={() => setMetric('airborne')}  style={{ fontSize: 10, padding: '3px 8px' }}>Airborne</button>
+          <button className={'chip' + (metric === 'effective' ? ' sel' : '')} onClick={() => setMetric('effective')} style={{ fontSize: 10, padding: '3px 8px' }}>Effective</button>
 
           <div style={{ width: 1, background: 'var(--line)', height: 14, margin: '0 2px' }} />
           <button className={'chip' + (incPend ? ' sel' : '')} onClick={() => setIncPend(s => !s)} style={{ fontSize: 10, padding: '3px 8px' }}>+ Pending</button>
@@ -450,7 +474,7 @@
         {/* ── KPI strip ───────────────────────────────────────────────────── */}
         <div style={{ flexShrink: 0, padding: '8px 16px', display: 'flex', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', alignItems: 'stretch' }}>
           {[
-            { val: kpi.totalHours.toFixed(1) + 'h', label: metric === 'block' ? 'Block Hours' : 'Airborne Hrs', col: 'var(--highlight)' },
+            { val: kpi.totalHours.toFixed(1) + 'h', label: metric === 'block' ? 'Block Hours' : metric === 'airborne' ? 'Airborne Hrs' : 'Eff. Hours', col: 'var(--highlight)' },
             { val: kpi.compCount,                    label: 'Flights Done',   col: 'var(--col-done)'  },
             { val: kpi.activeTails,                  label: 'Active A/C',     col: 'var(--ink-1)'     },
             { val: uFmtH(kpi.avgPerTail),            label: 'Avg / Aircraft', col: 'var(--ink-2)'     },
@@ -469,6 +493,11 @@
           {metric === 'airborne' && (
             <div className="mono" style={{ fontSize: 9, color: 'var(--col-pending)', padding: '7px 10px', alignSelf: 'center' }}>
               ⚠ Falls back to block time if airborne not recorded
+            </div>
+          )}
+          {metric === 'effective' && (
+            <div className="mono" style={{ fontSize: 9, color: 'var(--col-pending)', padding: '7px 10px', alignSelf: 'center' }}>
+              ⚠ Effective = curriculum planned hrs per lesson · falls back to block if unknown
             </div>
           )}
         </div>
@@ -531,7 +560,7 @@
           {/* ── Daily utilization chart ────────────────────────────────── */}
           <div>
             <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink-3)', marginBottom: 10, fontWeight: 600, letterSpacing: 0.5 }}>
-              ◷ Daily Hours by Type — {metric === 'block' ? 'Block' : 'Airborne'}
+              ◷ Daily Hours by Type — {metric === 'block' ? 'Block' : metric === 'airborne' ? 'Airborne' : 'Effective'}
             </div>
             <div style={{ height: 200, position: 'relative' }}>
               <canvas ref={dailyCanvasRef} style={{ display: 'block' }} />
@@ -819,6 +848,7 @@
       const typeDayTotals      = {};
       const personBatchCounts  = {};
       let compCount = 0;
+      const curMap = metric === 'effective' ? uBuildCurMap() : {};
 
       flights.forEach(f => {
         if (!f.date || f.date < from || f.date > to) return;
@@ -834,7 +864,8 @@
 
         const blockMins    = f.durMin || 0;
         const airborneMin  = f.airborne ? uParseAirborneMin(f.airborne) : 0;
-        const useMins      = (metric === 'airborne' && airborneMin > 0) ? airborneMin : blockMins;
+        const useMins      = metric === 'effective' ? uEffectiveMins(f, curMap)
+          : (metric === 'airborne' && airborneMin > 0) ? airborneMin : blockMins;
         const h            = useMins / 60;
         const usedFallback = metric === 'airborne' && airborneMin === 0 && blockMins > 0;
 
@@ -948,7 +979,7 @@
           },
           scales: {
             x: { stacked: true, ticks: { color: ink3, font: { family: 'monospace', size: 9 }, maxRotation: 45, maxTicksLimit: 20 }, grid: { color: lineC } },
-            y: { stacked: true, ticks: { color: ink3, font: { family: 'monospace', size: 9 }, callback: v => v + 'h' }, grid: { color: lineC }, title: { display: true, text: metric === 'block' ? 'Block Hours' : 'Airborne Hours', color: ink3, font: { size: 10 } } },
+            y: { stacked: true, ticks: { color: ink3, font: { family: 'monospace', size: 9 }, callback: v => v + 'h' }, grid: { color: lineC }, title: { display: true, text: metric === 'block' ? 'Block Hours' : metric === 'airborne' ? 'Airborne Hours' : 'Effective Hours', color: ink3, font: { size: 10 } } },
           },
         },
       });
@@ -1014,8 +1045,9 @@
 
           <div style={{ width: 1, background: 'var(--line)', height: 14, margin: '0 2px' }} />
           <span className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>Metric:</span>
-          <button className={'chip' + (metric === 'block'    ? ' sel' : '')} onClick={() => setMetric('block')}    style={{ fontSize: 10, padding: '3px 8px' }}>Block</button>
-          <button className={'chip' + (metric === 'airborne' ? ' sel' : '')} onClick={() => setMetric('airborne')} style={{ fontSize: 10, padding: '3px 8px' }}>Airborne</button>
+          <button className={'chip' + (metric === 'block'     ? ' sel' : '')} onClick={() => setMetric('block')}     style={{ fontSize: 10, padding: '3px 8px' }}>Block</button>
+          <button className={'chip' + (metric === 'airborne'  ? ' sel' : '')} onClick={() => setMetric('airborne')}  style={{ fontSize: 10, padding: '3px 8px' }}>Airborne</button>
+          <button className={'chip' + (metric === 'effective' ? ' sel' : '')} onClick={() => setMetric('effective')} style={{ fontSize: 10, padding: '3px 8px' }}>Effective</button>
 
           <div style={{ width: 1, background: 'var(--line)', height: 14, margin: '0 2px' }} />
           <button className={'chip' + (incPend ? ' sel' : '')} onClick={() => setIncPend(s => !s)} style={{ fontSize: 10, padding: '3px 8px' }}>+ Pending</button>
@@ -1034,7 +1066,7 @@
         {/* ── KPI strip ───────────────────────────────────────────────────── */}
         <div style={{ flexShrink: 0, padding: '8px 16px', display: 'flex', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', alignItems: 'stretch' }}>
           {[
-            { val: kpi.totalHours.toFixed(1) + 'h', label: metric === 'block' ? 'Block Hours' : 'Airborne Hrs', col: baseColor },
+            { val: kpi.totalHours.toFixed(1) + 'h', label: metric === 'block' ? 'Block Hours' : metric === 'airborne' ? 'Airborne Hrs' : 'Eff. Hours', col: baseColor },
             { val: kpi.compCount,                    label: 'Flights Done',          col: 'var(--col-done)'  },
             { val: kpi.activePersons,                label: `Active ${modeShort}s`,  col: 'var(--ink-1)'     },
             { val: uFmtH(kpi.avgPerPerson),          label: `Avg / ${modeShort}`,    col: 'var(--ink-2)'     },
@@ -1053,6 +1085,11 @@
           {metric === 'airborne' && (
             <div className="mono" style={{ fontSize: 9, color: 'var(--col-pending)', padding: '7px 10px', alignSelf: 'center' }}>
               ⚠ Falls back to block time if airborne not recorded
+            </div>
+          )}
+          {metric === 'effective' && (
+            <div className="mono" style={{ fontSize: 9, color: 'var(--col-pending)', padding: '7px 10px', alignSelf: 'center' }}>
+              ⚠ Effective = curriculum planned hrs per lesson · falls back to block if unknown
             </div>
           )}
         </div>
@@ -1095,7 +1132,7 @@
           {/* ── Daily hours chart ─────────────────────────────────────────── */}
           <div>
             <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink-3)', marginBottom: 10, fontWeight: 600, letterSpacing: 0.5 }}>
-              ◷ Daily Hours by A/C Type — {metric === 'block' ? 'Block' : 'Airborne'}
+              ◷ Daily Hours by A/C Type — {metric === 'block' ? 'Block' : metric === 'airborne' ? 'Airborne' : 'Effective'}
             </div>
             <div style={{ height: 200, position: 'relative' }}>
               <canvas ref={dailyCanvasRef} style={{ display: 'block' }} />
