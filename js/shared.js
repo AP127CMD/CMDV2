@@ -8,7 +8,7 @@ const { useState, useMemo, useEffect, useRef, useCallback, createContext, useCon
   const raw = window.FLIGHT_DATA.flights;
   // Identity of a flight independent of its id: who / when / which lesson (split suffix
   // stripped). Used as a fallback when the id-based match below misses its planned twin.
-  const norm = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ').replace(/\/\d+\s*$/, '');
+  const norm = s => String(s || '').trim().toUpperCase().replace(/\s*\(UNPLANNED\)\s*$/i, '').replace(/\s+/g, ' ').replace(/\/\d+\s*$/, '');
   const evtKey = f => norm(f.student) + '|' + (f.date || '') + '|' + norm(f.lesson);
   const hasActual = new Set();   // base ids derived from ACTUAL_ONLY rows
   const actualKeys = new Set();  // student|date|lesson of completed actuals
@@ -36,6 +36,12 @@ const { useState, useMemo, useEffect, useRef, useCallback, createContext, useCon
     console.warn('[AP127] dedup: ' + keyFallback + ' planned Completed row(s) removed via student|date|lesson fallback (ACTUAL_ONLY id did not derive to a planned id — check upstream ID format).');
   }
 })();
+// Strip " (Unplanned)" suffix from student/instructor names so all views treat
+// "NAME (Unplanned)" and "NAME" as the same person.
+window.FLIGHT_DATA.flights.forEach(f => {
+  if (f.student)    f.student    = f.student.replace(/\s*\(Unplanned\)\s*$/i, '').trim();
+  if (f.instructor) f.instructor = f.instructor.replace(/\s*\(Unplanned\)\s*$/i, '').trim();
+});
 const FLIGHTS     = window.FLIGHT_DATA.flights;
 const INSTRUCTORS = window.FLIGHT_DATA.instructors;
 const RESOURCES   = window.FLIGHT_DATA.resources;
