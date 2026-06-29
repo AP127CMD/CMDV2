@@ -25,6 +25,7 @@ git log --oneline | grep -v "chore: refresh data" | head -6                 # la
 - Drive views in preview: `window.dispatchEvent(new CustomEvent('ap127-go',{detail:'viewId'}))` (not hash change)
 - Read `REVAMP.md` change log before making changes — avoids duplicating or breaking prior work
 - Watchdog worker redeploy: `cd /Users/nugui/AP127_V2/watchdog && npx wrangler deploy`
+- **CI (2026-06-29):** `scripts/refresh_snapshots.mjs` isolates each of the 3 upstreams — a transient blip (e.g. ap127-data-api 50-byte response) keeps the prior snapshot and continues; only a total outage fails. `refresh-data.yml` push is race-proof (retry + `rebase -X theirs`). Do NOT make a single source's failure fatal again.
 
 ## Master reference
 Full architecture, deploy steps, secrets: https://ap127-docs.pages.dev  (§2.4)
