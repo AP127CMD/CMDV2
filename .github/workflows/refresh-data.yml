@@ -43,9 +43,21 @@ jobs:
             echo "No snapshot changes — nothing to commit."
           else
             git commit -m "chore: refresh data snapshots $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            # Rebase over any concurrent commit before pushing.
-            git pull --rebase --autostash origin main
-            git push origin main
+            # Push with retry. On a non-fast-forward rejection, replay our commit
+            # on top of the new remote tip, keeping OUR freshly written snapshots
+            # (`-X theirs` auto-resolves the conflict on the regenerated files).
+            for attempt in 1 2 3 4 5; do
+              if git push origin main; then
+                echo "Pushed on attempt $attempt"; break
+              fi
+              if [ "$attempt" = 5 ]; then
+                echo "::error::push failed after 5 attempts"; exit 1
+              fi
+              echo "Push rejected — syncing with remote (attempt $attempt)…"
+              git fetch origin main
+              git rebase -X theirs origin/main || { git rebase --abort; exit 1; }
+              sleep $((attempt * 3))
+            done
           fi
 
       - name: Report failure as an issue

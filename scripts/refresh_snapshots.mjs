@@ -61,38 +61,67 @@ function writeIfChanged(file, content) {
 
 const nowIso = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 
+// V2 is a MIRROR with the committed snapshots acting as offline fallbacks (the
+// app fetches each source live at runtime). A single upstream being briefly
+// unavailable must NOT fail the whole run and leave the Actions tab red — we keep
+// that source's previous snapshot and carry on. Only a TOTAL outage (every source
+// down) is a real failure worth surfacing as an issue.
+const sources = [];
+async function refreshSource(label, fn) {
+  try { await fn(); sources.push({ label, ok: true }); }
+  catch (e) {
+    console.warn(`[${label}] SKIPPED — keeping previous snapshot: ${e.message}`);
+    sources.push({ label, ok: false, err: e.message });
+  }
+}
+
 // ── 1. Operations: mirror Command Center's flight-data.js verbatim ──
-const flightJs = await fetchText(FLIGHT_SRC, 'flight-data');
-if (!/window\.FLIGHT_DATA\s*=/.test(flightJs)) throw new Error('[flight-data] upstream missing `window.FLIGHT_DATA =` — refusing to write');
-writeIfChanged('flight-data.js', flightJs.trimEnd() + '\n');
+await refreshSource('flight-data', async () => {
+  const flightJs = await fetchText(FLIGHT_SRC, 'flight-data');
+  if (!/window\.FLIGHT_DATA\s*=/.test(flightJs)) throw new Error('upstream missing `window.FLIGHT_DATA =` — refusing to write');
+  writeIfChanged('flight-data.js', flightJs.trimEnd() + '\n');
+});
 
 // ── 2. Progress: fetch worker JSON, validate, wrap as window.PROGRESS_DATA ──
-const progressRaw = await fetchText(PROGRESS_SRC, 'progress-data');
-let progress;
-try { progress = JSON.parse(progressRaw); } catch (e) { throw new Error(`[progress-data] not valid JSON: ${e.message}`); }
-if (!Array.isArray(progress.ap127) || progress.ap127.length === 0) throw new Error('[progress-data] missing/empty ap127[] — refusing to write');
-if (!Array.isArray(progress.cur127)) console.warn('[progress-data] note: cur127[] absent in worker response');
-progress._updated = nowIso;
-const progressJs =
-  `// Snapshot of AP127 progress data from worker ap127-data-api — fallback when live fetch fails\n` +
-  `// Generated ${nowIso}\n` +
-  `window.PROGRESS_DATA = ${JSON.stringify(progress)};\n`;
-writeIfChanged('progress-data.js', progressJs);
+await refreshSource('progress-data', async () => {
+  const progressRaw = await fetchText(PROGRESS_SRC, 'progress-data');
+  let progress;
+  try { progress = JSON.parse(progressRaw); } catch (e) { throw new Error(`not valid JSON: ${e.message}`); }
+  if (!Array.isArray(progress.ap127) || progress.ap127.length === 0) throw new Error('missing/empty ap127[] — refusing to write');
+  if (!Array.isArray(progress.cur127)) console.warn('[progress-data] note: cur127[] absent in worker response');
+  progress._updated = nowIso;
+  const progressJs =
+    `// Snapshot of AP127 progress data from worker ap127-data-api — fallback when live fetch fails\n` +
+    `// Generated ${nowIso}\n` +
+    `window.PROGRESS_DATA = ${JSON.stringify(progress)};\n`;
+  writeIfChanged('progress-data.js', progressJs);
+});
 
 // ── 3. Training program: mirror NGT_001 cache.json (all 4 batches) as window.NGT_CACHE ──
 // powers the multi-batch Overview / School's Performance / Simulation views.
-const ngtRaw = await fetchText(NGT_SRC, 'ngt-data');
-let ngt;
-try { ngt = JSON.parse(ngtRaw); } catch (e) { throw new Error(`[ngt-data] not valid JSON: ${e.message}`); }
-if (!Array.isArray(ngt.ap127) || ngt.ap127.length === 0) throw new Error('[ngt-data] missing/empty ap127[] — refusing to write');
-['ap124', 'ap126', 'ap129', 'monthly', 'cur127'].forEach(k => { if (!ngt[k]) console.warn(`[ngt-data] note: ${k} absent in cache.json`); });
-const ngtJs =
-  `// Snapshot of AP127_NGT_001 cache.json (all 4 batches + monthly + curricula) — mirror of\n` +
-  `// ${NGT_SRC}. Refreshed hourly. Powers the Training Program views.\n` +
-  `// Generated ${nowIso}\n` +
-  `window.NGT_CACHE = ${JSON.stringify(ngt)};\n`;
-// writeIfChanged strips both the header and any "_updated" before diffing, so a new
-// upstream rebuild timestamp alone won't trigger a commit — only real data changes do.
-writeIfChanged('ngt-data.js', ngtJs);
+await refreshSource('ngt-data', async () => {
+  const ngtRaw = await fetchText(NGT_SRC, 'ngt-data');
+  let ngt;
+  try { ngt = JSON.parse(ngtRaw); } catch (e) { throw new Error(`not valid JSON: ${e.message}`); }
+  if (!Array.isArray(ngt.ap127) || ngt.ap127.length === 0) throw new Error('missing/empty ap127[] — refusing to write');
+  ['ap124', 'ap126', 'ap129', 'monthly', 'cur127'].forEach(k => { if (!ngt[k]) console.warn(`[ngt-data] note: ${k} absent in cache.json`); });
+  const ngtJs =
+    `// Snapshot of AP127_NGT_001 cache.json (all 4 batches + monthly + curricula) — mirror of\n` +
+    `// ${NGT_SRC}. Refreshed hourly. Powers the Training Program views.\n` +
+    `// Generated ${nowIso}\n` +
+    `window.NGT_CACHE = ${JSON.stringify(ngt)};\n`;
+  // writeIfChanged strips both the header and any "_updated" before diffing, so a new
+  // upstream rebuild timestamp alone won't trigger a commit — only real data changes do.
+  writeIfChanged('ngt-data.js', ngtJs);
+});
 
-console.log('Done.');
+const failed = sources.filter(s => !s.ok);
+if (failed.length === sources.length) {
+  // Every upstream is down — a genuine outage. Fail so the workflow opens an issue.
+  throw new Error(`all ${sources.length} upstreams failed: ${failed.map(f => `${f.label} (${f.err})`).join('; ')}`);
+}
+if (failed.length) {
+  console.warn(`Done with ${failed.length}/${sources.length} source(s) skipped (kept prior snapshot): ${failed.map(f => f.label).join(', ')}`);
+} else {
+  console.log('Done.');
+}
