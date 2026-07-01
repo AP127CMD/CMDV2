@@ -5,13 +5,6 @@ const DAY_FALLBACK_START = 6;  // used only when the day has no flights
 const DAY_FALLBACK_END   = 18; // used only when the day has no flights
 const EDGE_PAD_MIN       = 30; // breathing room added before first / after last flight
 
-// Current time-of-day in Bangkok, expressed as minutes since midnight.
-const bkkNowMin = () => {
-  const n = new Date();
-  const b = new Date(n.getTime() + (n.getTimezoneOffset() + 420) * 60000);
-  return b.getUTCHours() * 60 + b.getUTCMinutes();
-};
-
 // Helper: detect non-flight activities (meetings, briefings, ground school)
 const isMeetingFlt = f => /meeting|briefing|debrief|ground.school/i.test(f.lesson || '') || /meeting|recurrent/i.test(f.batch || '');
 // Solo = any flight whose CONDITION (or lesson, as fallback) contains "solo"

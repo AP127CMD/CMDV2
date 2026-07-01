@@ -115,9 +115,26 @@ const PROGRESS_WORKER_URL = 'https://ap127-data-api.anusorn-tanmetha.workers.dev
 const _bkkFmt = (() => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }); } catch (e) { return null; } })();
 const bkkToday = () => {
   if (_bkkFmt) return _bkkFmt.format(new Date());
-  // Fallback if Intl/timezone data is unavailable: manual UTC+7 offset.
+  // Fallback if Intl/timezone data is unavailable: fixed UTC+7 offset applied to the
+  // absolute epoch (getTime() is already tz-independent — do NOT also add
+  // getTimezoneOffset(), that's the viewer's own offset and has nothing to do with Bangkok).
   const n = new Date();
-  return new Date(n.getTime() + (n.getTimezoneOffset() + 420) * 60000).toISOString().slice(0, 10);
+  return new Date(n.getTime() + 7 * 60 * 60000).toISOString().slice(0, 10);
+};
+// Current time-of-day in Asia/Bangkok, as minutes since midnight — drives the Gantt
+// NOW-line. Must be correct regardless of the viewer's own device timezone.
+const _bkkTimeFmt = (() => { try { return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }); } catch (e) { return null; } })();
+const bkkNowMin = () => {
+  if (_bkkTimeFmt) {
+    const parts = _bkkTimeFmt.formatToParts(new Date());
+    const h = +parts.find(p => p.type === 'hour').value;
+    const m = +parts.find(p => p.type === 'minute').value;
+    return h * 60 + m;
+  }
+  // Fallback: same fixed UTC+7-on-epoch approach as bkkToday's fallback.
+  const n = new Date();
+  const b = new Date(n.getTime() + 7 * 60 * 60000);
+  return b.getUTCHours() * 60 + b.getUTCMinutes();
 };
 
 // "Akaravit Khwanngam" → "AKARAVIT K." (same rule as reconcile.ccKeyFromFull); used
