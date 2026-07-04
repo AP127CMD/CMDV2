@@ -107,38 +107,53 @@
   }
 
   // ── Destinations panel ───────────────────────────────────────────────────────
-  const BATCH_CATEGORIES = [
-    { key: 'AP-127',   label: 'AP-127',   filter: 'AP-127' },
-    { key: 'other-ap', label: 'Other AP', filter: ['AP-124','AP-126','AP-128','AP-129'] },
-    { key: 'hp',       label: 'HP',       filter: ['HP-55','HP-57'] },
-    { key: 'ppl',      label: 'PPL',      filter: ['PPL-40','PPL-42','PPL-H 05'] },
-    { key: 'other',    label: 'Other',    filter: ['FAM FI','MEP-35','Meeting','Recurrent','TCAR/LPC','Test Flight'] },
-    { key: '*',        label: 'All',      filter: '*' },
-  ];
+  // Full list of real batch values seen in the live schedule — sourced live so
+  // new/renamed batches (e.g. "TCAR / LPC" vs "TCAR/LPC") are never missed.
+  function getAllBatches() {
+    const flights = window.FLIGHT_DATA?.flights || [];
+    return [...new Set(flights.map(f => f.batch).filter(Boolean))].sort();
+  }
+
+  // Named groups are fixed; "Other" + "All" are computed live against getAllBatches()
+  // so any batch not in a named group (however it's spelled) is still selectable/covered.
+  const NAMED_GROUPS = {
+    'AP-127':   ['AP-127'],
+    'Other AP': ['AP-124', 'AP-126', 'AP-128', 'AP-129'],
+    'HP':       ['HP-55', 'HP-57'],
+    'PPL':      ['PPL-40', 'PPL-42', 'PPL-H 05'],
+  };
+
+  function quickPresets(allBatches) {
+    const named = new Set(Object.values(NAMED_GROUPS).flat());
+    return {
+      ...NAMED_GROUPS,
+      'Other': allBatches.filter(b => !named.has(b)),
+      'All': allBatches,
+    };
+  }
+
+  // Expand a stored batchFilter (string | '*' | '!X' | string[]) into a concrete list
+  // of real batch values, for seeding the checkbox picker.
+  function resolveBatchFilter(f, allBatches) {
+    if (!f || f === '*') return allBatches;
+    if (typeof f === 'string') {
+      if (f.startsWith('!')) { const ex = f.slice(1); return allBatches.filter(b => b !== ex); }
+      return allBatches.includes(f) ? [f] : [f];
+    }
+    if (Array.isArray(f)) return f;
+    return [];
+  }
 
   function filterLabel(f) {
     if (!f || f === '*') return 'All batches';
-    if (f === 'AP-127') return 'AP-127';
-    if (f === '!AP-127') return '≠ AP-127';
-    if (typeof f === 'string') return f;
+    if (typeof f === 'string') return f.startsWith('!') ? '≠ ' + f.slice(1) : f;
     if (!Array.isArray(f) || f.length === 0) return '(none)';
-    const cat = BATCH_CATEGORIES.find(c =>
-      Array.isArray(c.filter) && c.filter.length === f.length &&
-      c.filter.every(b => f.includes(b)));
-    if (cat) return cat.label;
-    return f.slice(0, 3).join(', ') + (f.length > 3 ? ` +${f.length - 3}` : '');
-  }
-
-  function detectCategory(f) {
-    if (!f || f === '*') return '*';
-    if (f === 'AP-127') return 'AP-127';
-    if (Array.isArray(f)) {
-      const cat = BATCH_CATEGORIES.find(c =>
-        Array.isArray(c.filter) && c.filter.length === f.length &&
-        c.filter.every(b => f.includes(b)));
-      return cat ? cat.key : 'custom';
+    const presets = quickPresets(getAllBatches());
+    for (const [name, list] of Object.entries(presets)) {
+      if (name === 'All') continue;
+      if (list.length === f.length && list.every(b => f.includes(b))) return name;
     }
-    return 'custom';
+    return f.slice(0, 3).join(', ') + (f.length > 3 ? ` +${f.length - 3}` : '');
   }
 
   const DEFAULT_CHAT_ID = '-1004258992854';
@@ -163,19 +178,34 @@
     const [threadId, setThread] = useState(dest?.threadId != null ? String(dest.threadId) : '');
     const [mention, setMention] = useState(dest?.mention !== false);
     const [enabled, setEnabled] = useState(dest?.enabled !== false);
-    const [catKey, setCatKey]   = useState(() => detectCategory(dest?.batchFilter));
     const [sf, setSf]           = useState(dest?.studentFilter || '');
 
-    const selFilter = (BATCH_CATEGORIES.find(c => c.key === catKey) || BATCH_CATEGORIES[5]).filter;
+    const allBatches = React.useMemo(getAllBatches, []);
+    const presets = React.useMemo(() => quickPresets(allBatches), [allBatches]);
+    const [selBatches, setSelBatches] = useState(() => new Set(resolveBatchFilter(dest?.batchFilter, allBatches)));
+
     const isDm = sf.trim() !== '';
 
+    function applyPreset(list) { setSelBatches(new Set(list)); }
+    function toggleBatch(b) {
+      setSelBatches(prev => {
+        const next = new Set(prev);
+        next.has(b) ? next.delete(b) : next.add(b);
+        return next;
+      });
+    }
+
     function submit() {
-      if (!label.trim()) return;
+      if (!label.trim() || !selBatches.size) return;
+      let batchFilter;
+      if (selBatches.size === allBatches.length) batchFilter = '*';
+      else if (selBatches.size === 1) batchFilter = [...selBatches][0];
+      else batchFilter = allBatches.filter(b => selBatches.has(b)); // stable order
       const obj = {
         label: label.trim(),
         chatId: chatId.trim(),
         threadId: threadId.trim() ? parseInt(threadId.trim(), 10) : null,
-        batchFilter: selFilter,
+        batchFilter,
         mention,
         enabled,
       };
@@ -219,19 +249,32 @@
           h('input', { value: threadId, onChange: e => setThread(e.target.value),
             placeholder: 'e.g. 12', type: 'number', style: inp })),
 
-        fieldRow('Batch filter',
+        fieldRow('Batch filter — quick select',
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 5 } },
-            BATCH_CATEGORIES.map(c =>
+            Object.entries(presets).map(([name, list]) =>
               h('button', {
-                key: c.key,
+                key: name,
                 className: 'chip',
-                onClick: () => setCatKey(c.key),
+                onClick: () => applyPreset(list),
                 style: {
-                  background: catKey === c.key ? 'var(--highlight)' : 'var(--bg-2)',
-                  color: catKey === c.key ? '#fff' : 'var(--ink-2)',
-                  border: `1px solid ${catKey === c.key ? 'var(--highlight)' : 'var(--line)'}`,
+                  background: list.length === selBatches.size && list.every(b => selBatches.has(b))
+                    ? 'var(--highlight)' : 'var(--bg-2)',
+                  color: list.length === selBatches.size && list.every(b => selBatches.has(b))
+                    ? '#fff' : 'var(--ink-2)',
+                  border: '1px solid var(--line)',
                 },
-              }, c.label)))),
+              }, name)),
+            h('button', { className: 'chip', onClick: () => applyPreset([]) }, 'Clear'))),
+
+        fieldRow(`Batches selected (${selBatches.size}/${allBatches.length}) — all filters available`,
+          h('div', { style: {
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '4px 8px',
+              maxHeight: 150, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 4, padding: 8,
+            } },
+            allBatches.map(b =>
+              h('label', { key: b, style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' } },
+                h('input', { type: 'checkbox', checked: selBatches.has(b), onChange: () => toggleBatch(b) }),
+                b)))),
 
         h('div', { style: { display: 'flex', gap: 16, marginBottom: 14 } },
           h('label', { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' } },
@@ -242,7 +285,7 @@
             'Enabled')),
 
         h('div', { style: { display: 'flex', gap: 8 } },
-          h('button', { className: 'chip', onClick: submit, disabled: !label.trim() }, isNew ? 'Add' : 'Save'),
+          h('button', { className: 'chip', onClick: submit, disabled: !label.trim() || !selBatches.size }, isNew ? 'Add' : 'Save'),
           h('button', { className: 'chip', onClick: onClose }, 'Cancel'))));
   }
 
@@ -421,12 +464,45 @@
                       }, apiKey ? 'Edit' : 'Key needed'))))))));
   }
 
+  // ── Log detail modal ─────────────────────────────────────────────────────────
+  function LogDetailModal({ entry, onClose }) {
+    const diffKeys = Object.keys(entry.diff || {});
+    const row = (lbl, val) => h('div', {
+        style: { display: 'flex', justifyContent: 'space-between', gap: 12,
+          padding: '5px 0', borderBottom: '1px solid var(--line)' } },
+      h('span', { className: 'muted', style: { fontSize: 11 } }, lbl),
+      h('span', { className: 'mono', style: { fontSize: 11, textAlign: 'right' } }, val ?? '—'));
+
+    return h('div', { style: { position: 'fixed', inset: 0, background: 'oklch(0 0 0 / 0.6)',
+        zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
+        onClick: onClose },
+      h('div', { className: 'panel', style: { width: '100%', maxWidth: 420, padding: 20 },
+          onClick: e => e.stopPropagation() },
+        h('div', { className: 'ph', style: { marginBottom: 12 } },
+          h('span', { className: 'pt' }, `${EVENT_ICONS[entry.type] || '•'} ${entry.type}`),
+          h('span', { className: 'ps' }, fmtTs(entry.ts))),
+        row('Student', entry.student),
+        row('Lesson', entry.lesson),
+        row('Date', entry.date),
+        row('Time', entry.start && entry.end ? `${entry.start}–${entry.end}` : null),
+        row('Aircraft', entry.tail),
+        row('Instructor', entry.instructor),
+        row('Flight ID', entry.flightId),
+        diffKeys.length > 0 && h('div', { style: { marginTop: 12 } },
+          h('div', { className: 'muted', style: { fontSize: 11, marginBottom: 6 } }, 'Changes'),
+          diffKeys.map(k => h('div', { key: k, style: { fontSize: 11, marginBottom: 4 } },
+            h('b', null, k), ': ', String(entry.diff[k].from), ' → ', String(entry.diff[k].to)))),
+        h('div', { style: { marginTop: 16, textAlign: 'right' } },
+          h('button', { className: 'chip', onClick: onClose }, 'Close'))));
+  }
+
   // ── Log panel ────────────────────────────────────────────────────────────────
   function LogPanel() {
     const [month, setMonth] = useState(MONTHS[0]);
     const [log, setLog] = useState([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
+    const [detail, setDetail] = useState(null);
 
     useEffect(() => {
       setLoading(true);
@@ -456,6 +532,7 @@
       padding: '2px 6px', fontSize: 11, fontFamily: 'JetBrains Mono' };
 
     return h('div', { className: 'panel' },
+      detail && h(LogDetailModal, { entry: detail, onClose: () => setDetail(null) }),
       h('div', { className: 'ph' },
         h('span', { className: 'pt' }, 'Notification Log'),
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
@@ -484,7 +561,9 @@
                     const changeSummary = diffKeys.length
                       ? diffKeys.map(k => `${k}: ${e.diff[k].from}→${e.diff[k].to}`).join(', ')
                       : e.type === 'ADDED' ? `${e.start}–${e.end} · ${e.tail}` : '';
-                    return h('tr', { key: i },
+                    return h('tr', { key: i, style: { cursor: 'pointer' },
+                        onClick: () => setDetail(e),
+                        title: 'Click for flight detail' },
                       h('td', { className: 'mono muted', style: { fontSize: 9, whiteSpace: 'nowrap' } },
                         fmtTs(e.ts)),
                       h('td', null, EVENT_ICONS[e.type] || '•'),
