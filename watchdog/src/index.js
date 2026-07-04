@@ -94,6 +94,7 @@ async function runWatchdog(env) {
         // Skip disabled destinations
         if (dest.enabled === false) continue;
         if (!matchesBatchFilter(dest.batchFilter, flightBatch)) continue;
+        if (dest.studentFilter && event.flight.student !== dest.studentFilter) continue;
         // mention:true → pass roster for @username lookup; false → plain name only
         const roster = dest.mention !== false ? (config.roster || []) : [];
         const msg = formatMessage(event, roster);

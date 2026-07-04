@@ -156,7 +156,7 @@
     return h('div', { style: track, onClick: onChange }, h('div', { style: knob }));
   }
 
-  function DestinationFormModal({ dest, onSave, onClose }) {
+  function DestinationFormModal({ dest, roster, onSave, onClose }) {
     const isNew = !dest;
     const [label, setLabel]     = useState(dest?.label || '');
     const [chatId, setChatId]   = useState(dest?.chatId || DEFAULT_CHAT_ID);
@@ -164,19 +164,23 @@
     const [mention, setMention] = useState(dest?.mention !== false);
     const [enabled, setEnabled] = useState(dest?.enabled !== false);
     const [catKey, setCatKey]   = useState(() => detectCategory(dest?.batchFilter));
+    const [sf, setSf]           = useState(dest?.studentFilter || '');
 
     const selFilter = (BATCH_CATEGORIES.find(c => c.key === catKey) || BATCH_CATEGORIES[5]).filter;
+    const isDm = sf.trim() !== '';
 
     function submit() {
       if (!label.trim()) return;
-      onSave({
+      const obj = {
         label: label.trim(),
         chatId: chatId.trim(),
         threadId: threadId.trim() ? parseInt(threadId.trim(), 10) : null,
         batchFilter: selFilter,
         mention,
         enabled,
-      });
+      };
+      if (sf.trim()) obj.studentFilter = sf.trim();
+      onSave(obj);
     }
 
     const inp = {
@@ -196,9 +200,22 @@
         fieldRow('Topic label', h('input', { value: label, onChange: e => setLabel(e.target.value),
           placeholder: 'e.g. HP Group', autoFocus: true, style: inp })),
 
+        fieldRow('Student only (blank = all)',
+          h('div', null,
+            h('input', {
+              list: 'wd-roster-list',
+              value: sf, onChange: e => setSf(e.target.value),
+              placeholder: 'e.g. ANUSORN T. — leave blank for all',
+              style: inp,
+            }),
+            h('datalist', { id: 'wd-roster-list' },
+              (roster || []).map(r => h('option', { key: r.scheduleName, value: r.scheduleName }))),
+            isDm && h('div', { style: { fontSize: 10, color: 'var(--col-warn, #f59e0b)', marginTop: 4 } },
+              '💡 For personal DM: set Chat ID to your Telegram numeric user ID (not the group). Send /start to the bot first, then @userinfobot to find your ID.'))),
+
         fieldRow('Chat ID', h('input', { value: chatId, onChange: e => setChatId(e.target.value), style: inp })),
 
-        fieldRow('Thread ID (blank = main chat)',
+        fieldRow('Thread ID (blank = main chat / DM)',
           h('input', { value: threadId, onChange: e => setThread(e.target.value),
             placeholder: 'e.g. 12', type: 'number', style: inp })),
 
@@ -279,9 +296,12 @@
       saveDestinations(destinations.filter((_, i) => i !== idx));
     }
 
+    const roster = config?.roster || [];
+
     return h('div', null,
       modal && h(DestinationFormModal, {
         dest: modal.mode === 'edit' ? destinations[modal.idx] : null,
+        roster,
         onSave: handleFormSave,
         onClose: () => setModal(null),
       }),
@@ -305,6 +325,7 @@
                     h('th', null, ''),
                     h('th', null, 'Topic'),
                     h('th', null, 'Batches'),
+                    h('th', null, 'SP'),
                     h('th', null, '@'),
                     h('th', null, ''))),
                 h('tbody', null,
@@ -314,6 +335,7 @@
                       h('td', null, h(Toggle, { on, onChange: () => !saving && toggleEnabled(i) })),
                       h('td', { className: 'mono', style: { fontSize: 11 } }, dest.label),
                       h('td', { className: 'muted', style: { fontSize: 11 } }, filterLabel(dest.batchFilter)),
+                      h('td', { className: 'muted', style: { fontSize: 11 } }, dest.studentFilter ? dest.studentFilter : '—'),
                       h('td', { className: 'muted', style: { fontSize: 11 } }, dest.mention !== false ? '✓' : '—'),
                       h('td', { style: { whiteSpace: 'nowrap' } },
                         h('button', { className: 'chip', style: { marginRight: 4 },
@@ -404,6 +426,7 @@
     const [month, setMonth] = useState(MONTHS[0]);
     const [log, setLog] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [search, setSearch] = useState('');
 
     useEffect(() => {
       setLoading(true);
@@ -413,30 +436,50 @@
         .catch(() => { setLog([]); setLoading(false); });
     }, [month]);
 
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? log.filter(e => {
+          const diffKeys = Object.keys(e.diff || {});
+          const changeText = diffKeys.length
+            ? diffKeys.map(k => `${k} ${e.diff[k].from} ${e.diff[k].to}`).join(' ')
+            : e.type === 'ADDED' ? `${e.start} ${e.end} ${e.tail}` : '';
+          return (e.student || '').toLowerCase().includes(q)
+            || (e.lesson || '').toLowerCase().includes(q)
+            || (e.date || '').toLowerCase().includes(q)
+            || (e.type || '').toLowerCase().includes(q)
+            || changeText.toLowerCase().includes(q);
+        })
+      : log;
+
+    const selStyle = { background: 'var(--bg-2)', color: 'var(--ink)',
+      border: '1px solid var(--line)', borderRadius: 4,
+      padding: '2px 6px', fontSize: 11, fontFamily: 'JetBrains Mono' };
+
     return h('div', { className: 'panel' },
       h('div', { className: 'ph' },
         h('span', { className: 'pt' }, 'Notification Log'),
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          h('span', { className: 'ps' }, log.length + ' entries'),
-          h('select', {
-            value: month,
-            onChange: e => setMonth(e.target.value),
-            style: { background: 'var(--bg-2)', color: 'var(--ink)',
-              border: '1px solid var(--line)', borderRadius: 4,
-              padding: '2px 6px', fontSize: 11, fontFamily: 'JetBrains Mono' },
-          }, MONTHS.map(m => h('option', { key: m, value: m }, m))))),
-      h('div', { style: { overflowX: 'auto', maxHeight: 480, overflowY: 'auto' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          h('input', {
+            value: search, onChange: e => setSearch(e.target.value),
+            placeholder: 'Search SP / lesson…',
+            style: { ...selStyle, width: 160, padding: '2px 8px' },
+          }),
+          h('span', { className: 'ps' },
+            q ? `${filtered.length} / ${log.length}` : `${log.length} entries`),
+          h('select', { value: month, onChange: e => setMonth(e.target.value), style: selStyle },
+            MONTHS.map(m => h('option', { key: m, value: m }, m))))),
+      h('div', { style: { overflowX: 'auto', maxHeight: 480, overflowY: 'auto', position: 'relative' } },
         loading
           ? h('div', { className: 'empty' }, 'Loading…')
-          : !log.length
-            ? h('div', { className: 'empty' }, 'No notifications for ' + month)
+          : !filtered.length
+            ? h('div', { className: 'empty' }, q ? 'No matches' : 'No notifications for ' + month)
             : h('table', { className: 'tb' },
-                h('thead', null,
+                h('thead', { style: { position: 'sticky', top: 0, background: 'var(--bg-2)', zIndex: 1 } },
                   h('tr', null,
                     h('th', null, 'Time'), h('th', null, ''), h('th', null, 'SP'),
                     h('th', null, 'Lesson'), h('th', null, 'Date'), h('th', null, 'Change'))),
                 h('tbody', null,
-                  log.map((e, i) => {
+                  filtered.map((e, i) => {
                     const diffKeys = Object.keys(e.diff || {});
                     const changeSummary = diffKeys.length
                       ? diffKeys.map(k => `${k}: ${e.diff[k].from}→${e.diff[k].to}`).join(', ')
