@@ -25,6 +25,10 @@ git log --oneline | grep -v "chore: refresh data" | head -6                 # la
 - Drive views in preview: `window.dispatchEvent(new CustomEvent('ap127-go',{detail:'viewId'}))` (not hash change)
 - Read `REVAMP.md` change log before making changes — avoids duplicating or breaking prior work
 - Watchdog worker redeploy: `cd /Users/nugui/AP127_V2/watchdog && npx wrangler deploy`
+- **Watchdog CORS (2026-07-10):** `watchdog/src/index.js` `ALLOWED_ORIGINS` now includes BOTH
+  `https://ap127-ngt2.pages.dev` (default/primary, unchanged) and `https://ap127-v3.pages.dev` — CMDV3
+  built its own Watchdog admin view consuming this worker's existing API unchanged. If adding more
+  consumers later, extend the Set the same way; `DEFAULT_ORIGIN` stays V2's URL as the ACO fallback.
 - **CI (2026-06-29):** `scripts/refresh_snapshots.mjs` isolates each of the 3 upstreams — a transient blip (e.g. ap127-data-api 50-byte response) keeps the prior snapshot and continues; only a total outage fails. `refresh-data.yml` push is race-proof (retry + `rebase -X theirs`). Do NOT make a single source's failure fatal again.
 
 ## Master reference
