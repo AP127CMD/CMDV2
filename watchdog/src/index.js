@@ -7,6 +7,7 @@ const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flig
 // Sites allowed to call this Worker.
 const ALLOWED_ORIGINS = new Set([
   'https://ap127-ngt2.pages.dev',
+  'https://ap127-v3.pages.dev',
 ]);
 const DEFAULT_ORIGIN = 'https://ap127-ngt2.pages.dev';
 
