@@ -50,6 +50,36 @@ async function loadStatus(kv) {
 }
 
 
+// Migration cleanup: the academy rebuilt the Ops Portal 2026-07-10/11 with no notice, which left
+// the Watchdog's diff baseline stale and caused repeated floods of spurious REMOVED events for
+// past flights as CMD_CTR's own scraper re-synced (recurred across multiple runs, not a one-off).
+// Per explicit request: any event for a flight scheduled before this moment is ignored entirely
+// (no Telegram send, no log entry) — a clean start. Self-obsoleting: becomes a permanent no-op
+// once every tracked flight is dated after the cutoff, so it's safe to leave in place indefinitely.
+export const NOTICE_CUTOFF_MS = Date.parse('2026-07-11T12:00:00Z'); // 19:00 Asia/Bangkok, 2026-07-11
+
+export function flightTimestampMs(flight) {
+  if (!flight?.date) return 0;
+  const time = flight.start || '00:00';
+  const ms = Date.parse(`${flight.date}T${time}:00+07:00`);
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+// CPU budget guard. The upstream feed carries ~3 months of past flights (4000+ records, ~1.4 MB)
+// but the watchdog only ever notifies on upcoming ones. Parsing + snapshotting + diffing the full
+// history every 5 min pushed the scheduled invocation over Cloudflare's CPU limit as the dataset
+// grew — a hard kill that bypasses the try/catch, so it failed silently (see AP127_Docs §10, the
+// recurring "Exceeded CPU Limit" incident). We restrict the snapshot/diff to a rolling forward
+// window: flights dated on/after (today − HORIZON) in Asia/Bangkok. This cuts the stored snapshot
+// ~95% (1.1 MB → ~50 KB) and, crucially, CAPS it — history no longer accumulates into the hot path.
+// HORIZON gives a small look-back so same-day edits/cancellations of already-started flights still
+// diff correctly. Past flights are excluded here AND by NOTICE_CUTOFF_MS below (belt and suspenders).
+export const SNAPSHOT_HORIZON_MS = 2 * 24 * 60 * 60 * 1000; // 2 days look-back
+
+export function withinSnapshotWindow(flight, nowMs) {
+  return flightTimestampMs(flight) >= nowMs - SNAPSHOT_HORIZON_MS;
+}
+
 // batchFilter: '*' = all, string = exact match, '!X' = exclude X, string[] = any of list
 export function matchesBatchFilter(filter, flightBatch) {
   if (!filter || filter === '*') return true;
@@ -67,7 +97,10 @@ async function runWatchdog(env) {
     if (!config.enabled) return;
 
     const data = await fetchFlights();
-    const newSnap = buildSnapshot(data.flights || []);
+    // Only snapshot/diff the rolling forward window — keeps CPU bounded (see SNAPSHOT_HORIZON_MS).
+    const nowMs = Date.now();
+    const relevant = (data.flights || []).filter(f => withinSnapshotWindow(f, nowMs));
+    const newSnap = buildSnapshot(relevant);
 
     const prevRaw = await env.KV.get('watchdog:snapshot', 'text');
     const prevSnap = prevRaw ? JSON.parse(prevRaw) : {};
@@ -76,7 +109,9 @@ async function runWatchdog(env) {
     const typeFiltered = events.filter(e => config.eventTypes?.[e.type] !== false);
     // Suppress "record actual" pairs: when a flight is completed, the system cancels
     // the planned entry and adds a new ACTUAL_ONLY entry. Don't notify either half.
-    const filtered = suppressActualPairs(typeFiltered);
+    const actualFiltered = suppressActualPairs(typeFiltered);
+    // Migration cleanup cutoff — see NOTICE_CUTOFF_MS.
+    const filtered = actualFiltered.filter(e => flightTimestampMs(e.flight) >= NOTICE_CUTOFF_MS);
 
     // Only write snapshot when something changed (or first run) — saves KV write quota
     if (filtered.length > 0 || !prevRaw) {

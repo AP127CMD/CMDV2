@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildSnapshot, diffSnapshots, suppressActualPairs } from '../src/diff.js';
-import { matchesBatchFilter } from '../src/index.js';
+import { matchesBatchFilter, flightTimestampMs, NOTICE_CUTOFF_MS,
+  SNAPSHOT_HORIZON_MS, withinSnapshotWindow } from '../src/index.js';
 
 const SAMPLE_FLIGHTS = [
   { id: '100', batch: 'AP-127', date: '2026-06-10', start: '08:00', end: '09:30',
@@ -119,6 +120,68 @@ describe('matchesBatchFilter', () => {
     const filter = ['AP-124', 'AP-126', 'AP-128', 'AP-129'];
     expect(matchesBatchFilter(filter, 'AP-124')).toBe(true);
     expect(matchesBatchFilter(filter, 'AP-127')).toBe(false);
+  });
+});
+
+describe('flightTimestampMs / NOTICE_CUTOFF_MS', () => {
+  it('cutoff is 2026-07-11T12:00:00Z (19:00 Asia/Bangkok)', () => {
+    expect(NOTICE_CUTOFF_MS).toBe(Date.parse('2026-07-11T12:00:00Z'));
+  });
+
+  it('computes an absolute Bangkok-local timestamp from date + start', () => {
+    expect(flightTimestampMs({ date: '2026-07-11', start: '19:00' })).toBe(NOTICE_CUTOFF_MS);
+  });
+
+  it('a flight just before the cutoff is excluded, just after is included', () => {
+    expect(flightTimestampMs({ date: '2026-07-11', start: '18:59' })).toBeLessThan(NOTICE_CUTOFF_MS);
+    expect(flightTimestampMs({ date: '2026-07-11', start: '19:01' })).toBeGreaterThan(NOTICE_CUTOFF_MS);
+  });
+
+  it('past-dated flights (the migration-flood case) fall well before the cutoff', () => {
+    expect(flightTimestampMs({ date: '2026-07-04', start: '09:00' })).toBeLessThan(NOTICE_CUTOFF_MS);
+    expect(flightTimestampMs({ date: '2026-07-06', start: '14:00' })).toBeLessThan(NOTICE_CUTOFF_MS);
+  });
+
+  it('missing start time falls back to midnight Bangkok', () => {
+    expect(flightTimestampMs({ date: '2026-07-12' })).toBe(Date.parse('2026-07-12T00:00:00+07:00'));
+  });
+
+  it('missing date returns 0 (always excluded, never crashes)', () => {
+    expect(flightTimestampMs({})).toBe(0);
+    expect(flightTimestampMs(null)).toBe(0);
+  });
+});
+
+describe('withinSnapshotWindow (CPU-budget rolling window)', () => {
+  const now = Date.parse('2026-07-14T03:00:00+07:00'); // fixed "now" for determinism
+
+  it('keeps flights dated today', () => {
+    expect(withinSnapshotWindow({ date: '2026-07-14', start: '08:00' }, now)).toBe(true);
+  });
+
+  it('keeps flights within the look-back horizon (yesterday)', () => {
+    expect(withinSnapshotWindow({ date: '2026-07-13', start: '08:00' }, now)).toBe(true);
+  });
+
+  it('keeps future flights (the ones we actually notify on)', () => {
+    expect(withinSnapshotWindow({ date: '2026-07-17', start: '06:00' }, now)).toBe(true);
+  });
+
+  it('drops old history that bloated the snapshot (the CPU-limit cause)', () => {
+    expect(withinSnapshotWindow({ date: '2026-04-20', start: '08:00' }, now)).toBe(false);
+    expect(withinSnapshotWindow({ date: '2026-07-01', start: '08:00' }, now)).toBe(false);
+  });
+
+  it('horizon boundary: exactly HORIZON ago is kept, just beyond is dropped', () => {
+    const atHorizon = now - SNAPSHOT_HORIZON_MS;
+    expect(withinSnapshotWindow({ date: '2026-07-12', start: '03:00' }, now)).toBe(true);  // exactly 2d back
+    expect(withinSnapshotWindow({ date: '2026-07-12', start: '02:59' }, now)).toBe(false); // 1 min beyond
+    expect(SNAPSHOT_HORIZON_MS).toBe(2 * 24 * 60 * 60 * 1000);
+    expect(flightTimestampMs({ date: '2026-07-12', start: '03:00' })).toBe(atHorizon);
+  });
+
+  it('flights with no date are excluded (never snapshot garbage)', () => {
+    expect(withinSnapshotWindow({}, now)).toBe(false);
   });
 });
 
