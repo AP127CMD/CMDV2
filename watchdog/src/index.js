@@ -1,5 +1,5 @@
 import { buildSnapshot, diffSnapshots, suppressActualPairs } from './diff.js';
-import { formatMessage, sendTelegram } from './telegram.js';
+import { formatMessage, formatSummary, sendTelegram } from './telegram.js';
 import { appendLog, getLog } from './log.js';
 
 const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flight-data.js';
@@ -29,14 +29,28 @@ const DEFAULT_CONFIG = {
   eventTypes: { ADDED: true, REMOVED: true, CHANGED: true, STATUS: true },
 };
 
-async function fetchFlights() {
+async function fetchFeedText() {
   const res = await fetch(FLIGHT_SRC, { headers: { 'cache-control': 'no-cache' } });
   if (!res.ok) throw new Error(`Upstream HTTP ${res.status}`);
-  const text = await res.text();
+  return res.text();
+}
+
+function parseFeed(text) {
   const idx = text.indexOf('window.FLIGHT_DATA =');
   if (idx === -1) throw new Error('window.FLIGHT_DATA not found in upstream');
   const jsonStr = text.slice(idx + 'window.FLIGHT_DATA ='.length).trim().replace(/;\s*$/, '');
   return JSON.parse(jsonStr);
+}
+
+// Cheap change-signal that avoids the ~1.4 MB JSON.parse on unchanged runs (the dominant CPU cost
+// on the Free plan). `fetchedAt` sits at the very start of the payload and only changes when
+// CMD_CTR commits new data (its pipeline commits ONLY on real data change), so (fetchedAt + byte
+// length) uniquely identifies a feed version. Length is a belt-and-suspenders guard against the
+// near-impossible same-second regeneration with different content.
+export function extractFeedSig(text) {
+  const head = (text || '').slice(0, 400);
+  const m = head.match(/"fetchedAt"\s*:\s*"([^"]+)"/);
+  return `${m ? m[1] : '?'}|${(text || '').length}`;
 }
 
 async function loadConfig(kv) {
@@ -46,17 +60,10 @@ async function loadConfig(kv) {
 
 async function loadStatus(kv) {
   const raw = await kv.get('watchdog:status', 'text');
-  return raw ? JSON.parse(raw) : { lastRun: null, lastChange: null, lastError: null, runCount: 0 };
+  return raw ? JSON.parse(raw)
+    : { lastRun: null, lastChange: null, lastError: null, runCount: 0, feedSig: null, anomalyStreak: 0 };
 }
 
-
-// Migration cleanup: the academy rebuilt the Ops Portal 2026-07-10/11 with no notice, which left
-// the Watchdog's diff baseline stale and caused repeated floods of spurious REMOVED events for
-// past flights as CMD_CTR's own scraper re-synced (recurred across multiple runs, not a one-off).
-// Per explicit request: any event for a flight scheduled before this moment is ignored entirely
-// (no Telegram send, no log entry) — a clean start. Self-obsoleting: becomes a permanent no-op
-// once every tracked flight is dated after the cutoff, so it's safe to leave in place indefinitely.
-export const NOTICE_CUTOFF_MS = Date.parse('2026-07-11T12:00:00Z'); // 19:00 Asia/Bangkok, 2026-07-11
 
 export function flightTimestampMs(flight) {
   if (!flight?.date) return 0;
@@ -65,19 +72,60 @@ export function flightTimestampMs(flight) {
   return Number.isNaN(ms) ? 0 : ms;
 }
 
+// Actionable filter — only NOTIFY/LOG for flights dated today or later in Asia/Bangkok. Replaces
+// the earlier fixed NOTICE_CUTOFF_MS (a hardcoded 2026-07-11 date that went stale the moment
+// "today" moved past it — it began letting 2-3-day-old flights fire notifications, observed live).
+// This rolling rule never expires and matches intent: only upcoming/today flights are actionable.
+// It is intentionally SEPARATE from withinSnapshotWindow(): the snapshot keeps a small look-back so
+// same-day/recent flights diff correctly, but changes to already-past flights are never notified.
+export function bangkokDateStr(nowMs) {
+  return new Date(nowMs + 7 * 60 * 60 * 1000).toISOString().slice(0, 10); // YYYY-MM-DD in +07:00
+}
+export function isActionable(flight, todayStr) {
+  return !!flight?.date && flight.date >= todayStr;
+}
+
+// Bad-feed guard. A truncated/empty/stale upstream fetch (GitHub hiccup, a broken CMD_CTR publish,
+// or mid-migration churn) makes in-window flights momentarily vanish → the diff fires a burst of
+// spurious REMOVED events AND overwrites the snapshot with the bad data, which then re-ADDs them all
+// next run. We detect a sudden severe shrinkage and HOLD the run (don't touch the snapshot, don't
+// notify). To avoid permanently blocking a GENUINE mass change, we only hold up to ANOMALY_MAX_STREAK
+// consecutive runs (~15 min), then accept. Requires a real baseline first (ANOMALY_MIN_BASELINE).
+export const ANOMALY_MIN_BASELINE = 20;
+export const ANOMALY_DROP_RATIO = 0.5;  // >50% sudden drop = suspect
+export const ANOMALY_MAX_STREAK = 3;
+export function isAnomalousDrop(prevCount, newCount) {
+  return prevCount >= ANOMALY_MIN_BASELINE && newCount < prevCount * ANOMALY_DROP_RATIO;
+}
+
 // CPU budget guard. The upstream feed carries ~3 months of past flights (4000+ records, ~1.4 MB)
 // but the watchdog only ever notifies on upcoming ones. Parsing + snapshotting + diffing the full
 // history every 5 min pushed the scheduled invocation over Cloudflare's CPU limit as the dataset
 // grew — a hard kill that bypasses the try/catch, so it failed silently (see AP127_Docs §10, the
-// recurring "Exceeded CPU Limit" incident). We restrict the snapshot/diff to a rolling forward
-// window: flights dated on/after (today − HORIZON) in Asia/Bangkok. This cuts the stored snapshot
-// ~95% (1.1 MB → ~50 KB) and, crucially, CAPS it — history no longer accumulates into the hot path.
-// HORIZON gives a small look-back so same-day edits/cancellations of already-started flights still
-// diff correctly. Past flights are excluded here AND by NOTICE_CUTOFF_MS below (belt and suspenders).
-export const SNAPSHOT_HORIZON_MS = 2 * 24 * 60 * 60 * 1000; // 2 days look-back
+// recurring "Exceeded CPU Limit" incident). Confirmed 2026-07-14: this account is on the Workers
+// **Free plan** (Cloudflare rejects raising `limits.cpu_ms` — "not supported for the Free plan"),
+// so the CPU cap is a hard, non-negotiable ~10ms per invocation — a once-daily full-history check
+// would fail exactly the same way, every single day. We restrict the snapshot/diff to a BOUNDED
+// rolling window (both back AND forward) — flights dated within
+// [today − SNAPSHOT_LOOKBACK_MS, today + SNAPSHOT_LOOKAHEAD_MS] in Asia/Bangkok. This cuts the
+// stored snapshot ~95% (1.1 MB → ~50 KB) and, crucially, CAPS it in both directions — history
+// (and any future growth in how far ahead the academy books) can no longer accumulate into the hot
+// path. LOOKBACK gives a small grace window so same-day edits/cancellations of already-started
+// flights still diff correctly. This window governs the SNAPSHOT/DIFF only; whether an event is
+// actually NOTIFIED/LOGGED is a separate, stricter decision — see isActionable() (today or later).
+//
+// A flight scheduled further out than LOOKAHEAD is simply not in today's snapshot yet — it is NOT
+// silently dropped. As days pass and it crosses into the window, it's a new key in newSnap that
+// wasn't in the previous (smaller) snapshot, so diffSnapshots() naturally fires ADDED for it, same
+// as any other new booking. No extra code needed; this is inherent to the id-keyed diff design —
+// see the "flight enters window" tests below.
+export const SNAPSHOT_LOOKBACK_MS = 3 * 24 * 60 * 60 * 1000;  // 3 days back
+export const SNAPSHOT_LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000; // 14 days forward
 
 export function withinSnapshotWindow(flight, nowMs) {
-  return flightTimestampMs(flight) >= nowMs - SNAPSHOT_HORIZON_MS;
+  const ts = flightTimestampMs(flight);
+  if (ts === 0) return false; // no date — never track
+  return ts >= nowMs - SNAPSHOT_LOOKBACK_MS && ts <= nowMs + SNAPSHOT_LOOKAHEAD_MS;
 }
 
 // batchFilter: '*' = all, string = exact match, '!X' = exclude X, string[] = any of list
@@ -88,87 +136,142 @@ export function matchesBatchFilter(filter, flightBatch) {
   return flightBatch === filter;
 }
 
+// Wall-clock guard. Each Telegram send is followed by a 3.5 s gap (Telegram's ~20 msg/min limit),
+// so a mass-change run could otherwise blow the invocation's wall-clock limit (e.g. 26 events ×
+// 3.5 s ≈ 91 s) and get killed — a fresh silent-failure vector, especially if a broad destination
+// (e.g. the whole AP127 group) is enabled. planNotifications() routes each destination's matched
+// events, and flags any destination with more than MAX_SENDS_PER_DEST for a single SUMMARY message
+// instead of individual spam. The full detail is still written to the log either way.
+export const MAX_SENDS_PER_DEST = 8;
+export function planNotifications(events, dests) {
+  const plan = [];
+  for (const dest of dests || []) {
+    if (dest.enabled === false) continue;
+    const items = events.filter(e => {
+      const batch = e.flight.batch || 'AP-127';
+      if (!matchesBatchFilter(dest.batchFilter, batch)) return false;
+      if (dest.studentFilter && e.flight.student !== dest.studentFilter) return false;
+      return true;
+    });
+    if (items.length) plan.push({ dest, items, summarize: items.length > MAX_SENDS_PER_DEST });
+  }
+  return plan;
+}
+
 async function runWatchdog(env) {
   const ts = new Date().toISOString();
+  const nowMs = Date.now();
   const prevStatus = await loadStatus(env.KV);
+  const lastRunMs = prevStatus.lastRun ? new Date(prevStatus.lastRun).getTime() : 0;
+  const quietStale = nowMs - lastRunMs > 25 * 60 * 1000;
+
+  // Single status writer. Preserves carried fields (feedSig, anomalyStreak) unless overridden.
+  // `changed` marks an actionable change (advances lastChange). `force` writes even on a quiet run
+  // (used when we must persist feedSig / anomalyStreak). Otherwise the 25-min quiet-skip applies,
+  // which keeps idle KV writes low while still refreshing the heartbeat at least every 25 min.
+  const writeStatus = async ({ changed = false, force = false, ...fields } = {}) => {
+    if (!changed && !force && !quietStale && prevStatus.lastRun) return;
+    await env.KV.put('watchdog:status', JSON.stringify({
+      lastRun: ts,
+      lastChange: changed ? ts : (prevStatus.lastChange || null),
+      lastError: null,
+      runCount: (prevStatus.runCount || 0) + 1,
+      feedSig: prevStatus.feedSig ?? null,
+      anomalyStreak: prevStatus.anomalyStreak || 0,
+      ...fields,
+    }));
+  };
 
   try {
     const config = await loadConfig(env.KV);
     if (!config.enabled) return;
 
-    const data = await fetchFlights();
-    // Only snapshot/diff the rolling forward window — keeps CPU bounded (see SNAPSHOT_HORIZON_MS).
-    const nowMs = Date.now();
+    const text = await fetchFeedText();
+    const sig = extractFeedSig(text);
+
+    // Skip-on-unchanged: identical feed to the last PROCESSED version → nothing to diff. Avoids the
+    // ~1.4 MB JSON.parse (the dominant CPU cost) entirely. Gated on having processed before, so the
+    // first run after (re)deploy always does a full pass. The download already happened (I/O, not CPU).
+    if (prevStatus.feedSig && sig === prevStatus.feedSig) {
+      await writeStatus(); // heartbeat only, subject to the 25-min quiet-skip
+      return;
+    }
+
+    // Only snapshot/diff the bounded rolling window — keeps CPU bounded regardless of feed history
+    // growth (see SNAPSHOT_LOOKBACK_MS / SNAPSHOT_LOOKAHEAD_MS).
+    const data = parseFeed(text);
     const relevant = (data.flights || []).filter(f => withinSnapshotWindow(f, nowMs));
     const newSnap = buildSnapshot(relevant);
+    const newCount = Object.keys(newSnap).length;
 
     const prevRaw = await env.KV.get('watchdog:snapshot', 'text');
     const prevSnap = prevRaw ? JSON.parse(prevRaw) : {};
+    const prevCount = Object.keys(prevSnap).length;
+
+    // Bad-feed guard (see isAnomalousDrop). Hold — but not forever — on a suspicious sudden shrink.
+    const streak = prevStatus.anomalyStreak || 0;
+    if (isAnomalousDrop(prevCount, newCount) && streak < ANOMALY_MAX_STREAK) {
+      // Do NOT persist the new feedSig (so the next run re-evaluates) and do NOT touch the snapshot.
+      await writeStatus({
+        force: true,
+        anomalyStreak: streak + 1,
+        lastError: `suspected bad feed: ${prevCount}→${newCount} flights, held (${streak + 1}/${ANOMALY_MAX_STREAK})`,
+      });
+      return;
+    }
 
     const events = diffSnapshots(prevSnap, newSnap);
     const typeFiltered = events.filter(e => config.eventTypes?.[e.type] !== false);
-    // Suppress "record actual" pairs: when a flight is completed, the system cancels
-    // the planned entry and adds a new ACTUAL_ONLY entry. Don't notify either half.
-    const actualFiltered = suppressActualPairs(typeFiltered);
-    // Migration cleanup cutoff — see NOTICE_CUTOFF_MS.
-    const filtered = actualFiltered.filter(e => flightTimestampMs(e.flight) >= NOTICE_CUTOFF_MS);
+    // Suppress "record actual" pairs: when a flight is completed the system cancels the planned
+    // entry and adds a new ACTUAL_ONLY entry. Don't notify either half.
+    const deduped = suppressActualPairs(typeFiltered);
+    // Notify/log only actionable events (flight today or later, Bangkok). Past-in-window churn is
+    // used to keep the snapshot consistent but never surfaced.
+    const todayStr = bangkokDateStr(nowMs);
+    const notifiable = deduped.filter(e => isActionable(e.flight, todayStr));
 
-    // Only write snapshot when something changed (or first run) — saves KV write quota
-    if (filtered.length > 0 || !prevRaw) {
+    // Update snapshot whenever the window changed at all (or first run) — keeps the baseline exactly
+    // current so non-actionable churn doesn't re-diff every run. Independent of notify gating.
+    if (events.length > 0 || !prevRaw) {
       await env.KV.put('watchdog:snapshot', JSON.stringify(newSnap));
     }
 
-    // Destinations: from config, or fall back to env var (legacy single-chat)
+    // Destinations: from config, or fall back to env var (legacy single-chat).
     const allDests = config.destinations?.length
       ? config.destinations
       : [{ label: 'Default', chatId: env.TELEGRAM_CHAT_ID, threadId: null, mention: true, enabled: true, batchFilter: '*' }];
 
-    const logEntries = [];
-    for (const event of filtered) {
-      const flightBatch = event.flight.batch || 'AP-127';
-      for (const dest of allDests) {
-        // Skip disabled destinations
-        if (dest.enabled === false) continue;
-        if (!matchesBatchFilter(dest.batchFilter, flightBatch)) continue;
-        if (dest.studentFilter && event.flight.student !== dest.studentFilter) continue;
-        // mention:true → pass roster for @username lookup; false → plain name only
-        const roster = dest.mention !== false ? (config.roster || []) : [];
-        const msg = formatMessage(event, roster);
-        try {
-          await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, msg, dest.threadId);
-        } catch (e) {
-          console.error(`Telegram send to "${dest.label}" failed:`, e.message);
+    // Send (bounded per destination — summary instead of individual spam beyond MAX_SENDS_PER_DEST).
+    for (const { dest, items, summarize } of planNotifications(notifiable, allDests)) {
+      try {
+        if (summarize) {
+          await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, formatSummary(dest.label, items), dest.threadId);
+          await new Promise(r => setTimeout(r, 3500));
+        } else {
+          const roster = dest.mention !== false ? (config.roster || []) : [];
+          for (const e of items) {
+            await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, formatMessage(e, roster), dest.threadId);
+            await new Promise(r => setTimeout(r, 3500)); // Telegram ~20 msg/min per chat
+          }
         }
-        // 3.5 s gap keeps per-chat rate under Telegram's 20 msg/min limit
-        await new Promise(r => setTimeout(r, 3500));
+      } catch (e) {
+        console.error(`Telegram send to "${dest.label}" failed:`, e.message);
       }
-      logEntries.push({
-        type: event.type, flightId: event.flight.id, student: event.flight.student,
-        lesson: event.flight.lesson, date: event.flight.date,
-        start: event.flight.start, end: event.flight.end,
-        tail: event.flight.tail, instructor: event.flight.instructor, diff: event.diff,
-      });
     }
+
+    // Log every actionable event (full detail retained even when Telegram was summarized).
+    const logEntries = notifiable.map(e => ({
+      type: e.type, flightId: e.flight.id, student: e.flight.student,
+      lesson: e.flight.lesson, date: e.flight.date, start: e.flight.start,
+      end: e.flight.end, tail: e.flight.tail, instructor: e.flight.instructor, diff: e.diff,
+    }));
     await appendLog(env.KV, logEntries, ts);
 
-    // Skip status write on quiet runs — only write when something happened,
-    // on first run, on error, or if > 25 min since last status update.
-    // This cuts idle KV writes from 288/day to ~58/day.
-    const lastRunMs = prevStatus.lastRun ? new Date(prevStatus.lastRun).getTime() : 0;
-    const staleSince = Date.now() - lastRunMs;
-    if (filtered.length > 0 || !prevStatus.lastRun || staleSince > 25 * 60 * 1000) {
-      await env.KV.put('watchdog:status', JSON.stringify({
-        lastRun: ts,
-        lastChange: filtered.length > 0 ? ts : (prevStatus.lastChange || null),
-        lastError: null,
-        runCount: (prevStatus.runCount || 0) + 1,
-      }));
-    }
+    // Feed changed → always persist the new sig (enables skip-on-unchanged next run) + reset streak.
+    await writeStatus({ force: true, changed: notifiable.length > 0, feedSig: sig, anomalyStreak: 0 });
   } catch (err) {
     await env.KV.put('watchdog:status', JSON.stringify({
-      ...prevStatus,
-      lastRun: ts,
-      lastError: err.message,
+      ...prevStatus, lastRun: ts, lastError: err.message,
     }));
   }
 }
@@ -187,11 +290,21 @@ async function handleFetch(request, env) {
     return new Response(null, { status: 204, headers: cors });
   }
 
-  // GET /status
+  // GET /status — includes computed staleness so an external dead-man's-switch is trivial.
+  // NOTE: a quiet (no-change) run only refreshes lastRun every ~25 min, so staleMinutes up to ~25
+  // is normal/healthy; > 30 means the scheduled worker is genuinely not completing (e.g. the CPU
+  // hard-kill failure mode, which is otherwise invisible because it bypasses the error handler).
   if (url.pathname === '/status' && request.method === 'GET') {
     const status = await loadStatus(env.KV);
     const config = await loadConfig(env.KV);
-    return json({ ...status, enabled: config.enabled });
+    const lastRunMs = status.lastRun ? new Date(status.lastRun).getTime() : 0;
+    const staleMinutes = lastRunMs ? Math.round((Date.now() - lastRunMs) / 60000) : null;
+    return json({
+      ...status,
+      enabled: config.enabled,
+      staleMinutes,
+      healthy: staleMinutes != null && staleMinutes <= 30 && !status.lastError,
+    });
   }
 
   // GET /config

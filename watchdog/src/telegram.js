@@ -97,6 +97,22 @@ export function formatMessage(event, roster) {
   return lines.join('\n');
 }
 
+// Compact summary sent to a destination when a single run produced more matched events than we want
+// to fire individually (mass reschedule / bad-feed burst). Bounds spam + wall-clock; full per-event
+// detail is still written to the log and visible in the dashboard.
+export function formatSummary(destLabel, events) {
+  const counts = {};
+  for (const e of events) counts[e.type] = (counts[e.type] || 0) + 1;
+  const order = ['ADDED', 'CHANGED', 'STATUS', 'REMOVED'];
+  const verb = { ADDED: 'new/updated', CHANGED: 'changed', STATUS: 'status', REMOVED: 'cancelled' };
+  const parts = order.filter(t => counts[t]).map(t => `${counts[t]} ${verb[t]}`);
+  return [
+    `📋 ${events.length} flight updates${destLabel ? ` — ${destLabel}` : ''}`,
+    parts.join(' · '),
+    `(too many to list individually — open the Watchdog dashboard for details)`,
+  ].join('\n');
+}
+
 async function _doSend(token, body) {
   const res = await fetch(`${TELEGRAM_BASE}${token}/sendMessage`, {
     method: 'POST',

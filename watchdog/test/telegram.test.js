@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { formatMessage, sendTelegram } from '../src/telegram.js';
+import { formatMessage, formatSummary, sendTelegram } from '../src/telegram.js';
 
 const ROSTER = [
   { scheduleName: 'SIWAKORN P.', telegramUsername: 'siwakorn_p' },
@@ -122,5 +122,25 @@ describe('sendTelegram', () => {
   it('throws on HTTP error', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 401 })));
     await expect(sendTelegram('TOKEN', '-100123', 'hello')).rejects.toThrow('401');
+  });
+});
+
+describe('formatSummary (bounded mass-change message)', () => {
+  const ev = (type) => ({ type, flight: { student: 'X' }, diff: {} });
+
+  it('counts events by type and names the destination', () => {
+    const msg = formatSummary('AP127', [ev('ADDED'), ev('ADDED'), ev('REMOVED'), ev('CHANGED')]);
+    expect(msg).toContain('4 flight updates');
+    expect(msg).toContain('AP127');
+    expect(msg).toContain('2 new/updated');
+    expect(msg).toContain('1 cancelled');
+    expect(msg).toContain('1 changed');
+    expect(msg).toContain('dashboard');
+  });
+
+  it('handles a single type', () => {
+    const msg = formatSummary('Nu', [ev('REMOVED'), ev('REMOVED')]);
+    expect(msg).toContain('2 flight updates');
+    expect(msg).toContain('2 cancelled');
   });
 });
