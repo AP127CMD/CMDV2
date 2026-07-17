@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { evaluate, decideAlert, CONFIRM_DOWN } from '../src/index.js';
+import { evaluate, decideAlert, CONFIRM_DOWN, HEARTBEAT_MS, runMonitor } from '../src/index.js';
+
+// Minimal in-memory KV that counts writes — lets us assert the write-budget behavior.
+function mockKV(seed = {}) {
+  const store = new Map(Object.entries(seed));
+  return {
+    puts: 0,
+    async get(key) { return store.has(key) ? store.get(key) : null; },
+    async put(key, val) { this.puts++; store.set(key, val); },
+  };
+}
 
 describe('evaluate (watchdog KV state → down/up verdict)', () => {
   const NOW = Date.parse('2026-07-17T08:00:00Z');
@@ -70,5 +80,44 @@ describe('decideAlert (transition machine)', () => {
     const recovered = decideAlert(oneBlip, false);
     expect(recovered.alert).toBe(null);
     expect(recovered.state.downStreak).toBe(0);
+  });
+
+  it('clamps downStreak at CONFIRM_DOWN so a prolonged outage stops changing state', () => {
+    let s = { alertedDown: true, downStreak: CONFIRM_DOWN };
+    for (let i = 0; i < 5; i++) s = decideAlert(s, true).state;
+    expect(s.downStreak).toBe(CONFIRM_DOWN); // never grows past the cap
+  });
+});
+
+describe('runMonitor KV write budget (free-tier: skip writes when nothing changed)', () => {
+  const NOW = Date.parse('2026-07-17T08:00:00Z');
+  const healthyStatus = JSON.stringify({ lastRun: new Date(NOW - 3 * 60000).toISOString(), lastError: null });
+  const config = JSON.stringify({ enabled: true, destinations: [] });
+
+  it('a healthy steady tick with fresh heartbeat does NOT write', () => {
+    const kv = mockKV({
+      'watchdog:status': healthyStatus,
+      'watchdog:config': config,
+      'monitor:state': JSON.stringify({ alertedDown: false, downStreak: 0, lastCheck: new Date(NOW - 60000).toISOString() }),
+    });
+    return runMonitor({ KV: kv }, NOW).then(() => expect(kv.puts).toBe(0));
+  });
+
+  it('writes once when the heartbeat is due even if nothing changed', () => {
+    const kv = mockKV({
+      'watchdog:status': healthyStatus,
+      'watchdog:config': config,
+      'monitor:state': JSON.stringify({ alertedDown: false, downStreak: 0, lastCheck: new Date(NOW - HEARTBEAT_MS - 1).toISOString() }),
+    });
+    return runMonitor({ KV: kv }, NOW).then(() => expect(kv.puts).toBe(1));
+  });
+
+  it('writes when the state changes (a down reading advances the streak)', () => {
+    const kv = mockKV({
+      'watchdog:status': JSON.stringify({ lastRun: new Date(NOW - 90 * 60000).toISOString(), lastError: null }),
+      'watchdog:config': config,
+      'monitor:state': JSON.stringify({ alertedDown: false, downStreak: 0, lastCheck: new Date(NOW - 60000).toISOString() }),
+    });
+    return runMonitor({ KV: kv }, NOW).then(() => expect(kv.puts).toBe(1));
   });
 });

@@ -38,8 +38,11 @@ export function evaluate(status, config, nowMs) {
 
 // Pure transition machine: given the persisted state and this check's down-ness, decide whether to
 // alert and what the next state is. Alerts on down (after CONFIRM_DOWN in a row) and on recovery.
+// downStreak is CLAMPED at CONFIRM_DOWN so that, once alerted, a prolonged outage leaves the state
+// unchanged tick-to-tick — runMonitor() then skips the KV write, so a long outage doesn't burn a
+// write every 10 min (KV free-tier write budget — see the warning of 2026-07-17).
 export function decideAlert(prev, down) {
-  const downStreak = down ? (prev.downStreak || 0) + 1 : 0;
+  const downStreak = down ? Math.min((prev.downStreak || 0) + 1, CONFIRM_DOWN) : 0;
   let alertedDown = prev.alertedDown || false;
   let alert = null;
   if (!alertedDown && downStreak >= CONFIRM_DOWN) { alert = 'down'; alertedDown = true; }
@@ -81,6 +84,10 @@ async function readJson(kv, key) {
   try { return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 
+// Liveness heartbeat: even with nothing changing, persist state at most this often so /state proves
+// the monitor is running. 6 h → ≤4 writes/day when healthy (vs 144/day writing every tick).
+export const HEARTBEAT_MS = 6 * 60 * 60 * 1000;
+
 export async function runMonitor(env, nowMs = Date.now()) {
   // Read the watchdog's own KV state directly — no HTTP to the watchdog (see evaluate()).
   const status = await readJson(env.KV, 'watchdog:status');
@@ -102,9 +109,16 @@ export async function runMonitor(env, nowMs = Date.now()) {
     }
   }
 
-  await env.KV.put(STATE_KEY, JSON.stringify({
-    ...state, reason: verdict.reason, lastCheck: new Date().toISOString(),
-  }));
+  // KV write budget: only persist when something meaningful changed (or an alert fired, or the
+  // heartbeat is due). A healthy, steady system writes ~4×/day instead of 144×/day.
+  const changed = state.alertedDown !== prev.alertedDown || state.downStreak !== prev.downStreak;
+  const prevCheckMs = prev.lastCheck ? Date.parse(prev.lastCheck) : 0;
+  const heartbeatDue = !prevCheckMs || (nowMs - prevCheckMs) >= HEARTBEAT_MS;
+  if (changed || alert || heartbeatDue) {
+    await env.KV.put(STATE_KEY, JSON.stringify({
+      ...state, reason: verdict.reason, lastCheck: new Date(nowMs).toISOString(),
+    }));
+  }
 }
 
 export default {
