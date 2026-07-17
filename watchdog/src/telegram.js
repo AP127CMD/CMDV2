@@ -15,76 +15,10 @@ function spMention(student, roster) {
   return entry?.telegramUsername ? `${name} (@${entry.telegramUsername})` : name;
 }
 
-export function formatMessage(event, roster) {
-  const { type, flight: f, diff } = event;
-  const sp = spMention(f.student, roster);
-  const fi = f.instructor || '—';
-  const d = fmtDate(f.date);
-  const t = f.start && f.end ? `${f.start}–${f.end}` : (f.start || '—');
-
-  // ADDED with Completed status = actual flight recorded
-  if (type === 'ADDED' && f.status === 'Completed') {
-    return [
-      `✅ Flight completed`,
-      `SP: ${sp}`,
-      `FI: ${fi}`,
-      `📅 ${d}  ${t}`,
-      `📖 ${f.lesson || '—'}`,
-      `🛩 ${f.tail || '—'}`,
-    ].join('\n');
-  }
-
-  if (type === 'ADDED') {
-    return [
-      `✈️ New flight`,
-      `SP: ${sp}`,
-      `FI: ${fi}`,
-      `📅 ${d}  ${t}`,
-      `📖 ${f.lesson || '—'}`,
-      `🛩 ${f.tail || '—'}`,
-    ].join('\n');
-  }
-
-  if (type === 'REMOVED') {
-    return [
-      `❌ Flight cancelled`,
-      `SP: ${sp}`,
-      `FI: ${fi}`,
-      `📅 ${d}  ${t}`,
-      `📖 ${f.lesson || '—'}`,
-    ].join('\n');
-  }
-
-  if (type === 'STATUS') {
-    if (diff.status?.to === 'Completed') {
-      return [
-        `✅ Flight completed`,
-        `SP: ${sp}`,
-        `FI: ${fi}`,
-        `📅 ${d}  ${t}`,
-        `📖 ${f.lesson || '—'}`,
-        `🛩 ${f.tail || '—'}`,
-      ].join('\n');
-    }
-    return [
-      `🔄 Status update`,
-      `SP: ${sp}`,
-      `FI: ${fi}`,
-      `📅 ${d}  ${t}`,
-      `📖 ${f.lesson || '—'}  ${diff.status?.from || '—'} → ${diff.status?.to || '—'}`,
-    ].join('\n');
-  }
-
-  // CHANGED — show current full details, then separator, then what changed
-  const lines = [
-    `⚠️ Flight updated`,
-    `SP: ${sp}`,
-    `FI: ${fi}`,
-    `📅 ${d}  ${t}`,
-    `📖 ${f.lesson || '—'}`,
-    `🛩 ${f.tail || '—'}`,
-    `—————————————`,
-  ];
+// Detail lines for the fields that changed in a diff (shared by CHANGED and STATUS updates).
+// `skipStatus` omits the status transition itself (STATUS renders that on the lesson line).
+function changeDetailLines(diff, f, { skipStatus = false } = {}) {
+  const lines = [];
   if (diff.start || diff.end) {
     const fromT = `${diff.start?.from ?? f.start}–${diff.end?.from ?? f.end}`;
     const toT   = `${diff.start?.to   ?? f.start}–${diff.end?.to   ?? f.end}`;
@@ -94,6 +28,58 @@ export function formatMessage(event, roster) {
   if (diff.tail)       lines.push(`🛩 ${diff.tail.from} → ${diff.tail.to}`);
   if (diff.instructor) lines.push(`👨‍✈️ ${diff.instructor.from} → ${diff.instructor.to}`);
   if (diff.lesson)     lines.push(`📖 ${diff.lesson.from} → ${diff.lesson.to}`);
+  if (!skipStatus && diff.status) lines.push(`🔖 ${diff.status.from ?? '—'} → ${diff.status.to ?? '—'}`);
+  return lines;
+}
+
+export function formatMessage(event, roster) {
+  const { type, flight: f, diff = {} } = event;
+  const sp = spMention(f.student, roster);
+  const fi = f.instructor || '—';
+  const d = fmtDate(f.date);
+  const t = f.start && f.end ? `${f.start}–${f.end}` : (f.start || '—');
+  const head = (title) => [title, `SP: ${sp}`, `FI: ${fi}`, `📅 ${d}  ${t}`, `📖 ${f.lesson || '—'}`];
+
+  // Flight completed — reached either as an ADDED ACTUAL_ONLY record (status Completed) or as an
+  // in-place STATUS transition to Completed. Both mean "the flight flew"; show one completion card.
+  const completed = f.status === 'Completed'
+    && (type === 'ADDED' || (type === 'STATUS' && diff.status?.to === 'Completed'));
+  if (completed) {
+    const lines = [...head('✅ Flight completed'), `🛩 ${f.tail || '—'}`];
+    // When completion also recorded the actual flown times, show planned → actual for context.
+    if (diff.start || diff.end) {
+      const planned = `${diff.start?.from ?? f.start}–${diff.end?.from ?? f.end}`;
+      const flew    = `${diff.start?.to   ?? f.start}–${diff.end?.to   ?? f.end}`;
+      if (planned !== flew) lines.push(`🕐 planned ${planned} → flew ${flew}`);
+    }
+    return lines.join('\n');
+  }
+
+  if (type === 'ADDED') {
+    return [...head('✈️ New flight'), `🛩 ${f.tail || '—'}`].join('\n');
+  }
+
+  if (type === 'REMOVED') {
+    return head('❌ Flight cancelled').join('\n');
+  }
+
+  if (type === 'STATUS') {
+    const lines = [
+      `🔄 Status update`,
+      `SP: ${sp}`,
+      `FI: ${fi}`,
+      `📅 ${d}  ${t}`,
+      `📖 ${f.lesson || '—'}  ${diff.status?.from || '—'} → ${diff.status?.to || '—'}`,
+    ];
+    // Append any fields (times, tail, instructor, date) that changed alongside the status, so a
+    // bundled reschedule-and-cancel/confirm isn't reduced to just the status line.
+    lines.push(...changeDetailLines(diff, f, { skipStatus: true }));
+    return lines.join('\n');
+  }
+
+  // CHANGED — show current full details, then separator, then what changed
+  const lines = [...head('⚠️ Flight updated'), `🛩 ${f.tail || '—'}`, `—————————————`];
+  lines.push(...changeDetailLines(diff, f));
   return lines.join('\n');
 }
 

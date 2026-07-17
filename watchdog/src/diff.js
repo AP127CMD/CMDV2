@@ -30,7 +30,13 @@ export function diffSnapshots(prev, next) {
       if (p[field] !== n[field]) diff[field] = { from: p[field], to: n[field] };
     }
     if (Object.keys(diff).length === 0) continue;
-    const type = Object.keys(diff).length === 1 && diff.status ? 'STATUS' : 'CHANGED';
+    // A status transition is the headline event even when other fields change in the same tick.
+    // The newer feed completes flights IN PLACE (same id: Pending→Completed AND planned times
+    // replaced by actual flown times), which previously fell through to CHANGED and rendered as
+    // the misleading "Flight updated". Any diff that touches `status` is therefore a STATUS event;
+    // telegram.js gives it the right headline (completed/cancelled/status) and still shows the
+    // co-changed details.
+    const type = diff.status ? 'STATUS' : 'CHANGED';
     events.push({ type, flight: n, diff });
   }
 

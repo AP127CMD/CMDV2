@@ -1,0 +1,23 @@
+name = "ap127-watchdog-monitor"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Every 10 min — independent of the watchdog's own */5 cron. Two consecutive unhealthy checks
+# (~20 min) trigger a single Telegram alert; recovery sends one all-clear.
+[triggers]
+crons = ["*/10 * * * *"]
+
+# Shared with the watchdog (same account) — the monitor only reads watchdog:config and read/writes
+# its own monitor:* keys, so there is no collision with the watchdog's own keys.
+[[kv_namespaces]]
+binding = "KV"
+id = "b42f3202c5364f91aef3837132d6ccd5"
+preview_id = "b42f3202c5364f91aef3837132d6ccd5"
+
+# Optional: which watchdog destination to alert into (defaults to the admin 'Nu' destination).
+[vars]
+MONITOR_DEST_LABEL = "Nu"
+
+# Secret (set once, copy the value from the main watchdog worker — NOT stored in this file):
+#   npx wrangler secret put TELEGRAM_BOT_TOKEN

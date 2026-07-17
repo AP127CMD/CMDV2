@@ -82,6 +82,33 @@ describe('diffSnapshots', () => {
     expect(events[0].diff).toEqual({ status: { from: 'Pending', to: 'Completed' } });
   });
 
+  // Regression: the newer feed completes many flights IN PLACE — the same id flips
+  // Pending→Completed AND its planned times are replaced by the actual flown times in
+  // the same tick. That 3-field diff used to classify as CHANGED → rendered as the
+  // misleading "⚠️ Flight updated". A status transition is the headline event, so any
+  // diff that includes a status change is a STATUS event regardless of co-changed fields.
+  it('classifies in-place completion (status + actual times together) as STATUS, not CHANGED', () => {
+    const next = { '100': { ...base['100'], status: 'Completed', start: '08:34', end: '09:58' } };
+    const events = diffSnapshots(base, next);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('STATUS');
+    expect(events[0].diff.status).toEqual({ from: 'Pending', to: 'Completed' });
+    expect(events[0].diff.start).toEqual({ from: '08:00', to: '08:34' });
+  });
+
+  it('classifies a status change bundled with other edits as STATUS (status is the headline)', () => {
+    const next = { '100': { ...base['100'], status: 'Canceled', tail: 'HS-TPT' } };
+    const events = diffSnapshots(base, next);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('STATUS');
+  });
+
+  it('a multi-field edit with NO status change is still CHANGED', () => {
+    const next = { '100': { ...base['100'], start: '10:00', tail: 'HS-TPT' } };
+    const events = diffSnapshots(base, next);
+    expect(events[0].type).toBe('CHANGED');
+  });
+
   it('returns empty array when nothing changed', () => {
     const events = diffSnapshots(base, { ...base });
     expect(events).toHaveLength(0);

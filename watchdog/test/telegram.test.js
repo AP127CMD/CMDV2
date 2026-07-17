@@ -67,6 +67,34 @@ describe('formatMessage', () => {
     expect(msg).not.toContain('🔄');
   });
 
+  it('STATUS → Completed WITH recorded actual times shows completed (not "updated") + planned→actual', () => {
+    const msg = formatMessage(
+      { type: 'STATUS', flight: { ...BASE_FLIGHT, status: 'Completed', start: '08:34', end: '09:58' },
+        diff: { status: { from: 'Pending', to: 'Completed' },
+                start: { from: '08:00', to: '08:34' }, end: { from: '09:30', to: '09:58' } } },
+      ROSTER,
+    );
+    const lines = msg.split('\n');
+    expect(lines[0]).toBe('✅ Flight completed');
+    expect(msg).not.toContain('⚠️');           // the reported bug: was "⚠️ Flight updated"
+    expect(msg).toContain('08:34–09:58');      // actual flown times
+    expect(msg).toContain('08:00–09:30');      // planned times, shown as reference
+  });
+
+  it('STATUS → Canceled bundled with a time change is not mislabeled "Flight updated"', () => {
+    const msg = formatMessage(
+      { type: 'STATUS', flight: { ...BASE_FLIGHT, status: 'Canceled', start: '10:00' },
+        diff: { status: { from: 'Pending', to: 'Canceled' }, start: { from: '08:00', to: '10:00' } } },
+      ROSTER,
+    );
+    const lines = msg.split('\n');
+    expect(lines[0]).toBe('🔄 Status update');
+    expect(msg).not.toContain('⚠️ Flight updated');
+    expect(msg).toContain('Canceled');
+    expect(msg).toContain('08:00');
+    expect(msg).toContain('10:00');
+  });
+
   it('STATUS → Canceled shows 🔄 status update', () => {
     const msg = formatMessage(
       { type: 'STATUS', flight: BASE_FLIGHT,
