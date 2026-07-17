@@ -11,23 +11,28 @@
 // Telegram alert. It sends a single recovery message when the watchdog comes back. State is kept in
 // the shared KV under `monitor:*` so alerts fire on transitions only, never on every tick.
 
-const STATUS_URL = 'https://ap127-watchdog.anusorn-tanmetha.workers.dev/status';
 const STATE_KEY = 'monitor:state';
 
+// Healthy quiet runs only refresh the watchdog's status every ~25 min (its quiet-skip), so a gap up
+// to 25 min is normal; >30 min means the scheduled run is genuinely not completing.
+export const STALE_LIMIT_MIN = 30;
+
 // Two consecutive unhealthy checks before alerting (~20 min at the 10-min cron) — tolerates a
-// single transient blip (e.g. a GitHub/Cloudflare hiccup) without paging.
+// single transient blip (e.g. a one-off caught upstream error) without paging.
 export const CONFIRM_DOWN = 2;
 
-// Turn a /status response (or a fetch failure) into a down/up verdict with a human reason.
-export function evaluate(status, fetchOk) {
-  if (!fetchOk || !status) return { down: true, reason: 'watchdog /status unreachable' };
-  if (status.enabled === false) return { down: false, reason: 'disabled by config (intentional)' };
-  if (status.healthy === false) {
-    const bits = [];
-    if (status.staleMinutes != null && status.staleMinutes > 30) bits.push(`no run for ${status.staleMinutes} min`);
-    if (status.lastError) bits.push(`error: ${status.lastError}`);
-    return { down: true, reason: bits.join('; ') || 'unhealthy' };
-  }
+// Down/up verdict computed from the watchdog's OWN KV state — NOT an HTTP call. This is deliberate:
+// (1) a same-account Worker→`*.workers.dev` fetch is blocked by Cloudflare (error 1042), and
+// (2) more importantly, the failure we're guarding against is a silent CPU hard-kill, and a killed
+// watchdog stops WRITING KV — so a frozen `watchdog:status.lastRun` is the truest death signal, and
+// it needs the watchdog's HTTP endpoint to be neither reachable nor even alive.
+//   status  = parsed `watchdog:status` (or null)   config = parsed `watchdog:config` (or null)
+export function evaluate(status, config, nowMs) {
+  if (config && config.enabled === false) return { down: false, reason: 'disabled by config (intentional)' };
+  if (!status || !status.lastRun) return { down: true, reason: 'watchdog has no status in KV (never ran / KV cleared)' };
+  if (status.lastError) return { down: true, reason: `error: ${status.lastError}` };
+  const staleMin = Math.round((nowMs - new Date(status.lastRun).getTime()) / 60000);
+  if (staleMin > STALE_LIMIT_MIN) return { down: true, reason: `no run for ${staleMin} min (watchdog:status frozen)` };
   return { down: false, reason: 'ok' };
 }
 
@@ -71,15 +76,17 @@ async function sendTelegram(token, chatId, text, threadId) {
   if (!res.ok) throw new Error(`Telegram HTTP ${res.status}`);
 }
 
-export async function runMonitor(env) {
-  let status = null, fetchOk = false;
-  try {
-    const res = await fetch(STATUS_URL, { headers: { 'cache-control': 'no-cache' } });
-    fetchOk = res.ok;
-    if (res.ok) status = await res.json();
-  } catch { /* fetchOk stays false → treated as down */ }
+async function readJson(kv, key) {
+  const raw = await kv.get(key, 'text');
+  try { return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
 
-  const verdict = evaluate(status, fetchOk);
+export async function runMonitor(env, nowMs = Date.now()) {
+  // Read the watchdog's own KV state directly — no HTTP to the watchdog (see evaluate()).
+  const status = await readJson(env.KV, 'watchdog:status');
+  const config = await readJson(env.KV, 'watchdog:config');
+
+  const verdict = evaluate(status, config, nowMs);
   const prevRaw = await env.KV.get(STATE_KEY, 'text');
   const prev = prevRaw ? JSON.parse(prevRaw) : { alertedDown: false, downStreak: 0 };
   const { state, alert } = decideAlert(prev, verdict.down);

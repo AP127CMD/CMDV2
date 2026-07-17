@@ -1,30 +1,37 @@
 import { describe, it, expect } from 'vitest';
 import { evaluate, decideAlert, CONFIRM_DOWN } from '../src/index.js';
 
-describe('evaluate (status → down/up verdict)', () => {
-  it('unreachable /status (fetch failed) is DOWN', () => {
-    expect(evaluate(null, false).down).toBe(true);
-    expect(evaluate(null, false).reason).toMatch(/unreachable/);
+describe('evaluate (watchdog KV state → down/up verdict)', () => {
+  const NOW = Date.parse('2026-07-17T08:00:00Z');
+  const ago = (min) => new Date(NOW - min * 60000).toISOString();
+
+  it('no status in KV (never ran / cleared) is DOWN', () => {
+    expect(evaluate(null, null, NOW).down).toBe(true);
+    expect(evaluate(null, null, NOW).reason).toMatch(/no status/);
   });
 
-  it('healthy watchdog is UP', () => {
-    expect(evaluate({ healthy: true, staleMinutes: 3, enabled: true }, true).down).toBe(false);
+  it('a recent lastRun with no error is UP', () => {
+    expect(evaluate({ lastRun: ago(3), lastError: null }, { enabled: true }, NOW).down).toBe(false);
   });
 
-  it('healthy:false with a long stale gap is DOWN and names the gap', () => {
-    const v = evaluate({ healthy: false, staleMinutes: 45, enabled: true, lastError: null }, true);
+  it('a lastRun stale beyond the limit is DOWN and names the gap', () => {
+    const v = evaluate({ lastRun: ago(45), lastError: null }, { enabled: true }, NOW);
     expect(v.down).toBe(true);
     expect(v.reason).toMatch(/45 min/);
   });
 
-  it('healthy:false with a lastError is DOWN and surfaces the error', () => {
-    const v = evaluate({ healthy: false, staleMinutes: 5, enabled: true, lastError: 'Upstream HTTP 502' }, true);
+  it('a quiet gap up to ~25 min is still UP (watchdog only heartbeats every 25 min)', () => {
+    expect(evaluate({ lastRun: ago(24), lastError: null }, { enabled: true }, NOW).down).toBe(false);
+  });
+
+  it('a persisted lastError is DOWN and surfaces the error', () => {
+    const v = evaluate({ lastRun: ago(2), lastError: 'Upstream HTTP 502' }, { enabled: true }, NOW);
     expect(v.down).toBe(true);
     expect(v.reason).toMatch(/502/);
   });
 
   it('intentionally disabled watchdog is NOT treated as down', () => {
-    expect(evaluate({ healthy: false, enabled: false }, true).down).toBe(false);
+    expect(evaluate({ lastRun: ago(999), lastError: null }, { enabled: false }, NOW).down).toBe(false);
   });
 });
 
