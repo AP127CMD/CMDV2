@@ -374,16 +374,26 @@ async function handleFetch(request, env) {
     }
 
     const today = new Date().toISOString().slice(0, 10);
-    const KV_NS_ID = 'b42f3202c5364f91aef3837132d6ccd5';
+
+    // KV free-tier limits are per-ACCOUNT, not per-namespace — so usage must be summed across every
+    // namespace (the watchdog shares the account's 1,000 writes/day with the Chatbot, student-data,
+    // etc.). We query account-wide, grouped by namespaceId, and report both the account total (what
+    // counts against the limit) and a per-namespace breakdown (who is spending it).
+    const NS_NAMES = {
+      '718adf1e171842c7bf837421a14122c7': 'AP127_CHAT_KV',
+      'ef9a8ffa0d2141a188d59241484cf602': 'AP127_CHAT_KV_preview',
+      'c5c88c813d8d4f668f6081506ad98bcd': 'AP127_STUDENT_DATA',
+      'b42f3202c5364f91aef3837132d6ccd5': 'ap127-watchdog',
+    };
 
     const query = `{
       viewer {
         accounts(filter: {accountTag: "${env.CF_ACCOUNT_ID}"}) {
           kvOperationsAdaptiveGroups(
-            filter: {date_geq: "${today}", date_leq: "${today}", namespaceId: "${KV_NS_ID}"}
-            limit: 100
+            filter: {date_geq: "${today}", date_leq: "${today}"}
+            limit: 1000
           ) {
-            dimensions { actionType }
+            dimensions { actionType namespaceId }
             sum { requests }
           }
           workersInvocationsAdaptive(
@@ -420,10 +430,18 @@ async function handleFetch(request, env) {
     const kvGroups = account.kvOperationsAdaptiveGroups || [];
     const workerGroups = account.workersInvocationsAdaptive || [];
 
-    const kvByType = {};
+    const kvByType = {};                 // account-wide totals (what counts against the limit)
+    const nsMap = {};                    // per-namespace breakdown
     for (const g of kvGroups) {
       const t = g.dimensions.actionType;
-      kvByType[t] = (kvByType[t] || 0) + (g.sum.requests || 0);
+      const nsId = g.dimensions.namespaceId;
+      const n = g.sum.requests || 0;
+      kvByType[t] = (kvByType[t] || 0) + n;
+      const ns = nsMap[nsId] || (nsMap[nsId] = { id: nsId, name: NS_NAMES[nsId] || nsId, reads: 0, writes: 0, deletes: 0, lists: 0 });
+      if (t === 'read') ns.reads += n;
+      else if (t === 'write') ns.writes += n;
+      else if (t === 'delete') ns.deletes += n;
+      else if (t === 'list') ns.lists += n;
     }
 
     const result = {
@@ -434,6 +452,8 @@ async function handleFetch(request, env) {
         deletes: kvByType.delete || 0,
         lists:   kvByType.list   || 0,
       },
+      // Per-namespace attribution, biggest writer first (writes are the constrained dimension).
+      kvByNamespace: Object.values(nsMap).sort((a, b) => b.writes - a.writes),
       worker: {
         requests: workerGroups.reduce((s, g) => s + (g.sum.requests || 0), 0),
       },
