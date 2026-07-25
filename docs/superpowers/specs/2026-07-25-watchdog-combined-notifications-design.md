@@ -55,18 +55,21 @@ Rules:
 ```
 ✅ RATTANASUDA — LPC SEP · FI WUTTHICHAI L.
    17 Jul  planned 08:30–10:10 → flew 08:34–09:58 · HS-TPX
-   T/O·LDG 1·1 · Actual T/O 08:34 · Actual LDG 09:56
+   1 T/O · 1 LDG · TO 08:34 · LDG 09:56
 ```
 
-Field source and conditional display (labels match `AP127_V3/src/components/FlightDrawer.tsx`
-for consistency with the rest of the ecosystem):
-| Field | Source | Shown when |
-|---|---|---|
-| Planned → flew time | `diff.start`/`diff.end` (existing) | Always if the flight had recorded actuals differing from planned |
-| Aircraft (tail) | `flight.tail` (existing) | Always |
-| `T/O·LDG` | `flight.to` / `flight.ldg` (**new** — not currently in `buildSnapshot()`) | When either is present and non-zero |
-| `Actual T/O` / `Actual LDG` | `flight.tkoff` / `flight.ldgTime` (**new**) | When present and not `"00:00"` (~72% of records; older entries lack these fields) |
-| `INST` (instrument time) | `flight.inst` (**new**) | Only when non-zero (~18% of completions — showing it always would be mostly noise) |
+Field source and conditional display. **Naming note:** the touch-and-go **count**
+(`flight.to`/`flight.ldg`) and the actual **clock times** (`flight.tkoff`/`flight.ldgTime`)
+are deliberately given distinct labels — `T/O`/`LDG` (with the count number prefixed,
+e.g. `1 T/O`) for counts, vs. bare `TO`/`LDG` (no slash, prefixed with the time) for
+clock times — so the two never look like duplicates sitting on the same line:
+| Field | Source | Label | Shown when |
+|---|---|---|---|
+| Planned → flew time | `diff.start`/`diff.end` (existing) | `planned … → flew …` | Always if the flight had recorded actuals differing from planned |
+| Aircraft (tail) | `flight.tail` (existing) | bare tail id | Always |
+| Touch-and-go count | `flight.to` / `flight.ldg` (**new** — not currently in `buildSnapshot()`) | `N T/O · N LDG` | When either is present and non-zero |
+| Actual clock times | `flight.tkoff` / `flight.ldgTime` (**new**) | `TO HH:MM · LDG HH:MM` | When present and not `"00:00"` (~72% of records; older entries lack these fields) |
+| `INST` (instrument time) | `flight.inst` (**new**) | `INST N` | Only when non-zero (~18% of completions — showing it always would be mostly noise) |
 
 `airborne`/`airborneMin` is **not** shown — per the ecosystem-wide rule (`FlightDrawer.tsx`,
 `AP127_V3/CLAUDE.md`), airborne time is display-only and never part of any hours
@@ -183,8 +186,11 @@ window, and `suppressActualPairs()`.
     events omitted
   - time always rendered as a full range; a time change shows full-old-range →
     full-new-range
-  - Completed: `T/O·LDG`/`Actual T/O`/`Actual LDG`/`INST` each independently present
-    only when their source field is non-empty/non-zero/not `"00:00"`
+  - Completed: touch-and-go count (`N T/O · N LDG`), actual clock times (`TO HH:MM · LDG HH:MM`),
+    and `INST N` each independently present only when their source field is
+    non-empty/non-zero/not `"00:00"`; the two label pairs must never render as
+    identical text on the same line (regression test for the naming collision caught
+    2026-07-25)
   - chunk-splitting: a synthetic run large enough to exceed the char budget produces
     multiple chunks, each under 4,096 chars, each with a correct `(n/total)` header
   - single-event run still gets the standard header (`— 1 update`)
