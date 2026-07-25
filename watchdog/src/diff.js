@@ -9,6 +9,11 @@ export function buildSnapshot(flights) {
       date: f.date, start: f.start, end: f.end,
       status: f.status, student: f.student, instructor: f.instructor,
       lesson: f.lesson, tail: f.tail, type: f.type,
+      // Display-only actual-flight-record fields (2026-07-25) — deliberately NOT added to TRACKED
+      // above, so they never themselves trigger a diff event. They ride along on whatever event a
+      // flight's TRACKED-field transition already produces (most commonly Pending→Completed) and
+      // are rendered on the Completed message block by telegram.js's buildCombinedMessages().
+      to: f.to, ldg: f.ldg, tkoff: f.tkoff, ldgTime: f.ldgTime, inst: f.inst,
     };
   }
   return snap;

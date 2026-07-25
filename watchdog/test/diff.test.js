@@ -34,6 +34,16 @@ describe('buildSnapshot', () => {
     const snap = buildSnapshot(SAMPLE_FLIGHTS);
     expect(snap['101'].batch).toBe('AP-126');
   });
+
+  it('carries display-only actual-flight fields when present (2026-07-25 — not diffable, display only)', () => {
+    const flights = [{ ...SAMPLE_FLIGHTS[0], to: 1, ldg: 1, tkoff: '08:34', ldgTime: '09:56', inst: 2 }];
+    const snap = buildSnapshot(flights);
+    expect(snap['100'].to).toBe(1);
+    expect(snap['100'].ldg).toBe(1);
+    expect(snap['100'].tkoff).toBe('08:34');
+    expect(snap['100'].ldgTime).toBe('09:56');
+    expect(snap['100'].inst).toBe(2);
+  });
 });
 
 describe('diffSnapshots', () => {
@@ -111,6 +121,13 @@ describe('diffSnapshots', () => {
 
   it('returns empty array when nothing changed', () => {
     const events = diffSnapshots(base, { ...base });
+    expect(events).toHaveLength(0);
+  });
+
+  it('a change to only the new display-only fields (to/ldg/tkoff/ldgTime/inst) produces zero events — not TRACKED', () => {
+    const prev = { '100': { ...base['100'], to: 1, ldg: 1, tkoff: '08:00', ldgTime: '09:00', inst: 0 } };
+    const next = { '100': { ...base['100'], to: 2, ldg: 2, tkoff: '08:05', ldgTime: '09:10', inst: 3 } };
+    const events = diffSnapshots(prev, next);
     expect(events).toHaveLength(0);
   });
 });
