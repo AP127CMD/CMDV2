@@ -3,7 +3,7 @@ import { buildSnapshot, diffSnapshots, suppressActualPairs } from '../src/diff.j
 import { matchesBatchFilter, flightTimestampMs,
   SNAPSHOT_LOOKBACK_MS, SNAPSHOT_LOOKAHEAD_MS, withinSnapshotWindow,
   bangkokDateStr, isActionable, isAnomalousDrop, ANOMALY_MIN_BASELINE, ANOMALY_MAX_STREAK,
-  extractFeedSig, planNotifications, MAX_SENDS_PER_DEST } from '../src/index.js';
+  extractFeedSig, planNotifications } from '../src/index.js';
 
 const SAMPLE_FLIGHTS = [
   { id: '100', batch: 'AP-127', date: '2026-06-10', start: '08:00', end: '09:30',
@@ -272,19 +272,6 @@ describe('planNotifications (bounded, filtered send routing)', () => {
     const plan = planNotifications([ev('ANUSORN T.', 'HP-55')], dests);
     // AP127 batchFilter excludes HP-55; Nu is '*' but studentFilter matches → only Nu
     expect(plan.map(p => p.dest.label)).toEqual(['Nu']);
-  });
-
-  it('flags summarize when a destination exceeds MAX_SENDS_PER_DEST', () => {
-    const many = Array.from({ length: MAX_SENDS_PER_DEST + 1 }, () => ev('ANUSORN T.'));
-    const plan = planNotifications(many, dests);
-    expect(plan.find(p => p.dest.label === 'AP127').summarize).toBe(true);
-    expect(plan.find(p => p.dest.label === 'Nu').summarize).toBe(true);
-  });
-
-  it('does not summarize at or below the cap', () => {
-    const some = Array.from({ length: MAX_SENDS_PER_DEST }, () => ev('ANUSORN T.'));
-    const plan = planNotifications(some, dests);
-    expect(plan.every(p => p.summarize === false)).toBe(true);
   });
 
   it('omits destinations with no matched events', () => {

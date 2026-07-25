@@ -1,5 +1,5 @@
 import { buildSnapshot, diffSnapshots, suppressActualPairs } from './diff.js';
-import { formatMessage, formatSummary, sendTelegram } from './telegram.js';
+import { buildCombinedMessages, sendTelegram } from './telegram.js';
 import { appendLog, getLog } from './log.js';
 
 const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flight-data.js';
@@ -136,13 +136,12 @@ export function matchesBatchFilter(filter, flightBatch) {
   return flightBatch === filter;
 }
 
-// Wall-clock guard. Each Telegram send is followed by a 3.5 s gap (Telegram's ~20 msg/min limit),
-// so a mass-change run could otherwise blow the invocation's wall-clock limit (e.g. 26 events ×
-// 3.5 s ≈ 91 s) and get killed — a fresh silent-failure vector, especially if a broad destination
-// (e.g. the whole AP127 group) is enabled. planNotifications() routes each destination's matched
-// events, and flags any destination with more than MAX_SENDS_PER_DEST for a single SUMMARY message
-// instead of individual spam. The full detail is still written to the log either way.
-export const MAX_SENDS_PER_DEST = 8;
+// Routes each destination's matched events for this run (batch/student filter only). Sending
+// strategy — one combined message, chunked only if needed — lives in telegram.js's
+// buildCombinedMessages(); this function no longer decides "how many to send individually vs.
+// summarize" (see docs/superpowers/specs/2026-07-25-watchdog-combined-notifications-design.md —
+// the old MAX_SENDS_PER_DEST summarize-or-not split left every SP unmentioned during any burst
+// above 8 events, confirmed on the 2026-07-21 19-hour-outage catch-up).
 export function planNotifications(events, dests) {
   const plan = [];
   for (const dest of dests || []) {
@@ -153,7 +152,7 @@ export function planNotifications(events, dests) {
       if (dest.studentFilter && e.flight.student !== dest.studentFilter) return false;
       return true;
     });
-    if (items.length) plan.push({ dest, items, summarize: items.length > MAX_SENDS_PER_DEST });
+    if (items.length) plan.push({ dest, items });
   }
   return plan;
 }
@@ -241,18 +240,15 @@ async function runWatchdog(env) {
       ? config.destinations
       : [{ label: 'Default', chatId: env.TELEGRAM_CHAT_ID, threadId: null, mention: true, enabled: true, batchFilter: '*' }];
 
-    // Send (bounded per destination — summary instead of individual spam beyond MAX_SENDS_PER_DEST).
-    for (const { dest, items, summarize } of planNotifications(notifiable, allDests)) {
+    // Send — one combined message per destination per run (chunked only if it would exceed
+    // Telegram's char limit). Every matched SP is @mentioned in every run now, including bursts.
+    for (const { dest, items } of planNotifications(notifiable, allDests)) {
+      const roster = dest.mention !== false ? (config.roster || []) : [];
+      const messages = buildCombinedMessages(dest.label, items, roster);
       try {
-        if (summarize) {
-          await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, formatSummary(dest.label, items), dest.threadId);
-          await new Promise(r => setTimeout(r, 3500));
-        } else {
-          const roster = dest.mention !== false ? (config.roster || []) : [];
-          for (const e of items) {
-            await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, formatMessage(e, roster), dest.threadId);
-            await new Promise(r => setTimeout(r, 3500)); // Telegram ~20 msg/min per chat
-          }
+        for (const message of messages) {
+          await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, message, dest.threadId);
+          await new Promise(r => setTimeout(r, 3500)); // Telegram ~20 msg/min per chat
         }
       } catch (e) {
         console.error(`Telegram send to "${dest.label}" failed:`, e.message);
