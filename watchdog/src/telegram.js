@@ -1,10 +1,10 @@
 const TELEGRAM_BASE = 'https://api.telegram.org/bot';
 
-function fmtDate(dateStr) {
+function fmtDateShort(dateStr) {
   if (!dateStr) return '—';
   try {
     return new Date(dateStr + 'T00:00:00Z').toLocaleDateString('en-GB', {
-      day: '2-digit', month: 'short', year: 'numeric',
+      day: '2-digit', month: 'short',
     });
   } catch { return dateStr; }
 }
@@ -15,88 +15,140 @@ function spMention(student, roster) {
   return entry?.telegramUsername ? `${name} (@${entry.telegramUsername})` : name;
 }
 
-// Detail lines for the fields that changed in a diff (shared by CHANGED and STATUS updates).
-// `skipStatus` omits the status transition itself (STATUS renders that on the lesson line).
-function changeDetailLines(diff, f, { skipStatus = false } = {}) {
-  const lines = [];
-  if (diff.start || diff.end) {
-    const fromT = `${diff.start?.from ?? f.start}–${diff.end?.from ?? f.end}`;
-    const toT   = `${diff.start?.to   ?? f.start}–${diff.end?.to   ?? f.end}`;
-    lines.push(`⏰ ${fromT} → ${toT}`);
-  }
-  if (diff.date)       lines.push(`📅 ${diff.date.from} → ${diff.date.to}`);
-  if (diff.tail)       lines.push(`🛩 ${diff.tail.from} → ${diff.tail.to}`);
-  if (diff.instructor) lines.push(`👨‍✈️ ${diff.instructor.from} → ${diff.instructor.to}`);
-  if (diff.lesson)     lines.push(`📖 ${diff.lesson.from} → ${diff.lesson.to}`);
-  if (!skipStatus && diff.status) lines.push(`🔖 ${diff.status.from ?? '—'} → ${diff.status.to ?? '—'}`);
-  return lines;
+function timeRange(start, end) {
+  return start && end ? `${start}–${end}` : (start || '—');
 }
 
-export function formatMessage(event, roster) {
+// Sortable key: zero-padded YYYY-MM-DD + HH:MM strings compare chronologically as plain strings —
+// avoids importing index.js's flightTimestampMs (index.js imports FROM this file; importing back
+// would create a circular dependency).
+function sortKey(f) {
+  return `${f.date || ''}T${f.start || '00:00'}`;
+}
+
+// Classifies a diffed event into one of the 5 urgency groups used by buildCombinedMessages — see
+// docs/superpowers/specs/2026-07-25-watchdog-combined-notifications-design.md §3.
+function classifyForGrouping(event) {
   const { type, flight: f, diff = {} } = event;
-  const sp = spMention(f.student, roster);
-  const fi = f.instructor || '—';
-  const d = fmtDate(f.date);
-  const t = f.start && f.end ? `${f.start}–${f.end}` : (f.start || '—');
-  const head = (title) => [title, `SP: ${sp}`, `FI: ${fi}`, `📅 ${d}  ${t}`, `📖 ${f.lesson || '—'}`];
-
-  // Flight completed — reached either as an ADDED ACTUAL_ONLY record (status Completed) or as an
-  // in-place STATUS transition to Completed. Both mean "the flight flew"; show one completion card.
-  const completed = f.status === 'Completed'
-    && (type === 'ADDED' || (type === 'STATUS' && diff.status?.to === 'Completed'));
-  if (completed) {
-    const lines = [...head('✅ Flight completed'), `🛩 ${f.tail || '—'}`];
-    // When completion also recorded the actual flown times, show planned → actual for context.
-    if (diff.start || diff.end) {
-      const planned = `${diff.start?.from ?? f.start}–${diff.end?.from ?? f.end}`;
-      const flew    = `${diff.start?.to   ?? f.start}–${diff.end?.to   ?? f.end}`;
-      if (planned !== flew) lines.push(`🕐 planned ${planned} → flew ${flew}`);
-    }
-    return lines.join('\n');
-  }
-
-  if (type === 'ADDED') {
-    return [...head('✈️ New flight'), `🛩 ${f.tail || '—'}`].join('\n');
-  }
-
-  if (type === 'REMOVED') {
-    return head('❌ Flight cancelled').join('\n');
-  }
-
-  if (type === 'STATUS') {
-    const lines = [
-      `🔄 Status update`,
-      `SP: ${sp}`,
-      `FI: ${fi}`,
-      `📅 ${d}  ${t}`,
-      `📖 ${f.lesson || '—'}  ${diff.status?.from || '—'} → ${diff.status?.to || '—'}`,
-    ];
-    // Append any fields (times, tail, instructor, date) that changed alongside the status, so a
-    // bundled reschedule-and-cancel/confirm isn't reduced to just the status line.
-    lines.push(...changeDetailLines(diff, f, { skipStatus: true }));
-    return lines.join('\n');
-  }
-
-  // CHANGED — show current full details, then separator, then what changed
-  const lines = [...head('⚠️ Flight updated'), `🛩 ${f.tail || '—'}`, `—————————————`];
-  lines.push(...changeDetailLines(diff, f));
-  return lines.join('\n');
+  if (type === 'REMOVED') return 'cancelled';
+  if (type === 'STATUS' && diff.status?.to === 'Canceled') return 'cancelled';
+  if (type === 'STATUS' && diff.status?.to === 'Completed') return 'completed';
+  if (type === 'ADDED' && f.status === 'Completed') return 'completed';
+  if (type === 'ADDED') return 'new';
+  if (type === 'CHANGED') return 'changed';
+  return 'status'; // STATUS events that are neither a completion nor a cancellation
 }
 
-// Compact summary sent to a destination when a single run produced more matched events than we want
-// to fire individually (mass reschedule / bad-feed burst). Bounds spam + wall-clock; full per-event
-// detail is still written to the log and visible in the dashboard.
-export function formatSummary(destLabel, events) {
-  const counts = {};
-  for (const e of events) counts[e.type] = (counts[e.type] || 0) + 1;
-  const order = ['ADDED', 'CHANGED', 'STATUS', 'REMOVED'];
-  const verb = { ADDED: 'new/updated', CHANGED: 'changed', STATUS: 'status', REMOVED: 'cancelled' };
-  const parts = order.filter(t => counts[t]).map(t => `${counts[t]} ${verb[t]}`);
+const GROUPS = [
+  { key: 'cancelled', emoji: '❌', label: 'Cancelled' },
+  { key: 'changed',   emoji: '⚠️', label: 'Changed' },
+  { key: 'status',    emoji: '🔄', label: 'Status update' },
+  { key: 'new',       emoji: '✈️', label: 'New' },
+  { key: 'completed', emoji: '✅', label: 'Completed' },
+];
+
+// Groups events by urgency, sorts each group by flight time, and drops empty groups.
+function groupAndSortEvents(events) {
+  const byKey = {};
+  for (const e of events) {
+    const key = classifyForGrouping(e);
+    (byKey[key] ||= []).push(e);
+  }
+  return GROUPS
+    .map(g => ({
+      ...g,
+      events: (byKey[g.key] || []).slice().sort((a, b) => sortKey(a.flight).localeCompare(sortKey(b.flight))),
+    }))
+    .filter(g => g.events.length > 0);
+}
+
+// Renders one event's compact block — no leading type emoji (the group header carries that).
+function renderEventBlock(event, roster) {
+  const { flight: f, diff = {} } = event;
+  const sp         = spMention(f.student, roster);
+  const fiText     = diff.instructor ? `${diff.instructor.from}→${diff.instructor.to}` : (f.instructor || '—');
+  const tailText   = diff.tail       ? `${diff.tail.from}→${diff.tail.to}`             : (f.tail || '—');
+  const lessonText = diff.lesson     ? `${diff.lesson.from}→${diff.lesson.to}`         : (f.lesson || '—');
+  const dateText   = diff.date       ? `${diff.date.from}→${diff.date.to}`             : fmtDateShort(f.date);
+  const currentRange = timeRange(f.start, f.end);
+  const timeText = (diff.start || diff.end)
+    ? `${timeRange(diff.start?.from ?? f.start, diff.end?.from ?? f.end)} → ${currentRange}`
+    : currentRange;
+
+  const group = classifyForGrouping(event);
+
+  if (group === 'completed') {
+    const flownText = (diff.start || diff.end)
+      ? `planned ${timeRange(diff.start?.from ?? f.start, diff.end?.from ?? f.end)} → flew ${currentRange}`
+      : currentRange;
+    const lines = [
+      `${sp} — ${lessonText} · FI ${fiText}`,
+      `   ${fmtDateShort(f.date)}  ${flownText} · ${tailText}`,
+    ];
+    const actuals = [];
+    if (f.to || f.ldg)                      actuals.push(`${f.to ?? 0} T/O · ${f.ldg ?? 0} LDG`);
+    if (f.tkoff   && f.tkoff   !== '00:00') actuals.push(`TO ${f.tkoff}`);
+    if (f.ldgTime && f.ldgTime !== '00:00') actuals.push(`LDG ${f.ldgTime}`);
+    if (f.inst)                             actuals.push(`INST ${f.inst}`);
+    if (actuals.length) lines.push(`   ${actuals.join(' · ')}`);
+    return lines.join('\n');
+  }
+
+  const line2Parts = [`${dateText}  ${timeText}`, tailText];
+  if (group === 'status') line2Parts.push(`${diff.status?.from ?? '—'}→${diff.status?.to ?? '—'}`);
   return [
-    `📋 ${events.length} flight updates${destLabel ? ` — ${destLabel}` : ''}`,
-    parts.join(' · '),
-    `(too many to list individually — open the Watchdog dashboard for details)`,
+    `${sp} — ${lessonText} · FI ${fiText}`,
+    `   ${line2Parts.join(' · ')}`,
   ].join('\n');
+}
+
+// Telegram's sendMessage `text` hard limit is 4,096 chars (verified against the Bot API). Leave
+// headroom for the header/page-indicator line rather than cutting right at the wire.
+export const MAX_MESSAGE_CHARS = 4000;
+
+// Builds one or more ready-to-send Telegram messages for a destination's matched events this run.
+// Always combines — never a bare "N updates" summary with no detail (see design spec §1: the prior
+// >8-events summary-only path left every affected SP unmentioned). Groups by urgency, sorts by time,
+// renders each event, and splits into multiple messages only when content would exceed Telegram's
+// hard limit — two-pass: build chunk bodies first, then prepend finalized "(n/total)" headers once
+// the total chunk count is known (the header can't be written until the whole walk is done).
+export function buildCombinedMessages(destLabel, events, roster) {
+  const groups = groupAndSortEvents(events);
+  const bodies = [];
+  let current = '';
+
+  function pushBlock(block) {
+    const candidate = current ? `${current}\n\n${block}` : block;
+    if (current && candidate.length > MAX_MESSAGE_CHARS) {
+      bodies.push(current);
+      current = block;
+      return true; // started a new chunk
+    }
+    current = candidate;
+    return false;
+  }
+
+  for (const group of groups) {
+    const header = `${group.emoji} ${group.label}`;
+    pushBlock(header);
+    for (const event of group.events) {
+      const startedNewChunk = pushBlock(renderEventBlock(event, roster));
+      if (startedNewChunk) {
+        // The chunk boundary split this event from its group header — re-show the header so the
+        // new chunk's events are still labeled.
+        current = `${header}\n\n${current}`;
+      }
+    }
+  }
+  if (current) bodies.push(current);
+
+  const total = bodies.length;
+  return bodies.map((body, i) => {
+    const suffix = total > 1 ? ` (${i + 1}/${total})` : '';
+    const label = destLabel ? `${destLabel} — ` : '';
+    const header = `📋 ${label}${events.length} update${events.length === 1 ? '' : 's'}${suffix}`;
+    return `${header}\n${body}`;
+  });
 }
 
 async function _doSend(token, body) {
