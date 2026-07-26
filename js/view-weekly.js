@@ -126,7 +126,7 @@ function WeeklyBoard() {
         <div style={{ display:'grid', gridTemplateColumns:`repeat(${currentWeek.length}, 1fr)`, gap:8, height:'100%', minWidth: currentWeek.length * 160 }}>
           {currentWeek.map(d=>{
             const { wd, mo, day } = fmtDay(d);
-            const list = [...(byDate[d]||[])].sort((a,b)=>(minutesOf(a.start)||0)-(minutesOf(b.start)||0));
+            const list = [...(byDate[d]||[])].sort((a,b)=>(minutesOf(a.start) ?? Infinity)-(minutesOf(b.start) ?? Infinity));
             const sel  = d === app.date;
             const past = d < today;
             const tod  = d === today;

@@ -122,7 +122,7 @@ function CalendarBoard() {
   const panelData = useM_cal(() => {
     if (!selectedDate) return null;
     const all = FLIGHTS.filter(f => f.date === selectedDate && passF(f))
-      .sort((a,b) => (minutesOf(a.start)||0) - (minutesOf(b.start)||0));
+      .sort((a,b) => (minutesOf(a.start) ?? Infinity) - (minutesOf(b.start) ?? Infinity));
     const lv   = leavesOnDate(selectedDate);
     const lvKeys = Object.keys(lv);
     const fis  = lvKeys.filter(n => CAL_FI_NAMES.has(n));
