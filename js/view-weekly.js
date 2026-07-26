@@ -194,6 +194,7 @@ function WeeklyBoard() {
                         <div style={{ display:'flex',gap:6,alignItems:'baseline' }}>
                           <span className="mono num" style={{ fontSize:12,fontWeight:600,color:'var(--ink)' }}>{f.start}</span>
                           <span className="mono uc" style={{ fontSize:8,color:f.batch===HIGHLIGHT_BATCH?'var(--highlight)':'var(--ink-3)',fontWeight:f.batch===HIGHLIGHT_BATCH?600:400 }}>{f.batch}</span>
+                          {f._noTime && <span className="mono uc" style={{ fontSize:7,color:'var(--ink-3)',padding:'1px 4px',border:'1px dashed var(--ink-3)',borderRadius:2 }}>NO TIME</span>}
                         </div>
                         <div style={{ fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--ink)',display:'flex',gap:4,alignItems:'center' }}>
                           <span style={{ overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{f.student||'—'}</span>

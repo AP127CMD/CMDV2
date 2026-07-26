@@ -203,6 +203,25 @@ const leavesOnDate = (() => {
   };
 })();
 
+// Like leavesOnDate but returns the full leave record per name (reason, duration,
+// note, role, and the leave's own start/end range) — used only by the Calendar's
+// day-detail panel, which needs more than a bare reason string. leavesOnDate itself
+// is left unchanged since Board/Weekly's leave badges only need the reason string.
+const leaveDetailOnDate = (() => {
+  const cache = {};
+  return date => {
+    if (!date) return {};
+    if (cache[date]) return cache[date];
+    const m = {};
+    LEAVES.forEach(l => {
+      if (date >= l.start && date <= l.end) {
+        m[l.name] = { reason: l.reason || 'On Leave', duration: l.duration || '', note: l.note || '', role: l.role || '', start: l.start, end: l.end };
+      }
+    });
+    return (cache[date] = m);
+  };
+})();
+
 // Fill in every calendar day between first and last flight date
 const ALL_DATES = (() => {
   const src = [...new Set(FLIGHTS.map(f => f.date))].sort();
@@ -1140,7 +1159,7 @@ function FocusControls() {
 Object.assign(window, {
   AppCtx, AppProvider, useApp, ThemeStyle, ArtboardShell,
   FLIGHTS, INSTRUCTORS, RESOURCES, LEAVES, ALL_DATES, DEFAULT_DATE, HIGHLIGHT_BATCH, isAP127Batch,
-  MAINT_TAILS, isTailMaint, leavesOnDate,
+  MAINT_TAILS, isTailMaint, leavesOnDate, leaveDetailOnDate,
   localToday, bkkToday, validDate, fmtDay, minutesOf, fmtHM, isPast, isToday, STATUS_COLOR, flightAlpha, STATUS,
   FlightDot, ConditionTag, StatusPill, Tag, StandbyTag, HighlightBar, GndBadge, LeaveBadge,
   DateCalendarPopup, DateCalendarTrigger, RefreshButton, FilterBar, InlineSettings, Drawer,
