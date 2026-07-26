@@ -1,4 +1,4 @@
-import { buildSnapshot, diffSnapshots, suppressActualPairs } from './diff.js';
+import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons } from './diff.js';
 import { buildCombinedMessages, sendTelegram } from './telegram.js';
 import { appendLog, getLog } from './log.js';
 
@@ -224,10 +224,14 @@ async function runWatchdog(env) {
     // Suppress "record actual" pairs: when a flight is completed the system cancels the planned
     // entry and adds a new ACTUAL_ONLY entry. Don't notify either half.
     const deduped = suppressActualPairs(typeFiltered);
+    // Join reason/remarks (2026-07-26) — lives in the feed's separate `cancellations[]` array
+    // (mirrors `leaves[]`), never an inline field on the flight record. Joined by bookingId onto
+    // any event already classified as a cancellation.
+    const withReasons = attachCancelReasons(deduped, data.cancellations);
     // Notify/log only actionable events (flight today or later, Bangkok). Past-in-window churn is
     // used to keep the snapshot consistent but never surfaced.
     const todayStr = bangkokDateStr(nowMs);
-    const notifiable = deduped.filter(e => isActionable(e.flight, todayStr));
+    const notifiable = withReasons.filter(e => isActionable(e.flight, todayStr));
 
     // Update snapshot whenever the window changed at all (or first run) — keeps the baseline exactly
     // current so non-actionable churn doesn't re-diff every run. Independent of notify gating.

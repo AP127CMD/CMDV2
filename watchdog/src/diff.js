@@ -76,6 +76,29 @@ export function diffSnapshots(prev, next) {
   return events;
 }
 
+// 2026-07-26: cancelReason/remarks live in a separate `cancellations[]` array in the feed (mirrors
+// how `leaves[]` already works) — never an inline field on the flight record. Joins by `bookingId`
+// onto any event already classified as a cancellation (REMOVED, STATUS→Canceled, or the REMOVED
+// half of a same-id reassignment above). Pure — never mutates the input events.
+export function attachCancelReasons(events, cancellations) {
+  if (!cancellations || !cancellations.length) return events;
+  const byBookingId = {};
+  for (const c of cancellations) {
+    if (c.bookingId) byBookingId[c.bookingId] = c;
+  }
+  return events.map(e => {
+    const isCancelled = e.type === 'REMOVED' || (e.type === 'STATUS' && e.diff?.status?.to === 'Canceled');
+    if (!isCancelled) return e;
+    const rec = byBookingId[e.flight.id];
+    if (!rec) return e;
+    const cancelReason = {};
+    if (rec.reason) cancelReason.reason = rec.reason;
+    if (rec.remarks && rec.remarks.trim()) cancelReason.remarks = rec.remarks.trim();
+    if (!Object.keys(cancelReason).length) return e;
+    return { ...e, diff: { ...e.diff, cancelReason } };
+  });
+}
+
 // When a flight is recorded as complete the system cancels the planned entry and
 // adds a new ACTUAL_ONLY entry. Keep the ADDED(Completed) as "Flight completed",
 // suppress the paired cancel (REMOVED or status → Canceled for same SP + lesson + date).

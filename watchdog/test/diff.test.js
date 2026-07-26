@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSnapshot, diffSnapshots, suppressActualPairs } from '../src/diff.js';
+import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons } from '../src/diff.js';
 import { matchesBatchFilter, flightTimestampMs,
   SNAPSHOT_LOOKBACK_MS, SNAPSHOT_LOOKAHEAD_MS, withinSnapshotWindow,
   bangkokDateStr, isActionable, isAnomalousDrop, ANOMALY_MIN_BASELINE, ANOMALY_MAX_STREAK,
@@ -507,5 +507,58 @@ describe('suppressActualPairs', () => {
     const result = suppressActualPairs([completed, removed]);
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe('ADDED');
+  });
+});
+
+// 2026-07-26: cancelReason/remarks live in a separate `cancellations[]` array in the feed (mirrors
+// how `leaves[]` already works) — NOT an inline field on the flight record. Joined here by
+// `bookingId` onto any event classified as a cancellation (REMOVED, STATUS→Canceled, or the
+// REMOVED half of a same-id reassignment).
+describe('attachCancelReasons', () => {
+  const cancelledEvent = { type: 'REMOVED', flight: { id: 'BK-1', student: 'PATCHARANAN D.', lesson: 'CDXI 71' }, diff: {} };
+  const cancelledViaStatus = { type: 'STATUS', flight: { id: 'BK-2', student: 'X', lesson: 'Y' },
+    diff: { status: { from: 'Pending', to: 'Canceled' } } };
+  const changedEvent = { type: 'CHANGED', flight: { id: 'BK-3', student: 'Z', lesson: 'W' },
+    diff: { tail: { from: 'HS-A', to: 'HS-B' } } };
+
+  it('attaches reason + remarks to a REMOVED (cancelled) event, joined by bookingId', () => {
+    const cancellations = [{ bookingId: 'BK-1', reason: 'Aircraft Trouble', remarks: 'MFD does not sync' }];
+    const [result] = attachCancelReasons([cancelledEvent], cancellations);
+    expect(result.diff.cancelReason).toEqual({ reason: 'Aircraft Trouble', remarks: 'MFD does not sync' });
+  });
+
+  it('attaches to a STATUS→Canceled event the same way', () => {
+    const cancellations = [{ bookingId: 'BK-2', reason: 'Weather (WX)', remarks: '' }];
+    const [result] = attachCancelReasons([cancelledViaStatus], cancellations);
+    expect(result.diff.cancelReason.reason).toBe('Weather (WX)');
+  });
+
+  it('omits remarks entirely when the field is empty/blank, keeps reason', () => {
+    const cancellations = [{ bookingId: 'BK-1', reason: 'Other', remarks: '   ' }];
+    const [result] = attachCancelReasons([cancelledEvent], cancellations);
+    expect(result.diff.cancelReason).toEqual({ reason: 'Other' });
+  });
+
+  it('does nothing when no matching bookingId is found', () => {
+    const cancellations = [{ bookingId: 'BK-999', reason: 'Other', remarks: '' }];
+    const [result] = attachCancelReasons([cancelledEvent], cancellations);
+    expect(result.diff.cancelReason).toBeUndefined();
+  });
+
+  it('does not attach to a non-cancellation event even if its id happens to match', () => {
+    const cancellations = [{ bookingId: 'BK-3', reason: 'Other', remarks: '' }];
+    const [result] = attachCancelReasons([changedEvent], cancellations);
+    expect(result.diff.cancelReason).toBeUndefined();
+  });
+
+  it('handles an empty/missing cancellations array without throwing, returns events unchanged', () => {
+    expect(attachCancelReasons([cancelledEvent], [])).toEqual([cancelledEvent]);
+    expect(attachCancelReasons([cancelledEvent], undefined)).toEqual([cancelledEvent]);
+  });
+
+  it('does not mutate the original event objects (pure function)', () => {
+    const cancellations = [{ bookingId: 'BK-1', reason: 'Other', remarks: '' }];
+    attachCancelReasons([cancelledEvent], cancellations);
+    expect(cancelledEvent.diff.cancelReason).toBeUndefined();
   });
 });

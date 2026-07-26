@@ -62,59 +62,93 @@ function groupAndSortEvents(events) {
     .filter(g => g.events.length > 0);
 }
 
-// Renders one event's compact block — no leading type emoji (the group header carries that).
+// Renders one event's compact block. 2026-07-26 redesign (real-user report: the prior single
+// packed line wrapped mid-arrow on a phone screen — "line-cut"). Shape:
+//   {typeEmoji} {SP} ({@handle})
+//   {unchanged context: lesson · 🗣️ FI · 📅 date}      (only fields that did NOT change)
+//   - {icon} {value}                                    (one dash-bulleted line per fact)
+//   - {icon} {old} → 🆕 {new}                            (changed fact — 🆕 marks the current side)
+// A changed lesson/FI/date is promoted OUT of the context line into its own dash line, so it's
+// never shown twice. Every line stays well under a phone's wrap width (see design doc).
 function renderEventBlock(event, roster) {
   const { flight: f, diff = {} } = event;
-  const sp         = spMention(f.student, roster);
-  const fiText     = diff.instructor ? `${diff.instructor.from}→${diff.instructor.to}` : (f.instructor || '—');
-  const tailText   = diff.tail       ? `${diff.tail.from}→${diff.tail.to}`             : (f.tail || '—');
-  const lessonText = diff.lesson     ? `${diff.lesson.from}→${diff.lesson.to}`         : (f.lesson || '—');
-  const dateText   = diff.date       ? `${diff.date.from}→${diff.date.to}`             : fmtDateShort(f.date);
-  const currentRange = timeRange(f.start, f.end);
-  const timeText = (diff.start || diff.end)
-    ? `${timeRange(diff.start?.from ?? f.start, diff.end?.from ?? f.end)} → ${currentRange}`
-    : currentRange;
-
+  const sp = spMention(f.student, roster);
   const group = classifyForGrouping(event);
+  const emoji = GROUPS.find(g => g.key === group).emoji;
+  const currentRange = timeRange(f.start, f.end);
 
-  // Same-id reassignment context (diff.js synthesizes this — see its comment): the old owner's
-  // cancellation names who replaced them, the new owner's new-flight line names who it came from.
-  // Without this, a reassignment reads as an ordinary cancel/new-flight with no explanation.
+  const lines = [`${emoji} ${sp}`];
+
+  // Cancel reason/remarks (diff.js's attachCancelReasons) — rendered later in this function,
+  // appended after all other facts, since it's the least time-critical detail.
+  const reasonLines = [];
+  if (diff.cancelReason?.reason)  reasonLines.push(`- 📝 ${diff.cancelReason.reason}`);
+  if (diff.cancelReason?.remarks) reasonLines.push(`- 💬 ${diff.cancelReason.remarks}`);
+
+  // Reassignment context (diff.js synthesizes this): the old owner's cancellation names who
+  // replaced them, the new owner's new-flight line names who it came from.
   let reassignLine = null;
-  if (diff.reassignedTo)   reassignLine = `   ↪ reassigned to ${diff.reassignedTo.student} (${diff.reassignedTo.batch})`;
-  if (diff.reassignedFrom) reassignLine = `   ↪ reassigned from ${diff.reassignedFrom.student} (${diff.reassignedFrom.batch})`;
+  if (diff.reassignedTo)   reassignLine = `- ↪ reassigned to ${diff.reassignedTo.student} (${diff.reassignedTo.batch})`;
+  if (diff.reassignedFrom) reassignLine = `- ↪ reassigned from ${diff.reassignedFrom.student} (${diff.reassignedFrom.batch})`;
 
   if (group === 'completed') {
-    const flownText = (diff.start || diff.end)
-      ? `planned ${timeRange(diff.start?.from ?? f.start, diff.end?.from ?? f.end)} → flew ${currentRange}`
-      : currentRange;
-    const lines = [
-      `${sp} — ${lessonText} · FI ${fiText}`,
-      `   ${fmtDateShort(f.date)}  ${flownText} · ${tailText}`,
-    ];
-    const actuals = [];
-    if (f.to || f.ldg)                      actuals.push(`${f.to ?? 0} T/O · ${f.ldg ?? 0} LDG`);
-    if (f.tkoff   && f.tkoff   !== '00:00') actuals.push(`TO ${f.tkoff}`);
-    if (f.ldgTime && f.ldgTime !== '00:00') actuals.push(`LDG ${f.ldgTime}`);
-    if (f.inst)                             actuals.push(`INST ${f.inst}`);
-    if (actuals.length) lines.push(`   ${actuals.join(' · ')}`);
+    // No "planned"/"flew" words (icon alone is enough) and no 🆕 anywhere — this is a factual
+    // record of what happened, not a change to flag.
+    lines.push(`${f.lesson || '—'} · 🗣️ ${f.instructor || '—'} · 📅 ${fmtDateShort(f.date)}`);
+    if (diff.start || diff.end) {
+      const plannedRange = timeRange(diff.start?.from ?? f.start, diff.end?.from ?? f.end);
+      if (plannedRange !== currentRange) lines.push(`- ⏰ ${plannedRange}`);
+    }
+    lines.push(`- ✍️ ${currentRange}`);
+    lines.push(`- 🛩 ${f.tail || '—'}`);
+    if (f.to || f.ldg) lines.push(`- 🛬 ${f.to ?? 0} T/O · ${f.ldg ?? 0} LDG`);
+    const clocks = [];
+    if (f.tkoff   && f.tkoff   !== '00:00') clocks.push(`TO ${f.tkoff}`);
+    if (f.ldgTime && f.ldgTime !== '00:00') clocks.push(`LDG ${f.ldgTime}`);
+    if (f.inst) clocks.push(`INST ${f.inst}`);
+    if (clocks.length) lines.push(`- 🕘 ${clocks.join(' · ')}`);
     if (reassignLine) lines.push(reassignLine);
+    lines.push(...reasonLines);
     return lines.join('\n');
   }
 
-  const line2Parts = [`${dateText}  ${timeText}`, tailText];
-  if (group === 'status') line2Parts.push(`${diff.status?.from ?? '—'}→${diff.status?.to ?? '—'}`);
-  // 2026-07-26: type/cond/isSim/isStandby are now diffable (diff.js) — show what changed, not just
+  // Context line: lesson/FI/date, but only the ones that did NOT change (a changed one is
+  // promoted to its own dash line below instead, so it's never shown twice).
+  const contextParts = [];
+  if (!diff.lesson)     contextParts.push(f.lesson || '—');
+  if (!diff.instructor) contextParts.push(`🗣️ ${f.instructor || '—'}`);
+  if (!diff.date)       contextParts.push(`📅 ${fmtDateShort(f.date)}`);
+  if (contextParts.length) lines.push(contextParts.join(' · '));
+
+  // Time — always shown (baseline fact for every non-completed group).
+  if (diff.start || diff.end) {
+    const fromRange = timeRange(diff.start?.from ?? f.start, diff.end?.from ?? f.end);
+    lines.push(`- ⏰ ${fromRange} → 🆕 ${currentRange}`);
+  } else {
+    lines.push(`- ⏰ ${currentRange}`);
+  }
+
+  // Tail — always shown.
+  if (diff.tail) lines.push(`- 🛩 ${diff.tail.from ?? '—'} → 🆕 ${diff.tail.to ?? '—'}`);
+  else lines.push(`- 🛩 ${f.tail || '—'}`);
+
+  // Promoted context changes.
+  if (diff.lesson)     lines.push(`- 📖 ${diff.lesson.from ?? '—'} → 🆕 ${diff.lesson.to ?? '—'}`);
+  if (diff.instructor) lines.push(`- 🗣️ ${diff.instructor.from ?? '—'} → 🆕 ${diff.instructor.to ?? '—'}`);
+  if (diff.date)        lines.push(`- 📅 ${diff.date.from ?? '—'} → 🆕 ${diff.date.to ?? '—'}`);
+
+  // 2026-07-26: type/cond/isSim/isStandby are diffable (diff.js) — show what changed, not just
   // that "something" did. Booleans render as plain words, not raw true/false.
-  if (diff.type) line2Parts.push(`${diff.type.from ?? '—'}→${diff.type.to ?? '—'}`);
-  if (diff.cond) line2Parts.push(`${diff.cond.from ?? '—'}→${diff.cond.to ?? '—'}`);
-  if (diff.isSim)     line2Parts.push(diff.isSim.to ? 'now SIM' : 'no longer SIM');
-  if (diff.isStandby) line2Parts.push(diff.isStandby.to ? 'now STANDBY' : 'no longer STANDBY');
-  const lines = [
-    `${sp} — ${lessonText} · FI ${fiText}`,
-    `   ${line2Parts.join(' · ')}`,
-  ];
+  if (diff.type) lines.push(`- 🏷️ ${diff.type.from ?? '—'} → 🆕 ${diff.type.to ?? '—'}`);
+  if (diff.cond) lines.push(`- 📌 ${diff.cond.from ?? '—'} → 🆕 ${diff.cond.to ?? '—'}`);
+  if (diff.isSim)     lines.push(diff.isSim.to ? '- 🎮 🆕 now SIM' : '- 🎮 🆕 no longer SIM');
+  if (diff.isStandby) lines.push(diff.isStandby.to ? '- ⏸️ 🆕 now STANDBY' : '- ⏸️ 🆕 no longer STANDBY');
+
+  // Status transition (the 'status' group).
+  if (group === 'status' && diff.status) lines.push(`- 🔖 ${diff.status.from ?? '—'} → 🆕 ${diff.status.to ?? '—'}`);
+
   if (reassignLine) lines.push(reassignLine);
+  lines.push(...reasonLines);
   return lines.join('\n');
 }
 
