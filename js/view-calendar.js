@@ -123,7 +123,8 @@ function CalendarBoard() {
     if (!selectedDate) return null;
     const all = FLIGHTS.filter(f => f.date === selectedDate && passF(f))
       .sort((a,b) => (minutesOf(a.start) ?? Infinity) - (minutesOf(b.start) ?? Infinity));
-    const lv   = leavesOnDate(selectedDate);
+    const lv       = leavesOnDate(selectedDate);
+    const lvDetail = leaveDetailOnDate(selectedDate);
     const lvKeys = Object.keys(lv);
     const fis  = lvKeys.filter(n => CAL_FI_NAMES.has(n));
     const sps  = lvKeys.filter(n => !CAL_FI_NAMES.has(n));
@@ -138,7 +139,7 @@ function CalendarBoard() {
     });
     const compRate = (s.completed+s.canceled) > 0 ? Math.round(s.completed/(s.completed+s.canceled)*100) : null;
     const ap127 = all.filter(f => f.batch === HIGHLIGHT_BATCH);
-    return { all, ap127, fis, sps, lv, stats: s, compRate };
+    return { all, ap127, fis, sps, lv, lvDetail, stats: s, compRate };
   }, [selectedDate, statusF, batchF, ap127Only]);
 
   // ALL_DATES index for panel prev/next navigation
@@ -275,6 +276,9 @@ function CalendarBoard() {
                           {f.instructor && <><span>·</span><span>{f.instructor}</span></>}
                           {f.tail && <><span>·</span><span>{f.tail}</span></>}
                         </div>
+                        {f.status === 'Canceled' && f.cancelReason && (
+                          <div className="mono" style={{ fontSize:9, color:'var(--col-cancel)', marginTop:2 }}>{f.cancelReason}</div>
+                        )}
                       </button>
                     );
                   })}
@@ -286,12 +290,24 @@ function CalendarBoard() {
             {pd.fis.length > 0 && (
               <Sect title={`FI ON LEAVE · ${pd.fis.length}`} color="var(--col-stby)">
                 <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                  {pd.fis.map(n => (
-                    <div key={n} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:5, background:'color-mix(in oklch,var(--col-stby) 8%,var(--bg-2))', border:'1px solid color-mix(in oklch,var(--col-stby) 20%,var(--line))' }}>
-                      <span style={{ flex:1, fontSize:11 }}>{n}</span>
-                      <span className="mono uc" style={{ fontSize:8, color:'var(--col-stby)' }}>{pd.lv[n]||'ON LEAVE'}</span>
-                    </div>
-                  ))}
+                  {pd.fis.map(n => {
+                    const d = pd.lvDetail[n] || {};
+                    return (
+                      <div key={n} style={{ display:'flex', flexDirection:'column', gap:2, padding:'5px 8px', borderRadius:5, background:'color-mix(in oklch,var(--col-stby) 8%,var(--bg-2))', border:'1px solid color-mix(in oklch,var(--col-stby) 20%,var(--line))' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ flex:1, fontSize:11 }}>{n}</span>
+                          {d.role && <span className="mono uc" style={{ fontSize:7, color:'var(--ink-3)' }}>{d.role}</span>}
+                          <span className="mono uc" style={{ fontSize:8, color:'var(--col-stby)' }}>{d.reason || 'ON LEAVE'}</span>
+                        </div>
+                        {(d.duration || d.note) && (
+                          <div className="mono" style={{ fontSize:9, color:'var(--ink-3)', display:'flex', gap:6 }}>
+                            {d.duration && <span>{d.duration}</span>}
+                            {d.note && <span style={{ whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{d.note}</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </Sect>
             )}
@@ -300,12 +316,24 @@ function CalendarBoard() {
             {pd.sps.length > 0 && (
               <Sect title={`SP ON LEAVE · ${pd.sps.length}`} color={CAL_SP_COLOR}>
                 <div style={{ display:'flex', flexDirection:'column', gap:4, maxHeight:200, overflowY:'auto' }}>
-                  {pd.sps.map(n => (
-                    <div key={n} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:5, background:`color-mix(in oklch,${CAL_SP_COLOR} 8%,var(--bg-2))`, border:`1px solid color-mix(in oklch,${CAL_SP_COLOR} 20%,var(--line))` }}>
-                      <span style={{ flex:1, fontSize:11 }}>{n}</span>
-                      <span className="mono uc" style={{ fontSize:8, color:CAL_SP_COLOR }}>{pd.lv[n]||'ON LEAVE'}</span>
-                    </div>
-                  ))}
+                  {pd.sps.map(n => {
+                    const d = pd.lvDetail[n] || {};
+                    return (
+                      <div key={n} style={{ display:'flex', flexDirection:'column', gap:2, padding:'5px 8px', borderRadius:5, background:`color-mix(in oklch,${CAL_SP_COLOR} 8%,var(--bg-2))`, border:`1px solid color-mix(in oklch,${CAL_SP_COLOR} 20%,var(--line))` }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ flex:1, fontSize:11 }}>{n}</span>
+                          {d.role && <span className="mono uc" style={{ fontSize:7, color:'var(--ink-3)' }}>{d.role}</span>}
+                          <span className="mono uc" style={{ fontSize:8, color:CAL_SP_COLOR }}>{d.reason || 'ON LEAVE'}</span>
+                        </div>
+                        {(d.duration || d.note) && (
+                          <div className="mono" style={{ fontSize:9, color:'var(--ink-3)', display:'flex', gap:6 }}>
+                            {d.duration && <span>{d.duration}</span>}
+                            {d.note && <span style={{ whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{d.note}</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </Sect>
             )}
