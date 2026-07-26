@@ -243,9 +243,9 @@ async function runWatchdog(env) {
     // Send — one combined message per destination per run (chunked only if it would exceed
     // Telegram's char limit). Every matched SP is @mentioned in every run now, including bursts.
     for (const { dest, items } of planNotifications(notifiable, allDests)) {
-      const roster = dest.mention !== false ? (config.roster || []) : [];
-      const messages = buildCombinedMessages(dest.label, items, roster);
       try {
+        const roster = dest.mention !== false ? (config.roster || []) : [];
+        const messages = buildCombinedMessages(dest.label, items, roster);
         for (const message of messages) {
           await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, message, dest.threadId);
           await new Promise(r => setTimeout(r, 3500)); // Telegram ~20 msg/min per chat
