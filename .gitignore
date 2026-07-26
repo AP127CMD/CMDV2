@@ -5,3 +5,4 @@ progress/cache.json
 # build/deps artifacts
 node_modules/
 .wrangler/
+.superpowers/
