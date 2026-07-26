@@ -162,6 +162,7 @@ function OpsBoard() {
                   <StatusPill status={f.status}/>
                   {f.isStandby&&<StandbyTag/>}
                   {f.isSim&&<Tag color="var(--col-sim)" mono>SIM</Tag>}
+                  {f._noTime&&<Tag color="var(--ink-3)" mono>NO TIME</Tag>}
                 </span>
                 <span className="mono uc"  style={{ fontSize:10, color:f.batch===HIGHLIGHT_BATCH?'var(--highlight)':'var(--ink-2)', fontWeight:f.batch===HIGHLIGHT_BATCH?600:500 }}>{f.batch}</span>
                 <span style={{ fontSize:12, minWidth:0, display:'flex', alignItems:'center', gap:4, overflow:'hidden' }}>
