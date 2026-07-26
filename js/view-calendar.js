@@ -265,7 +265,9 @@ function CalendarBoard() {
                           borderLeft:`3px solid ${col}`, color:'var(--ink)',
                         }}>
                         <div style={{ display:'flex', gap:6, alignItems:'baseline', marginBottom:2 }}>
-                          <span className="mono num" style={{ fontSize:11, fontWeight:600 }}>{f.start}</span>
+                          {f._noTime
+                            ? <span className="mono uc" style={{ fontSize:8, color:'var(--ink-3)', padding:'1px 4px', border:'1px dashed var(--ink-3)', borderRadius:2 }}>NO TIME</span>
+                            : <span className="mono num" style={{ fontSize:11, fontWeight:600 }}>{f.start}</span>}
                           <span className="mono uc" style={{ fontSize:8, color:col }}>{f.status}</span>
                           <span style={{ flex:1 }}/>
                           <span className="mono" style={{ fontSize:9, color:'var(--ink-3)' }}>{f.duration||''}</span>
