@@ -11,11 +11,13 @@ Three real-user reports about the Schedule view:
 2. **New data fields have appeared upstream but the flight detail card doesn't show them.**
 3. **The calendar's leave indicators are too shallow — can't see who's on leave, why, for how long, or any remark.**
 
-## Root causes (verified against live `flight-data.js`)
+## Root causes (verified against live production data, re-checked 2026-07-26T15:15Z)
 
-- `FLIGHT_DATA` carries a separate `cancellations[]` feed (179 records: `bookingId`, `date`, `reason`, `remarks`, `instructor`, `student`, `batch`, `lesson`, `acType`, `acReg`) meant to be joined onto flights by `bookingId === flight.id`.
-- **92 of 179 (51%) have no matching flight record in `flights[]` at all** — they exist only in the cancellations log, so every current view (which only reads `FLIGHTS`) never shows them. Example: Siwakorn P.'s AP-127 lesson CDXV 31, cancelled 2026-07-10 for weather, is invisible everywhere.
-- Flight records already carry `cancelReason`, `blockOff`, `blockOn` fields that the Drawer (flight detail card) never renders. The cancellations feed's free-text `remarks` (sometimes Thai) isn't joined in anywhere.
+- `FLIGHT_DATA` carries a separate `cancellations[]` feed (337 records as of this check: `bookingId`, `date`, `reason`, `remarks`, `instructor`, `student`, `batch`, `lesson`, `acType`, `acReg`) meant to be joined onto flights by `bookingId === flight.id`.
+- **210 of 337 (62%) have no matching flight record in `flights[]` at all** (72 of those are AP-127) — they exist only in the cancellations log, so every current view (which only reads `FLIGHTS`) never shows them. This count is a live, moving target — the upstream pipeline does eventually backfill some individual bookings into `flights[]` (see below), but a large, persistent fraction never gets one.
+  - Concretely verified example: `BK-8IWR-3978` — VASAPHON S., AP-127, lesson CDGL 02, 2026-05-05, reason "Other" / remarks "Late Aircraft" — still has no flight row as of this check. Used as the test case below.
+  - The example originally reported (Napon S., AP-127, CDXV 29, 2026-07-27, 11:00–12:30) was **confirmed as a real instance of this same bug** via git history — it existed only as a Cancels record with no flight row as recently as this morning's snapshot (06:07Z) — but self-healed by the time of this check (15:15Z): the upstream pipeline had, by then, written it into `flights[]` directly with `status:"Canceled"`, the correct `start`/`end` (11:00–12:30, matching exactly what was reported), plus `cancelReason` **and** a `cancelRemarks` field already joined in. This is good evidence for the join design below (fill gaps, never override) but means it's no longer usable as a "currently still broken" test case.
+- **New confirmation: flight records can now arrive with `cancelReason` and `cancelRemarks` already attached directly by the upstream pipeline** (not just the older `cancelReason`/`blockOff`/`blockOn` fields, which were already present but unused by the Drawer). This is inconsistent/partial — only 3 of 204 currently-Canceled flights have `cancelRemarks` pre-joined — so the frontend join pass must still independently backfill from `cancellations[]` for anything the pipeline hasn't caught up on yet, and must never overwrite a value that's already there.
 - `leavesOnDate()` (`shared.js`) collapses each `LEAVES` record down to a bare `{name: reason}` map, discarding `duration` ("Full Day"/"Half Day"), `note`, `role`, and the leave's date range — all present on the source record.
 
 ## Design
@@ -25,7 +27,7 @@ Three real-user reports about the Schedule view:
 Add `attachCancelDetails()`, run once at load time (next to the existing dedup IIFE near line 38):
 
 - Index `FLIGHT_DATA.cancellations` by `bookingId`.
-- For each **Canceled** flight matching a cancellation by `id === bookingId`: set `cancelReason` (fallback only, don't override an existing value) and `cancelRemarks` (new field, always from the cancellation record).
+- For each **Canceled** flight matching a cancellation by `id === bookingId`: set `cancelReason` and `cancelRemarks` as fallback only — never override a value the upstream pipeline already attached.
 - For each cancellation with **no** matching flight: synthesize a virtual flight and push it into `FLIGHT_DATA.flights`:
   ```js
   {
@@ -76,7 +78,7 @@ pulled directly from `LEAVES`. Wire it into `CalendarBoard`'s day-detail panel o
 ## Verification plan
 
 - Preview the app locally (`preview_start` against `AP127_V2`), navigate to Schedule.
-- Board/day view: pick a date known to contain an orphan cancellation (e.g. 2026-07-10) and confirm it now appears with a NO TIME tag.
+- Board/day view: 2026-05-05, confirm `BK-8IWR-3978` (VASAPHON S., AP-127, CDGL 02, "Late Aircraft") now appears with a NO TIME tag, reason, and remark.
 - Weekly: same date, confirm the flight tile appears in the correct day column, sorted after timed flights.
 - Calendar: confirm the month cell's cancel count includes the orphan, and the day panel shows it with reason.
 - Click into the Drawer for a Canceled flight with remarks (real or synthetic) and confirm CANCEL REASON / REMARKS / NO TIME LOGGED render correctly; click a Completed flight with `blockOff`/`blockOn` and confirm the new row.
