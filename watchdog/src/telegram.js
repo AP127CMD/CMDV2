@@ -77,6 +77,13 @@ function renderEventBlock(event, roster) {
 
   const group = classifyForGrouping(event);
 
+  // Same-id reassignment context (diff.js synthesizes this — see its comment): the old owner's
+  // cancellation names who replaced them, the new owner's new-flight line names who it came from.
+  // Without this, a reassignment reads as an ordinary cancel/new-flight with no explanation.
+  let reassignLine = null;
+  if (diff.reassignedTo)   reassignLine = `   ↪ reassigned to ${diff.reassignedTo.student} (${diff.reassignedTo.batch})`;
+  if (diff.reassignedFrom) reassignLine = `   ↪ reassigned from ${diff.reassignedFrom.student} (${diff.reassignedFrom.batch})`;
+
   if (group === 'completed') {
     const flownText = (diff.start || diff.end)
       ? `planned ${timeRange(diff.start?.from ?? f.start, diff.end?.from ?? f.end)} → flew ${currentRange}`
@@ -91,15 +98,18 @@ function renderEventBlock(event, roster) {
     if (f.ldgTime && f.ldgTime !== '00:00') actuals.push(`LDG ${f.ldgTime}`);
     if (f.inst)                             actuals.push(`INST ${f.inst}`);
     if (actuals.length) lines.push(`   ${actuals.join(' · ')}`);
+    if (reassignLine) lines.push(reassignLine);
     return lines.join('\n');
   }
 
   const line2Parts = [`${dateText}  ${timeText}`, tailText];
   if (group === 'status') line2Parts.push(`${diff.status?.from ?? '—'}→${diff.status?.to ?? '—'}`);
-  return [
+  const lines = [
     `${sp} — ${lessonText} · FI ${fiText}`,
     `   ${line2Parts.join(' · ')}`,
-  ].join('\n');
+  ];
+  if (reassignLine) lines.push(reassignLine);
+  return lines.join('\n');
 }
 
 // Telegram's sendMessage `text` hard limit is 4,096 chars (verified against the Bot API). Leave

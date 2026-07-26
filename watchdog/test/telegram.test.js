@@ -65,6 +65,29 @@ describe('buildCombinedMessages', () => {
     expect(msg).toContain('08:00–09:30');
   });
 
+  it('a same-id reassignment REMOVED shows who replaced the old owner (2026-07-26 fix)', () => {
+    const event = { type: 'REMOVED', flight: { ...BASE_FLIGHT, student: 'ANUSORN T.', lesson: 'CDXV 32' },
+      diff: { reassignedTo: { student: 'PARAMUTT C.', batch: 'AP-126' } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('❌ Cancelled');
+    expect(msg).toContain('ANUSORN T.');
+    expect(msg).toContain('reassigned to PARAMUTT C. (AP-126)');
+  });
+
+  it('a same-id reassignment ADDED shows who it was reassigned from', () => {
+    const event = { type: 'ADDED', flight: { ...BASE_FLIGHT, student: 'PARAMUTT C.', lesson: 'CDXI 73', batch: 'AP-126' },
+      diff: { reassignedFrom: { student: 'ANUSORN T.', batch: 'AP-127' } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('✈️ New');
+    expect(msg).toContain('PARAMUTT C.');
+    expect(msg).toContain('reassigned from ANUSORN T. (AP-127)');
+  });
+
+  it('a normal REMOVED/ADDED with no reassignment shows no reassignment line', () => {
+    const [msg] = buildCombinedMessages('AP127', [{ type: 'REMOVED', flight: BASE_FLIGHT, diff: {} }], ROSTER);
+    expect(msg).not.toContain('reassigned');
+  });
+
   it('STATUS → Canceled is in the Cancelled group, not a separate Status update group', () => {
     const event = { type: 'STATUS', flight: { ...BASE_FLIGHT, status: 'Canceled' },
       diff: { status: { from: 'Pending', to: 'Canceled' } } };

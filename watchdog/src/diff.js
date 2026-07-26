@@ -30,6 +30,22 @@ export function diffSnapshots(prev, next) {
       continue;
     }
     const p = prev[id], n = next[id];
+
+    // Same-id reassignment: the upstream source sometimes reuses a flight id for a completely
+    // different booking (different student and/or batch) instead of issuing a new id — confirmed
+    // live 2026-07-26 (a flight silently reassigned from one student/batch to another). This is
+    // NOT an edit to one person's flight — it's two different bookings sharing an id. `student`/
+    // `batch` are deliberately excluded from TRACKED (below) so this never masquerades as an
+    // ordinary CHANGED event attributed only to the new owner — that used to leave the old owner
+    // with zero notice, and even misrouted away from the old batch's destination. Synthesize the
+    // old owner's cancellation (tagged with who replaced them) and the new owner's new flight
+    // (tagged with who it came from) so both sides are notified and each routes correctly.
+    if (p.student !== n.student || p.batch !== n.batch) {
+      events.push({ type: 'REMOVED', flight: p, diff: { reassignedTo: { student: n.student, batch: n.batch } } });
+      events.push({ type: 'ADDED', flight: n, diff: { reassignedFrom: { student: p.student, batch: p.batch } } });
+      continue;
+    }
+
     const diff = {};
     for (const field of TRACKED) {
       if (p[field] !== n[field]) diff[field] = { from: p[field], to: n[field] };

@@ -130,6 +130,50 @@ describe('diffSnapshots', () => {
     const events = diffSnapshots(prev, next);
     expect(events).toHaveLength(0);
   });
+
+  // Real incident, 2026-07-26: the upstream source reuses a flight id for a completely different
+  // booking instead of issuing a new id — same id, different student AND batch. `student`/`batch`
+  // are not in TRACKED, so this used to surface as one ordinary CHANGED event attributed to the
+  // NEW student — the old student's flight silently vanished with zero notice, and even the old
+  // batch's group never saw it (routing keys off the event's now-new batch). Fixed: a same-id
+  // student/batch change synthesizes REMOVED (old owner, tagged with who replaced them) + ADDED
+  // (new owner, tagged with who it was reassigned from) instead of a single CHANGED, so both sides
+  // are notified and each routes correctly against their own student/batch.
+  it('a same-id student reassignment synthesizes REMOVED (old owner) + ADDED (new owner), not CHANGED', () => {
+    const prev = { 'BK-1': { id: 'BK-1', batch: 'AP-127', date: '2026-07-27', start: '10:00', end: '12:00',
+      status: 'Pending', student: 'ANUSORN T.', instructor: 'FI-OLD', lesson: 'CDXV 32', tail: 'HS-TVE' } };
+    const next = { 'BK-1': { id: 'BK-1', batch: 'AP-126', date: '2026-07-27', start: '10:00', end: '13:00',
+      status: 'Pending', student: 'PARAMUTT C.', instructor: 'PHAHOLYUTH P.', lesson: 'CDXI 73', tail: 'HS-TVA' } };
+    const events = diffSnapshots(prev, next);
+    expect(events).toHaveLength(2);
+
+    const removed = events.find(e => e.type === 'REMOVED');
+    expect(removed.flight.student).toBe('ANUSORN T.');
+    expect(removed.flight.lesson).toBe('CDXV 32');
+    expect(removed.diff.reassignedTo).toEqual({ student: 'PARAMUTT C.', batch: 'AP-126' });
+
+    const added = events.find(e => e.type === 'ADDED');
+    expect(added.flight.student).toBe('PARAMUTT C.');
+    expect(added.flight.lesson).toBe('CDXI 73');
+    expect(added.diff.reassignedFrom).toEqual({ student: 'ANUSORN T.', batch: 'AP-127' });
+  });
+
+  it('a same-id batch reassignment (student unchanged) also synthesizes REMOVED + ADDED', () => {
+    const prev = { 'BK-1': { ...base['100'], id: 'BK-1', batch: 'AP-127' } };
+    const next = { 'BK-1': { ...base['100'], id: 'BK-1', batch: 'HP-55' } };
+    const events = diffSnapshots(prev, next);
+    expect(events).toHaveLength(2);
+    expect(events.find(e => e.type === 'REMOVED').diff.reassignedTo).toEqual({ student: 'SIWAKORN P.', batch: 'HP-55' });
+    expect(events.find(e => e.type === 'ADDED').diff.reassignedFrom).toEqual({ student: 'SIWAKORN P.', batch: 'AP-127' });
+  });
+
+  it('a normal edit with student and batch UNCHANGED is still a single CHANGED/STATUS event, not synthesized', () => {
+    const next = { '100': { ...base['100'], tail: 'HS-TPT' } };
+    const events = diffSnapshots(base, next);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('CHANGED');
+    expect(events[0].diff.reassignedTo).toBeUndefined();
+  });
 });
 
 describe('matchesBatchFilter', () => {
