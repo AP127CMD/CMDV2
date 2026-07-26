@@ -1,4 +1,9 @@
-const TRACKED = ['date', 'start', 'end', 'status', 'instructor', 'tail', 'lesson'];
+// 2026-07-26: added type/cond/isSim/isStandby — a materially different session (aircraft type
+// swap, condition/context change, or a flip to/from simulator or standby) was previously invisible
+// to the diff, same class of gap as the student/batch reassignment fix below. durMin/duration are
+// deliberately NOT tracked — they're derived from start/end, so tracking them would just repeat
+// what a start/end diff already shows rather than surface new information.
+const TRACKED = ['date', 'start', 'end', 'status', 'instructor', 'tail', 'lesson', 'type', 'cond', 'isSim', 'isStandby'];
 
 export function buildSnapshot(flights) {
   const snap = {};
@@ -9,6 +14,7 @@ export function buildSnapshot(flights) {
       date: f.date, start: f.start, end: f.end,
       status: f.status, student: f.student, instructor: f.instructor,
       lesson: f.lesson, tail: f.tail, type: f.type,
+      cond: f.cond, isSim: f.isSim, isStandby: f.isStandby,
       // Display-only actual-flight-record fields (2026-07-25) — deliberately NOT added to TRACKED
       // above, so they never themselves trigger a diff event. They ride along on whatever event a
       // flight's TRACKED-field transition already produces (most commonly Pending→Completed) and
@@ -72,17 +78,25 @@ export function diffSnapshots(prev, next) {
 
 // When a flight is recorded as complete the system cancels the planned entry and
 // adds a new ACTUAL_ONLY entry. Keep the ADDED(Completed) as "Flight completed",
-// suppress the paired cancel (REMOVED or status → Canceled for same SP + lesson).
+// suppress the paired cancel (REMOVED or status → Canceled for same SP + lesson + date).
+//
+// Key includes `date` (2026-07-26, real gap flagged during the reassignment-bug review): a
+// student can legitimately attempt the same lesson code on more than one date (retry after an
+// earlier cancellation, or a rescheduled attempt). Without `date`, a genuine cancellation for one
+// date could be wrongly swallowed just because an unrelated Completed event for the SAME
+// student+lesson on a DIFFERENT date landed in the same tick. Scoping by date closes that without
+// needing to parse the ACTUAL_ONLY_<id> naming convention, which is inconsistent across the live
+// feed (some carry no parseable base id at all, e.g. "ACTUAL_ONLY_UNPLANNED_ACT_3467").
 export function suppressActualPairs(events) {
   const completedKeys = new Set(
     events
       .filter(e => e.type === 'ADDED' && e.flight.status === 'Completed')
-      .map(e => `${e.flight.student}|${e.flight.lesson}`)
+      .map(e => `${e.flight.student}|${e.flight.lesson}|${e.flight.date}`)
   );
   if (!completedKeys.size) return events;
 
   return events.filter(e => {
-    const key = `${e.flight.student}|${e.flight.lesson}`;
+    const key = `${e.flight.student}|${e.flight.lesson}|${e.flight.date}`;
     if (!completedKeys.has(key)) return true;
     // Always keep the ADDED(Completed) — shown as "Flight completed"
     if (e.type === 'ADDED' && e.flight.status === 'Completed') return true;

@@ -35,6 +35,14 @@ describe('buildSnapshot', () => {
     expect(snap['101'].batch).toBe('AP-126');
   });
 
+  it('carries cond/isSim/isStandby through so they can be diffed (2026-07-26)', () => {
+    const flights = [{ ...SAMPLE_FLIGHTS[0], cond: 'IR/Nav', isSim: true, isStandby: false }];
+    const snap = buildSnapshot(flights);
+    expect(snap['100'].cond).toBe('IR/Nav');
+    expect(snap['100'].isSim).toBe(true);
+    expect(snap['100'].isStandby).toBe(false);
+  });
+
   it('carries display-only actual-flight fields when present (2026-07-25 — not diffable, display only)', () => {
     const flights = [{ ...SAMPLE_FLIGHTS[0], to: 1, ldg: 1, tkoff: '08:34', ldgTime: '09:56', inst: 2 }];
     const snap = buildSnapshot(flights);
@@ -122,6 +130,43 @@ describe('diffSnapshots', () => {
   it('returns empty array when nothing changed', () => {
     const events = diffSnapshots(base, { ...base });
     expect(events).toHaveLength(0);
+  });
+
+  // 2026-07-26: previously-untracked fields that describe a materially different session — an
+  // aircraft type swap, a condition/context change, or a flight flipping to/from simulator or
+  // standby — used to be completely invisible to the diff, same class of gap as the student/batch
+  // reassignment bug above. `durMin`/`duration` are deliberately NOT added: they're derived from
+  // start/end, so tracking them would just repeat the same information a start/end diff already
+  // shows, not surface anything new.
+  it('detects a type (aircraft type) change', () => {
+    const next = { '100': { ...base['100'], type: 'DA42TDI' } };
+    const events = diffSnapshots(base, next);
+    expect(events).toHaveLength(1);
+    expect(events[0].diff.type).toEqual({ from: 'DA40TDI', to: 'DA42TDI' });
+  });
+
+  it('detects a cond (flight condition) change', () => {
+    const withCond = { '100': { ...base['100'], cond: null } };
+    const next = { '100': { ...withCond['100'], cond: 'IR/Nav' } };
+    const events = diffSnapshots(withCond, next);
+    expect(events).toHaveLength(1);
+    expect(events[0].diff.cond).toEqual({ from: null, to: 'IR/Nav' });
+  });
+
+  it('detects an isSim change (flight flips to/from simulator)', () => {
+    const withSim = { '100': { ...base['100'], isSim: false } };
+    const next = { '100': { ...withSim['100'], isSim: true } };
+    const events = diffSnapshots(withSim, next);
+    expect(events).toHaveLength(1);
+    expect(events[0].diff.isSim).toEqual({ from: false, to: true });
+  });
+
+  it('detects an isStandby change', () => {
+    const withStandby = { '100': { ...base['100'], isStandby: false } };
+    const next = { '100': { ...withStandby['100'], isStandby: true } };
+    const events = diffSnapshots(withStandby, next);
+    expect(events).toHaveLength(1);
+    expect(events[0].diff.isStandby).toEqual({ from: false, to: true });
   });
 
   it('a change to only the new display-only fields (to/ldg/tkoff/ldgTime/inst) produces zero events — not TRACKED', () => {
@@ -405,11 +450,11 @@ describe('withinSnapshotWindow (CPU-budget bounded rolling window)', () => {
 
 describe('suppressActualPairs', () => {
   const completed = { type: 'ADDED', flight: { id: 'ACTUAL_ONLY_200', status: 'Completed',
-    student: 'SIWAKORN P.', lesson: 'CDGL 04' }, diff: {} };
+    student: 'SIWAKORN P.', lesson: 'CDGL 04', date: '2026-07-20' }, diff: {} };
   const removed  = { type: 'REMOVED', flight: { id: '100', status: 'Pending',
-    student: 'SIWAKORN P.', lesson: 'CDGL 04' }, diff: {} };
+    student: 'SIWAKORN P.', lesson: 'CDGL 04', date: '2026-07-20' }, diff: {} };
   const canceled = { type: 'STATUS', flight: { id: '100', student: 'SIWAKORN P.',
-    lesson: 'CDGL 04' }, diff: { status: { from: 'Pending', to: 'Canceled' } } };
+    lesson: 'CDGL 04', date: '2026-07-20' }, diff: { status: { from: 'Pending', to: 'Canceled' } } };
 
   it('keeps ADDED(Completed) and suppresses paired REMOVED', () => {
     const result = suppressActualPairs([completed, removed]);
@@ -432,9 +477,35 @@ describe('suppressActualPairs', () => {
 
   it('does not suppress unrelated events', () => {
     const other = { type: 'ADDED', flight: { id: '300', status: 'Pending',
-      student: 'AKARAVIT K.', lesson: 'CDGL 05' }, diff: {} };
+      student: 'AKARAVIT K.', lesson: 'CDGL 05', date: '2026-07-20' }, diff: {} };
     const result = suppressActualPairs([completed, removed, other]);
     expect(result).toHaveLength(2);
     expect(result.find(e => e.flight.id === '300')).toBeTruthy();
+  });
+
+  // Real gap flagged 2026-07-26 (not yet reproduced live, but confirmed by code inspection): the
+  // original key was student|lesson only, with no date component. A student can legitimately
+  // attempt the same lesson code on more than one date (a retry after an earlier cancellation, or
+  // a re-scheduled attempt). If a genuinely unrelated cancellation for an EARLIER/LATER date landed
+  // in the same 5-minute tick as an unrelated Completed event sharing the same student+lesson, the
+  // cancellation would be wrongly swallowed as if it were that Completed flight's "cancel the
+  // planned twin" half — even though they're two entirely different bookings. Scoping the key to
+  // include `date` closes this without needing a fragile parse of the ACTUAL_ONLY_<id> naming
+  // convention (confirmed inconsistent across the live feed — some carry no parseable base id at
+  // all, e.g. "ACTUAL_ONLY_UNPLANNED_ACT_3467").
+  it('does NOT suppress a cancellation on a DIFFERENT date than the completed flight sharing student+lesson', () => {
+    const completedToday = { type: 'ADDED', flight: { id: 'ACTUAL_ONLY_201', status: 'Completed',
+      student: 'SIWAKORN P.', lesson: 'CDGL 04', date: '2026-07-20' }, diff: {} };
+    const removedDifferentDate = { type: 'REMOVED', flight: { id: '999', status: 'Pending',
+      student: 'SIWAKORN P.', lesson: 'CDGL 04', date: '2026-08-05' }, diff: {} };
+    const result = suppressActualPairs([completedToday, removedDifferentDate]);
+    expect(result).toHaveLength(2);
+    expect(result.find(e => e.flight.id === '999')).toBeTruthy();
+  });
+
+  it('still suppresses the genuine same-date pair (regression: date-scoping must not break the real case)', () => {
+    const result = suppressActualPairs([completed, removed]);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('ADDED');
   });
 });

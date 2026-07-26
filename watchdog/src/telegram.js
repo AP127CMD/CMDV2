@@ -104,6 +104,12 @@ function renderEventBlock(event, roster) {
 
   const line2Parts = [`${dateText}  ${timeText}`, tailText];
   if (group === 'status') line2Parts.push(`${diff.status?.from ?? '—'}→${diff.status?.to ?? '—'}`);
+  // 2026-07-26: type/cond/isSim/isStandby are now diffable (diff.js) — show what changed, not just
+  // that "something" did. Booleans render as plain words, not raw true/false.
+  if (diff.type) line2Parts.push(`${diff.type.from ?? '—'}→${diff.type.to ?? '—'}`);
+  if (diff.cond) line2Parts.push(`${diff.cond.from ?? '—'}→${diff.cond.to ?? '—'}`);
+  if (diff.isSim)     line2Parts.push(diff.isSim.to ? 'now SIM' : 'no longer SIM');
+  if (diff.isStandby) line2Parts.push(diff.isStandby.to ? 'now STANDBY' : 'no longer STANDBY');
   const lines = [
     `${sp} — ${lessonText} · FI ${fiText}`,
     `   ${line2Parts.join(' · ')}`,

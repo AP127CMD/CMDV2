@@ -126,6 +126,44 @@ describe('buildCombinedMessages', () => {
     expect(msg).toContain('HS-NGT→HS-TPT');
   });
 
+  // 2026-07-26: type/cond/isSim/isStandby became diffable fields (diff.js), but detection alone is
+  // not the fix — the message must actually SHOW what changed, or a recipient just sees "Changed"
+  // with no explanation. Each must render distinctly.
+  it('a type (aircraft type) change is shown', () => {
+    const event = { type: 'CHANGED', flight: { ...BASE_FLIGHT, type: 'DA42TDI' },
+      diff: { type: { from: 'DA40TDI', to: 'DA42TDI' } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('DA40TDI→DA42TDI');
+  });
+
+  it('a cond (flight condition) change is shown, including from/to null', () => {
+    const event = { type: 'CHANGED', flight: { ...BASE_FLIGHT, cond: 'IR/Nav' },
+      diff: { cond: { from: null, to: 'IR/Nav' } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('—→IR/Nav');
+  });
+
+  it('an isSim change is shown in plain words, not raw booleans', () => {
+    const event = { type: 'CHANGED', flight: { ...BASE_FLIGHT, isSim: true },
+      diff: { isSim: { from: false, to: true } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('now SIM');
+  });
+
+  it('an isStandby change is shown in plain words', () => {
+    const event = { type: 'CHANGED', flight: { ...BASE_FLIGHT, isStandby: true },
+      diff: { isStandby: { from: false, to: true } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('now STANDBY');
+  });
+
+  it('isSim/isStandby flipping back to false is also shown (not just the true transition)', () => {
+    const event = { type: 'CHANGED', flight: { ...BASE_FLIGHT, isSim: false },
+      diff: { isSim: { from: true, to: false } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('no longer SIM');
+  });
+
   it('Completed via in-place STATUS transition shows planned→flew, tail, and FI', () => {
     const event = { type: 'STATUS',
       flight: { ...BASE_FLIGHT, student: 'RATTANASUDA', lesson: 'LPC SEP', instructor: 'WUTTHICHAI L.',
