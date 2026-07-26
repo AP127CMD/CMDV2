@@ -962,9 +962,20 @@ function Drawer() {
             {f.isStandby && <StandbyTag size="lg"/>}
             {f.isSim     && <Tag color="var(--col-sim)">SIM</Tag>}
             {isHL        && <Tag color="var(--highlight)" filled>AP-127</Tag>}
+            {f._noTime   && <Tag color="var(--ink-3)">NO TIME LOGGED</Tag>}
           </div>
-          <Row k="TIME"       v={<span className="mono">{f.start} — {f.end} · {f.duration}</span>}/>
-          <Row k="DURATION"   v={<span className="mono">{Math.floor(f.durMin/60)}h {f.durMin%60}m</span>}/>
+          {f.status === 'Canceled' && (f.cancelReason || f.cancelRemarks) && (
+            <>
+              {f.cancelReason  && <Row k="CANCEL REASON" v={<span style={{color:'var(--col-cancel)'}}>{f.cancelReason}</span>}/>}
+              {f.cancelRemarks && <Row k="REMARKS"       v={<span style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{f.cancelRemarks}</span>}/>}
+            </>
+          )}
+          {!f._noTime && (
+            <>
+              <Row k="TIME"     v={<span className="mono">{f.start} — {f.end} · {f.duration}</span>}/>
+              <Row k="DURATION" v={<span className="mono">{Math.floor(f.durMin/60)}h {f.durMin%60}m</span>}/>
+            </>
+          )}
           <Row k="STUDENT"    v={f.student}/>
           <Row k="INSTRUCTOR" v={f.instructor}/>
           <Row k="BATCH"      v={<span className="mono">{f.batch}</span>}/>
@@ -988,6 +999,14 @@ function Drawer() {
                 <span><span style={{color:'var(--ink-3)',fontSize:10}}>T/O</span> <strong style={{fontSize:15}}>{f.to ?? '—'}</strong></span>
                 <span><span style={{color:'var(--ink-3)',fontSize:10}}>LDG</span> <strong style={{fontSize:15}}>{f.ldg ?? '—'}</strong></span>
                 <span><span style={{color:'var(--ink-3)',fontSize:10}}>INST</span> <strong style={{fontSize:15}}>{f.inst ?? '—'}</strong></span>
+              </span>
+            }/>
+          )}
+          {(f.blockOff || f.blockOn) && (
+            <Row k="BLOCK OFF / ON" v={
+              <span className="mono" style={{ display:'flex', gap:12 }}>
+                {f.blockOff && <span style={{color:'var(--ink-2)'}}>OFF <strong>{f.blockOff}</strong></span>}
+                {f.blockOn  && <span style={{color:'var(--ink-2)'}}>ON <strong>{f.blockOn}</strong></span>}
               </span>
             }/>
           )}
