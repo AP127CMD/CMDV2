@@ -36,6 +36,34 @@ const { useState, useMemo, useEffect, useRef, useCallback, createContext, useCon
     console.warn('[AP127] dedup: ' + keyFallback + ' planned Completed row(s) removed via student|date|lesson fallback (ACTUAL_ONLY id did not derive to a planned id — check upstream ID format).');
   }
 })();
+// Join the separate cancellations[] feed onto Canceled flights. The upstream pipeline
+// sometimes pre-attaches cancelReason/cancelRemarks directly on the flight itself (do
+// NOT override those); otherwise backfill from here. A cancellation whose bookingId has
+// no matching flight — or whose matching id belongs to a flight that ISN'T actually
+// Canceled (the same booking-id-reuse pattern already documented for Watchdog in
+// CLAUDE.md) — gets a synthetic flight so it's visible everywhere FLIGHTS is read. These
+// have no start/end (the cancellations feed never carries a time) — `_noTime` flags that.
+(function attachCancelDetails() {
+  const cancellations = window.FLIGHT_DATA.cancellations || [];
+  const byId = new Map(window.FLIGHT_DATA.flights.map(f => [f.id, f]));
+  cancellations.forEach(c => {
+    const match = byId.get(c.bookingId);
+    if (match && match.status === 'Canceled') {
+      if (!match.cancelReason)  match.cancelReason  = c.reason;
+      if (!match.cancelRemarks) match.cancelRemarks = c.remarks;
+      return;
+    }
+    window.FLIGHT_DATA.flights.push({
+      id: 'CANCEL_' + c.bookingId, date: c.date, status: 'Canceled',
+      isSim: /sim/i.test(c.acType || ''), isStandby: false,
+      start: null, end: null, durMin: 0, duration: '—',
+      student: c.student, instructor: c.instructor, batch: c.batch, lesson: c.lesson,
+      cond: null, type: c.acType, tail: c.acReg,
+      cancelReason: c.reason, cancelRemarks: c.remarks,
+      _noTime: true, _virtual: true,
+    });
+  });
+})();
 // Strip " (Unplanned)" suffix from student/instructor names so all views treat
 // "NAME (Unplanned)" and "NAME" as the same person.
 window.FLIGHT_DATA.flights.forEach(f => {
