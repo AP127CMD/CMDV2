@@ -33,6 +33,10 @@ function classifyForGrouping(event) {
   if (type === 'REMOVED') return 'cancelled';
   if (type === 'STATUS' && diff.status?.to === 'Canceled') return 'cancelled';
   if (type === 'STATUS' && diff.status?.to === 'Completed') return 'completed';
+  // 2026-07-27: stabilizeCancelledFlights (diff.js) can rebuild a cancelled booking's tracking
+  // post-flap as a fresh ADDED with flight.status already 'Canceled' — not via STATUS or REMOVED.
+  // Real incident: this fell through to 'new' and rendered "✈️ New" for an actually-cancelled flight.
+  if (type === 'ADDED' && f.status === 'Canceled') return 'cancelled';
   if (type === 'ADDED' && f.status === 'Completed') return 'completed';
   if (type === 'ADDED') return 'new';
   if (type === 'CHANGED') return 'changed';

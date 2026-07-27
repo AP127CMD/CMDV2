@@ -87,7 +87,11 @@ export function attachCancelReasons(events, cancellations) {
     if (c.bookingId) byBookingId[c.bookingId] = c;
   }
   return events.map(e => {
-    const isCancelled = e.type === 'REMOVED' || (e.type === 'STATUS' && e.diff?.status?.to === 'Canceled');
+    // 2026-07-27: stabilizeCancelledFlights (below) can rebuild a cancelled booking's tracking
+    // post-flap as a fresh ADDED with flight.status already 'Canceled' — not via STATUS or REMOVED.
+    // Without this case the join silently never attaches to that event.
+    const isCancelled = e.type === 'REMOVED' || (e.type === 'STATUS' && e.diff?.status?.to === 'Canceled')
+      || (e.type === 'ADDED' && e.flight.status === 'Canceled');
     if (!isCancelled) return e;
     const rec = byBookingId[e.flight.id];
     if (!rec) return e;

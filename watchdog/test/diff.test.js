@@ -551,6 +551,25 @@ describe('attachCancelReasons', () => {
     expect(result.diff.cancelReason).toBeUndefined();
   });
 
+  // Real incident 2026-07-27 (follow-on from stabilizeCancelledFlights, deployed same day): once a
+  // booking's tracking is rebuilt after being lost to the upstream flap, it fires as ADDED with
+  // flight.status already forced to 'Canceled' by stabilizeCancelledFlights — not REMOVED or
+  // STATUS→Canceled. Without this case the cancel reason silently never attaches to that event.
+  it('attaches to an ADDED event whose flight.status is already Canceled (post-stabilization reappearance)', () => {
+    const addedButCancelled = { type: 'ADDED',
+      flight: { id: 'BK-4', status: 'Canceled', student: 'NAPON S.', lesson: 'CDXV 29' }, diff: {} };
+    const cancellations = [{ bookingId: 'BK-4', reason: 'Other', remarks: 'flight solo' }];
+    const [result] = attachCancelReasons([addedButCancelled], cancellations);
+    expect(result.diff.cancelReason).toEqual({ reason: 'Other', remarks: 'flight solo' });
+  });
+
+  it('does not attach to a normal ADDED event with a non-Canceled status, even with a matching id', () => {
+    const addedPending = { type: 'ADDED', flight: { id: 'BK-5', status: 'Pending' }, diff: {} };
+    const cancellations = [{ bookingId: 'BK-5', reason: 'Other', remarks: '' }];
+    const [result] = attachCancelReasons([addedPending], cancellations);
+    expect(result.diff.cancelReason).toBeUndefined();
+  });
+
   it('handles an empty/missing cancellations array without throwing, returns events unchanged', () => {
     expect(attachCancelReasons([cancelledEvent], [])).toEqual([cancelledEvent]);
     expect(attachCancelReasons([cancelledEvent], undefined)).toEqual([cancelledEvent]);

@@ -97,6 +97,21 @@ describe('buildCombinedMessages', () => {
     expect(msg).not.toContain('reassigned');
   });
 
+  // Real incident 2026-07-27: after stabilizeCancelledFlights (diff.js) rebuilds a cancelled
+  // booking's tracking post-flap, it can fire as ADDED with flight.status already 'Canceled' —
+  // not REMOVED or STATUS→Canceled. Confirmed live: this rendered as "✈️ New" for an actually-
+  // cancelled flight (Napon S., CDXV 29) with no indication it was a cancellation at all.
+  it('an ADDED event whose flight.status is already Canceled is grouped as Cancelled, not New', () => {
+    const event = { type: 'ADDED', flight: { ...BASE_FLIGHT, status: 'Canceled' },
+      diff: { cancelReason: { reason: 'Other', remarks: 'flight solo' } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('❌ Cancelled');
+    expect(msg).not.toContain('✈️ New');
+    expect(msg).toContain('❌ SIWAKORN P.');
+    expect(msg).toContain('- 📝 Other');
+    expect(msg).toContain('- 💬 flight solo');
+  });
+
   it('STATUS → Canceled is in the Cancelled group, not a separate Status update group', () => {
     const event = { type: 'STATUS', flight: { ...BASE_FLIGHT, status: 'Canceled' },
       diff: { status: { from: 'Pending', to: 'Canceled' } } };
