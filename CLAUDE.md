@@ -1,5 +1,17 @@
 # CMDV2 — Claude Code Context
 
+## 🔴 HANDOFF (2026-07-27, ~15:30 UTC): AP127 Telegram notifications are OFF, investigation in progress
+User turned off AP127 Telegram notifications in Watchdog (Destinations tab) as a stopgap after a recurring
+status flip-flop for booking `2026-07-31` in the upstream CMD_CTR feed kept triggering duplicate
+Cancelled/Pending notices, and explicitly asked to hand the investigation off to a new session. **Full
+handoff context, root-cause evidence, exact verification commands, and the proposed next step (switching
+CMD_CTR's scraper from Timeline to Daily Schedule) all live in `flight-schedule-feed/CLAUDE.md`'s own
+`🔴 HANDOFF` block — read that first.** Nothing about Watchdog's own code is suspected broken (the three
+watchdog-side fixes from earlier today — stabilizeCancelledFlights, the ADDED+Canceled classification fix,
+and the bookingId-reuse guard — are all confirmed correct and deployed, 126 tests green); the open bug is
+entirely upstream in CMD_CTR's scraper. Do not re-enable notifications until the CMD_CTR-side investigation
+confirms `2026-07-31` (or whatever date is affected by then) has stopped flip-flopping.
+
 ## ⚠️ Update rule — do this after EVERY code change
 1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p117` (all currently at p116)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
