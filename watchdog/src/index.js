@@ -1,4 +1,4 @@
-import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons } from './diff.js';
+import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons, stabilizeCancelledFlights } from './diff.js';
 import { buildCombinedMessages, sendTelegram } from './telegram.js';
 import { appendLog, getLog } from './log.js';
 
@@ -200,7 +200,7 @@ async function runWatchdog(env) {
     // growth (see SNAPSHOT_LOOKBACK_MS / SNAPSHOT_LOOKAHEAD_MS).
     const data = parseFeed(text);
     const relevant = (data.flights || []).filter(f => withinSnapshotWindow(f, nowMs));
-    const newSnap = buildSnapshot(relevant);
+    let newSnap = buildSnapshot(relevant);
     const newCount = Object.keys(newSnap).length;
 
     const prevRaw = await env.KV.get('watchdog:snapshot', 'text');
@@ -218,6 +218,13 @@ async function runWatchdog(env) {
       });
       return;
     }
+
+    // 2026-07-27: stabilize against upstream `flights[]` scraper flakiness — a booking with a
+    // submitted Cancel Record can flap in/out of the raw feed across pulls even though it's
+    // permanently cancelled (confirmed live: cancellations[] membership never reverts). Without
+    // this, that flap fires a duplicate REMOVED/ADDED notification every time it flickers. Applied
+    // here — before diffing AND before the KV persist below — so the correction sticks for next run.
+    newSnap = stabilizeCancelledFlights(newSnap, prevSnap, data.cancellations);
 
     const events = diffSnapshots(prevSnap, newSnap);
     const typeFiltered = events.filter(e => config.eventTypes?.[e.type] !== false);

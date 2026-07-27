@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons } from '../src/diff.js';
+import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons, stabilizeCancelledFlights } from '../src/diff.js';
 import { matchesBatchFilter, flightTimestampMs,
   SNAPSHOT_LOOKBACK_MS, SNAPSHOT_LOOKAHEAD_MS, withinSnapshotWindow,
   bangkokDateStr, isActionable, isAnomalousDrop, ANOMALY_MIN_BASELINE, ANOMALY_MAX_STREAK,
@@ -560,5 +560,88 @@ describe('attachCancelReasons', () => {
     const cancellations = [{ bookingId: 'BK-1', reason: 'Other', remarks: '' }];
     attachCancelReasons([cancelledEvent], cancellations);
     expect(cancelledEvent.diff.cancelReason).toBeUndefined();
+  });
+});
+
+// Real incident 2026-07-27: three live bookings each fired REMOVED-then-ADDED 9 times in one day
+// (confirmed via git history of the upstream CMD_CTR feed — the raw `flights[]` array itself flaps
+// a cancelled booking's presence in/out across scrapes, ~5-10 min apart, while its `cancellations[]`
+// record stays put the whole time). The upstream repo's own fetch script docstring documents this
+// exact class of scraper flakiness (`recover_vanished_bookings()`, "kept as a safety net for if
+// that Canceled-mode fetch itself fails for a run") — it isn't fully reliable. Once a bookingId has
+// a submitted Cancel Record, that record never reverts (confirmed: sampled 37 consecutive upstream
+// commits, `cancellations[]` membership only ever gained, never lost) — so it's a safe, stable
+// source of truth to override the flaky `flights[]` presence/status against.
+describe('stabilizeCancelledFlights', () => {
+  const cancellations = [{ bookingId: 'BK-1', reason: 'Weather (WX)', remarks: '' }];
+
+  it('forces status to Canceled when a cancelled booking is present this pull with a stale status', () => {
+    const newSnap = { 'BK-1': { id: 'BK-1', status: 'Pending', student: 'X', date: '2026-07-27' } };
+    const result = stabilizeCancelledFlights(newSnap, {}, cancellations);
+    expect(result['BK-1'].status).toBe('Canceled');
+  });
+
+  it('carries the prior full record forward, status forced Canceled, when the booking is missing this pull', () => {
+    const prevSnap = { 'BK-1': { id: 'BK-1', status: 'Canceled', student: 'X', lesson: 'CDGL 04',
+      date: '2026-07-27', start: '08:00', end: '09:30', tail: 'HS-TVG', instructor: 'ITTIPOL P.' } };
+    const result = stabilizeCancelledFlights({}, prevSnap, cancellations);
+    expect(result['BK-1']).toEqual({ ...prevSnap['BK-1'], status: 'Canceled' });
+  });
+
+  it('leaves a cancelled booking absent when there is no prior record to carry forward either (first-ever sighting is the cancellation itself, no full details known yet)', () => {
+    const result = stabilizeCancelledFlights({}, {}, cancellations);
+    expect(result['BK-1']).toBeUndefined();
+  });
+
+  it('does not touch entries unrelated to any cancellation record', () => {
+    const newSnap = { 'BK-2': { id: 'BK-2', status: 'Pending', student: 'Y' } };
+    const result = stabilizeCancelledFlights(newSnap, {}, cancellations);
+    expect(result['BK-2']).toEqual(newSnap['BK-2']);
+  });
+
+  it('leaves an already-Canceled present entry untouched (idempotent — the common steady-state case)', () => {
+    const newSnap = { 'BK-1': { id: 'BK-1', status: 'Canceled', student: 'X' } };
+    const result = stabilizeCancelledFlights(newSnap, {}, cancellations);
+    expect(result['BK-1']).toEqual(newSnap['BK-1']);
+  });
+
+  it('handles an empty/missing cancellations array without throwing, returns newSnap unchanged', () => {
+    const newSnap = { 'BK-9': { id: 'BK-9', status: 'Pending' } };
+    expect(stabilizeCancelledFlights(newSnap, {}, [])).toEqual(newSnap);
+    expect(stabilizeCancelledFlights(newSnap, {}, undefined)).toEqual(newSnap);
+  });
+
+  it('does not mutate the input snapshots (pure function)', () => {
+    const newSnap = { 'BK-1': { id: 'BK-1', status: 'Pending', student: 'X' } };
+    const prevSnap = {};
+    stabilizeCancelledFlights(newSnap, prevSnap, cancellations);
+    expect(newSnap['BK-1'].status).toBe('Pending');
+  });
+
+  it('end-to-end: eliminates the repeat REMOVED/ADDED flap across three simulated pulls of a flaky feed', () => {
+    // Pull 1: booking genuinely cancels (Pending -> Canceled), scrape captures it correctly.
+    let prevSnap = { 'BK-1': { id: 'BK-1', status: 'Pending', student: 'X', lesson: 'CDGL 04',
+      date: '2026-07-27', start: '08:00', end: '09:30', tail: 'HS-TVG', instructor: 'ITTIPOL P.' } };
+    let rawNewSnap = { 'BK-1': { ...prevSnap['BK-1'], status: 'Canceled' } };
+    let stable = stabilizeCancelledFlights(rawNewSnap, prevSnap, cancellations);
+    let events = diffSnapshots(prevSnap, stable);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('STATUS');
+    expect(events[0].diff.status).toEqual({ from: 'Pending', to: 'Canceled' });
+
+    // Pull 2: upstream scrape flakes — booking vanishes entirely from raw flights[] this pull.
+    prevSnap = stable;
+    rawNewSnap = {};
+    stable = stabilizeCancelledFlights(rawNewSnap, prevSnap, cancellations);
+    events = diffSnapshots(prevSnap, stable);
+    expect(events).toHaveLength(0); // no repeat REMOVED — this is the bug being fixed
+
+    // Pull 3: scrape flakes back the other way — booking reappears in raw flights[] as Pending
+    // (a stale read, same underlying scraper flakiness).
+    prevSnap = stable;
+    rawNewSnap = { 'BK-1': { ...prevSnap['BK-1'], status: 'Pending' } };
+    stable = stabilizeCancelledFlights(rawNewSnap, prevSnap, cancellations);
+    events = diffSnapshots(prevSnap, stable);
+    expect(events).toHaveLength(0); // no repeat ADDED/STATUS either
   });
 });

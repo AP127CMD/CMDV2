@@ -99,6 +99,36 @@ export function attachCancelReasons(events, cancellations) {
   });
 }
 
+// 2026-07-27: real incident — three live bookings each fired REMOVED-then-ADDED 9 times in one day.
+// Root-caused via the upstream CMD_CTR feed's own git history: `flights[]` itself flaps a cancelled
+// booking's presence in/out across scrapes (~5-10 min apart) while its `cancellations[]` record
+// stays put the whole time — a known, only-partially-mitigated scraper race documented in that
+// repo's own fetch script (`recover_vanished_bookings()`, "kept as a safety net for if that
+// Canceled-mode fetch itself fails for a run"). Once a bookingId has a submitted Cancel Record, that
+// record never reverts (confirmed against 37 consecutive live upstream commits — membership only
+// ever gained, never lost), so it's a stable source of truth to override the flaky `flights[]`
+// presence/status against, applied to `newSnap` right before diffing (and before it's persisted to
+// KV, so the correction sticks for next run too — see index.js).
+export function stabilizeCancelledFlights(newSnap, prevSnap, cancellations) {
+  if (!cancellations || !cancellations.length) return newSnap;
+  let out = newSnap;
+  for (const c of cancellations) {
+    const id = c.bookingId;
+    if (!id) continue;
+    if (out[id]) {
+      if (out[id].status !== 'Canceled') {
+        if (out === newSnap) out = { ...newSnap };
+        out[id] = { ...out[id], status: 'Canceled' };
+      }
+    } else if (prevSnap[id]) {
+      if (out === newSnap) out = { ...newSnap };
+      out[id] = { ...prevSnap[id], status: 'Canceled' };
+    }
+    // else: cancelled but never seen in either snapshot — no full record to carry forward yet.
+  }
+  return out;
+}
+
 // When a flight is recorded as complete the system cancels the planned entry and
 // adds a new ACTUAL_ONLY entry. Keep the ADDED(Completed) as "Flight completed",
 // suppress the paired cancel (REMOVED or status → Canceled for same SP + lesson + date).
