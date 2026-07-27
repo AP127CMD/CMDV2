@@ -35,20 +35,69 @@ const { useState, useMemo, useEffect, useRef, useCallback, createContext, useCon
   if (keyFallback) {
     console.warn('[AP127] dedup: ' + keyFallback + ' planned Completed row(s) removed via student|date|lesson fallback (ACTUAL_ONLY id did not derive to a planned id — check upstream ID format).');
   }
+  // Second pass — the same flight ingested TWICE as two ACTUAL_ONLY rows under different
+  // `_ACT_<n>` record ids (e.g. ACTUAL_ONLY_BK-4EUB-2369_ACT_1344 and _ACT_1356: identical
+  // date/student/lesson/times/tail). The pass above only ever removes PLANNED rows — it
+  // keeps every ACTUAL_ONLY row unconditionally (see the early `return true`) — so these
+  // survived and double-counted their block time. Measured 2026-07-27: 83 such rows,
+  // ~156 h, all on dates ≤2026-07-09, i.e. baked into `flight_schedule.pre_migration_archive.json`
+  // (the frozen old-portal data, re-applied as an override every run, so it can never
+  // self-heal upstream). The live post-migration scraper adds none.
+  //
+  // Guarded on a non-empty student ON PURPOSE: studentless bookings (KEY PERSONNEL MEETING
+  // and friends) legitimately repeat at the same time on the same day as genuinely separate
+  // bookings — collapsing those would hide real entries, so they are left alone.
+  (function dedupeIdenticalActuals() {
+    const rows = window.FLIGHT_DATA.flights;
+    // NB: `norm()` is reused for the student only. It also strips a trailing "/N" split
+    // suffix, which is right for pairing a planned row with its actual but WRONG here —
+    // "CSXV 45/1" and "CSXV 45/2" are separate legs and must not collapse into each other.
+    const lessonKey = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    const sig = f => [f.date, norm(f.student), lessonKey(f.lesson), f.start, f.end, f.tail, f.status].join('|');
+    const seen = new Set();
+    let removed = 0;
+    window.FLIGHT_DATA.flights = rows.filter(f => {
+      if (!f.student || !String(f.student).trim()) return true;
+      const k = sig(f);
+      if (seen.has(k)) { removed++; return false; }
+      seen.add(k);
+      return true;
+    });
+    if (removed) {
+      console.warn('[AP127] dedup: ' + removed + ' duplicate flight row(s) removed (same student/date/lesson/time/tail under different record ids) — prevents double-counted block hours.');
+    }
+  })();
 })();
 // Join the separate cancellations[] feed onto Canceled flights. The upstream pipeline
 // sometimes pre-attaches cancelReason/cancelRemarks directly on the flight itself (do
 // NOT override those); otherwise backfill from here. A cancellation whose bookingId has
-// no matching flight — or whose matching id belongs to a flight that ISN'T actually
-// Canceled (the same booking-id-reuse pattern already documented for Watchdog in
-// CLAUDE.md) — gets a synthetic flight so it's visible everywhere FLIGHTS is read. These
-// have no start/end (the cancellations feed never carries a time) — `_noTime` flags that.
+// NO row in flights[] at all gets a synthetic flight so it's visible everywhere FLIGHTS
+// is read — these have no start/end (the cancellations feed never carries a time), which
+// `_noTime` flags. A cancellation that DOES match a row always enriches that row instead,
+// whatever status it currently reads (p114 — see the guard note below).
 (function attachCancelDetails() {
   const cancellations = window.FLIGHT_DATA.cancellations || [];
   const byId = new Map(window.FLIGHT_DATA.flights.map(f => [f.id, f]));
-  cancellations.forEach(c => {
+  // Upstream emits one cancellations[] record per cancel EVENT — its `id` embeds a submission
+  // timestamp ("Flight Cancels Record|key|BK-…|27/04/2026 10:36:20") — so a booking that was
+  // cancelled, restored and re-cancelled carries SEVERAL records under one bookingId. Collapse
+  // to the most recent first: without this, each extra record pushed another synthetic flight
+  // sharing the same `CANCEL_<bookingId>` id, so the booking rendered 2–3× in every Schedule
+  // view and collided on its React key. Measured live 2026-07-27: 5 bookingIds duplicated,
+  // 6 phantom rows, 3 of them AP-127. Same last-wins rule the watchdog's attachCancelReasons() uses.
+  const latest = new Map();
+  cancellations.forEach(c => { if (c.bookingId) latest.set(c.bookingId, c); });
+  latest.forEach(c => {
     const match = byId.get(c.bookingId);
-    if (match && match.status === 'Canceled') {
+    // A real row exists → enrich it in place and never synthesize a second copy. The guard is
+    // deliberately NOT `match.status === 'Canceled'`: during an upstream scraper flap the row
+    // can still read Pending while its Cancel Record is already submitted, and pushing a
+    // virtual then duplicated a booking that IS on the schedule. A submitted Cancel Record
+    // never reverts (verified upstream across 37 consecutive commits — membership only ever
+    // gains), so the record wins and the status is corrected — the frontend counterpart of the
+    // watchdog's diff.js:stabilizeCancelledFlights().
+    if (match) {
+      if (match.status !== 'Canceled') match.status = 'Canceled';
       if (!match.cancelReason)  match.cancelReason  = c.reason;
       if (!match.cancelRemarks) match.cancelRemarks = c.remarks;
       return;
