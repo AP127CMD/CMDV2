@@ -120,11 +120,18 @@ export function stabilizeCancelledFlights(newSnap, prevSnap, cancellations) {
     const id = c.bookingId;
     if (!id) continue;
     if (out[id]) {
+      // A bookingId can be REUSED for a completely different, later booking instead of the source
+      // issuing a new id (confirmed live — see diffSnapshots' student/batch reassignment special
+      // case). If the student at this id today doesn't match who this cancellation was actually
+      // for, it no longer describes what's here — don't force it, let normal diffing (and the
+      // reassignment special-case) handle the id on its own merits.
+      if (c.student && out[id].student !== c.student) continue;
       if (out[id].status !== 'Canceled') {
         if (out === newSnap) out = { ...newSnap };
         out[id] = { ...out[id], status: 'Canceled' };
       }
     } else if (prevSnap[id]) {
+      if (c.student && prevSnap[id].student !== c.student) continue;
       if (out === newSnap) out = { ...newSnap };
       out[id] = { ...prevSnap[id], status: 'Canceled' };
     }

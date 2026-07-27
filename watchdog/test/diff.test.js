@@ -663,4 +663,39 @@ describe('stabilizeCancelledFlights', () => {
     events = diffSnapshots(prevSnap, stable);
     expect(events).toHaveLength(0); // no repeat ADDED/STATUS either
   });
+
+  // Confirmed real behavior this week (see diffSnapshots' student/batch reassignment special-case):
+  // the upstream source reuses a bookingId for a completely different, later booking rather than
+  // issuing a new id. Without a student check, a stale cancellation record would force-cancel a
+  // brand-new, genuinely-Pending booking forever just because it landed on a previously-cancelled id.
+  it('does NOT force status when the bookingId has been reused for a different student (present this pull)', () => {
+    const cancellations = [{ bookingId: 'BK-X', student: 'STUDENT A', reason: 'Weather (WX)' }];
+    const prevSnap = { 'BK-X': { id: 'BK-X', status: 'Canceled', student: 'STUDENT A', lesson: 'CDGL 04' } };
+    const rawNewSnap = { 'BK-X': { id: 'BK-X', status: 'Pending', student: 'STUDENT B', lesson: 'PDGH 01' } };
+    const result = stabilizeCancelledFlights(rawNewSnap, prevSnap, cancellations);
+    expect(result['BK-X']).toEqual(rawNewSnap['BK-X']); // untouched — Student B's new booking stays Pending
+  });
+
+  it('does NOT carry forward a stale cancellation when the last-known record was already a different student', () => {
+    const cancellations = [{ bookingId: 'BK-X', student: 'STUDENT A', reason: 'Weather (WX)' }];
+    // prevSnap already reflects the reassignment (Student B), so this cancellation record — for
+    // Student A — no longer describes what's at this id and must not be resurrected.
+    const prevSnap = { 'BK-X': { id: 'BK-X', status: 'Pending', student: 'STUDENT B', lesson: 'PDGH 01' } };
+    const result = stabilizeCancelledFlights({}, prevSnap, cancellations);
+    expect(result['BK-X']).toBeUndefined();
+  });
+
+  it('still forces/carries status normally when the cancellation record has no student to compare (defensive fallback)', () => {
+    const cancellations = [{ bookingId: 'BK-1', reason: 'Weather (WX)' }]; // no `student` field
+    const newSnap = { 'BK-1': { id: 'BK-1', status: 'Pending', student: 'X' } };
+    const result = stabilizeCancelledFlights(newSnap, {}, cancellations);
+    expect(result['BK-1'].status).toBe('Canceled');
+  });
+
+  it('still forces status normally when the student genuinely matches (the common case, unaffected)', () => {
+    const cancellations = [{ bookingId: 'BK-1', student: 'X', reason: 'Weather (WX)' }];
+    const newSnap = { 'BK-1': { id: 'BK-1', status: 'Pending', student: 'X' } };
+    const result = stabilizeCancelledFlights(newSnap, {}, cancellations);
+    expect(result['BK-1'].status).toBe('Canceled');
+  });
 });
