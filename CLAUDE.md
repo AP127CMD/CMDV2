@@ -1,16 +1,17 @@
 # CMDV2 — Claude Code Context
 
-## 🔴 HANDOFF (2026-07-27, ~15:30 UTC): AP127 Telegram notifications are OFF, investigation in progress
-User turned off AP127 Telegram notifications in Watchdog (Destinations tab) as a stopgap after a recurring
-status flip-flop for booking `2026-07-31` in the upstream CMD_CTR feed kept triggering duplicate
-Cancelled/Pending notices, and explicitly asked to hand the investigation off to a new session. **Full
-handoff context, root-cause evidence, exact verification commands, and the proposed next step (switching
-CMD_CTR's scraper from Timeline to Daily Schedule) all live in `flight-schedule-feed/CLAUDE.md`'s own
-`🔴 HANDOFF` block — read that first.** Nothing about Watchdog's own code is suspected broken (the three
-watchdog-side fixes from earlier today — stabilizeCancelledFlights, the ADDED+Canceled classification fix,
-and the bookingId-reuse guard — are all confirmed correct and deployed, 126 tests green); the open bug is
-entirely upstream in CMD_CTR's scraper. Do not re-enable notifications until the CMD_CTR-side investigation
-confirms `2026-07-31` (or whatever date is affected by then) has stopped flip-flopping.
+## Note (2026-07-27): CMD_CTR-side root cause of the notification flip-flop is fixed
+
+The `2026-07-31` status flip-flop that caused duplicate Cancelled/Pending Telegram notices was root-caused
+and fixed upstream in CMD_CTR (`flight-schedule-feed/CLAUDE.md` — the scraper's Timeline mode-switching
+fetch, which could silently leak a stale Canceled-mode read, was replaced entirely with a direct RPC call
+that can't produce that failure mode). AP127 Telegram notifications are still OFF as of this write —
+re-enabling them is the user's call once they're satisfied the upstream fix is holding in production
+(watch a few days of CI runs / real notifications before flipping `enabled: true` in the Watchdog
+Destinations config). This session's watchdog-side defensive patches (`stabilizeCancelledFlights()`, the
+bookingId-reassignment guard, the anomaly-drop guard, `suppressActualPairs()`) were built to compensate
+for the now-fixed upstream flakiness — left in place deliberately (no evidence they cause harm by
+staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
 1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p117` (all currently at p116)
