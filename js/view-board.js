@@ -20,13 +20,17 @@ const SORT_KEYS = {
   status:     f => f.status ?? '',
 };
 
-function StatHero({ label, value, color, small=false, sub='' }) {
+function StatHero({ label, value, color, small=false, sub='', hint='' }) {
   return (
     <div style={{ flex:1, padding: small?'4px 8px':'6px 10px', background:'var(--surface)', border:'1px solid var(--line)', borderRadius:5, position:'relative', overflow:'hidden', minWidth: small?56:72 }}>
       <div style={{ position:'absolute', top:0, left:0, right:0, height:2, background:color }}/>
-      <div className="mono uc" style={{ fontSize:small?7:8, color:'var(--ink-3)' }}>{label}</div>
+      <div className="mono uc" style={{ fontSize:small?7:8, color:'var(--ink-3)', display:'flex', gap:4, alignItems:'center' }}>
+        {label}
+        {hint && <span title={hint} style={{ color:'var(--col-pending)', fontWeight:700, cursor:'default' }}>●</span>}
+      </div>
       <div className="num" style={{ fontSize:small?16:22, fontWeight:600, lineHeight:1.1, marginTop:1, color:'var(--ink)' }}>{String(value).padStart(2,'0')}</div>
       {sub && <div className="mono uc" style={{ fontSize:small?6:7, color:'var(--ink-3)', marginTop:1 }}>{sub}</div>}
+      {hint && <div className="mono uc" style={{ fontSize:small?6:7, color:'var(--col-pending)', marginTop:1 }}>{hint}</div>}
     </div>
   );
 }
@@ -77,6 +81,14 @@ function OpsBoard() {
   const { wd, mo, day } = fmtDay(app.date);
   const leaveMap = React.useMemo(() => leavesOnDate(app.date), [app.date]);
 
+  // Ground truth for the day, ignoring every filter (batches/instructors/tails/statuses,
+  // sim/standby toggles) — lets TOTAL flag when a filter is quietly hiding real flights.
+  // Added 2026-07-27: the TYPE row defaults to "AP only" (view-schedule.js), so TOTAL could
+  // read e.g. "22" while 8 more flights existed that day — indistinguishable from a slow day
+  // unless you noticed the small amber FILTERS(1) badge elsewhere on screen.
+  const allTodayCount = useM_b(() => FLIGHTS.filter(f => f.date === app.date).length, [app.date]);
+  const totalHint = allTodayCount !== stats.total ? `of ${allTodayCount} total` : '';
+
   return (
     <ArtboardShell style={{ display:'flex', flexDirection:'column' }}>
       <ThemeStyle/>
@@ -100,7 +112,7 @@ function OpsBoard() {
           <div className="num" style={{ fontSize:isMobile?26:38, fontWeight:700, lineHeight:1, letterSpacing:'-0.02em' }}>{String(day).padStart(2,'0')}</div>
           <div className="mono uc" style={{ fontSize:isMobile?9:11, color:'var(--ink-2)' }}>{mo} · {wd}</div>
         </div>
-        <StatHero label="TOTAL"     value={stats.total}     color="var(--col-pending)" small={isMobile} sub={`${brdHours(stats.totalHours)}H SCHED`}/>
+        <StatHero label="TOTAL"     value={stats.total}     color="var(--col-pending)" small={isMobile} sub={`${brdHours(stats.totalHours)}H SCHED`} hint={totalHint}/>
         <StatHero label="PENDING"   value={stats.Pending}   color="var(--col-pending)" small={isMobile} sub={`${brdHours(stats.pendingHours)}H`}/>
         <StatHero label="COMPLETED" value={stats.Completed} color="var(--col-done)"    small={isMobile} sub={`${brdHours(stats.completedHours)}H ✓`}/>
         <StatHero label="CANCELED"  value={stats.Canceled}  color="var(--col-cancel)"  small={isMobile} sub={`${brdHours(stats.canceledHours)}H`}/>

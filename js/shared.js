@@ -460,6 +460,22 @@ function AppProvider({ children, tweaks, setTweak, isMobile=false, setView=null 
     progress: { at: progress._updated || null, source: progressSource, students: (progress.ap127 || []).length },
   }), [progress, progressSource]);
 
+  // How many days FORWARD the Ops Portal has actually published, as of today. This is NOT a
+  // freshness/fetch-success signal (that's `freshness.ops` above) — the scrape can be running
+  // perfectly every 5 minutes and this number can still swing from 8 down to 0, because it
+  // reflects how far ahead the academy itself has published bookings, not a pipeline problem.
+  // Added 2026-07-27: traced 30 days of history and found this decaying 3→2→1→0 with nothing in
+  // the UI ever saying so — Weekly/Roster/Slot Finder just quietly had less to show, and it read
+  // identically to a slow day. `daysForward` is the single number that actually explains that.
+  const scheduleCoverage = useMemo(() => {
+    const todayStr = bkkToday();
+    let maxDate = null;
+    for (const f of FLIGHTS) { if (f.date && (!maxDate || f.date > maxDate)) maxDate = f.date; }
+    if (!maxDate) return { maxDate: null, daysForward: 0 };
+    const toDays = s => Math.round(Date.parse(s + 'T00:00:00Z') / 86400000);
+    return { maxDate, daysForward: Math.max(0, toDays(maxDate) - toDays(todayStr)) };
+  }, []);
+
   const dayFlights = useMemo(() => {
     return FLIGHTS.filter(x => {
       if (x.date !== date) return false;
@@ -496,7 +512,7 @@ function AppProvider({ children, tweaks, setTweak, isMobile=false, setView=null 
     // ── AP127 V2 revamp additions ──
     FLIGHTS, INSTRUCTORS, RESOURCES, LEAVES, ALL_DATES, DEFAULT_DATE, HIGHLIGHT_BATCH,
     students: progress.ap127 || [], curriculum: progress.cur127 || [], progressMeta: { updated: progress._updated },
-    reconciliation, freshness,
+    reconciliation, freshness, scheduleCoverage,
     studentLens, setStudentLens,
     go: viewId => window.dispatchEvent(new CustomEvent('ap127-go', { detail: viewId })),
     localToday, bkkToday,

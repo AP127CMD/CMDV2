@@ -63,8 +63,14 @@
       if (selTypes.size === 0 || selTypes.size >= availTypes.length) {
         app.setFilters(f => ({ ...f, batches: null }));
       } else {
+        // `b != null` (not `b &&`): a blank batch ("") is a real, matchable value — it's how
+        // batch-less bookings like "KEY PERSONNEL MEETING" are stored, and toBatchType('')
+        // correctly classifies them as OTHER. The old truthy check dropped '' before it ever
+        // reached the whitelist, so selecting ONLY the OTHER chip could never reveal them —
+        // only "ALL" (which clears the filter entirely) could. `dayFlights`'s `filters.batches
+        // .includes(x.batch)` check does an exact-value match, so '' must survive into this list.
         const matched = [...new Set(
-          (window.FLIGHTS || []).map(f => f.batch).filter(b => b && selTypes.has(toBatchType(b)))
+          (window.FLIGHTS || []).map(f => f.batch).filter(b => b != null && selTypes.has(toBatchType(b)))
         )].sort();
         app.setFilters(f => ({ ...f, batches: matched.length ? matched : null }));
       }

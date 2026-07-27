@@ -497,15 +497,24 @@
   }
 
   // ── Log panel ────────────────────────────────────────────────────────────────
+  // A busy month runs into the thousands of entries — rendering all of them at once was
+  // measured live at 8,579 rows / ~60,000 DOM nodes in a single view (2026-07-27 audit), by
+  // far the heaviest thing in the app and rough on a phone. No virtualization lib is loaded
+  // (this project is deliberately no-build/CDN-only), so plain pagination is the lightweight
+  // fix: only PAGE_SIZE rows ever mount at once, search still runs over the FULL month first.
+  const LOG_PAGE_SIZE = 100;
+
   function LogPanel() {
     const [month, setMonth] = useState(MONTHS[0]);
     const [log, setLog] = useState([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
     const [detail, setDetail] = useState(null);
+    const [page, setPage] = useState(0);
 
     useEffect(() => {
       setLoading(true);
+      setPage(0);
       fetch(`${WATCHDOG_URL}/log?month=${month}`)
         .then(r => r.json())
         .then(data => { setLog(Array.isArray(data) ? data : []); setLoading(false); })
@@ -526,6 +535,15 @@
             || changeText.toLowerCase().includes(q);
         })
       : log;
+
+    // Reset to page 1 whenever the search narrows/widens the result set, so a stale page
+    // index can never point past the end of a shorter filtered list.
+    useEffect(() => { setPage(0); }, [q]);
+
+    const pageCount = Math.max(1, Math.ceil(filtered.length / LOG_PAGE_SIZE));
+    const clampedPage = Math.min(page, pageCount - 1);
+    const pageStart = clampedPage * LOG_PAGE_SIZE;
+    const pageRows = filtered.slice(pageStart, pageStart + LOG_PAGE_SIZE);
 
     const selStyle = { background: 'var(--bg-2)', color: 'var(--ink)',
       border: '1px solid var(--line)', borderRadius: 4,
@@ -556,12 +574,12 @@
                     h('th', null, 'Time'), h('th', null, ''), h('th', null, 'SP'),
                     h('th', null, 'Lesson'), h('th', null, 'Date'), h('th', null, 'Change'))),
                 h('tbody', null,
-                  filtered.map((e, i) => {
+                  pageRows.map((e, i) => {
                     const diffKeys = Object.keys(e.diff || {});
                     const changeSummary = diffKeys.length
                       ? diffKeys.map(k => `${k}: ${e.diff[k].from}→${e.diff[k].to}`).join(', ')
                       : e.type === 'ADDED' ? `${e.start}–${e.end} · ${e.tail}` : '';
-                    return h('tr', { key: i, style: { cursor: 'pointer' },
+                    return h('tr', { key: pageStart + i, style: { cursor: 'pointer' },
                         onClick: () => setDetail(e),
                         title: 'Click for flight detail' },
                       h('td', { className: 'mono muted', style: { fontSize: 9, whiteSpace: 'nowrap' } },
@@ -571,7 +589,13 @@
                       h('td', { className: 'mono', style: { fontSize: 11 } }, e.lesson || '—'),
                       h('td', { className: 'mono muted', style: { fontSize: 10 } }, e.date || '—'),
                       h('td', { className: 'muted', style: { fontSize: 10 } }, changeSummary));
-                  })))));
+                  })))),
+      // Pager — only shown once a month's results actually span more than one page.
+      pageCount > 1 && h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '8px 0 2px' } },
+        h('button', { className: 'chip', disabled: clampedPage === 0, onClick: () => setPage(p => Math.max(0, p - 1)) }, '‹ Prev'),
+        h('span', { className: 'mono muted', style: { fontSize: 10 } },
+          `Page ${clampedPage + 1} / ${pageCount} · rows ${pageStart + 1}–${Math.min(pageStart + LOG_PAGE_SIZE, filtered.length)} of ${filtered.length}`),
+        h('button', { className: 'chip', disabled: clampedPage >= pageCount - 1, onClick: () => setPage(p => Math.min(pageCount - 1, p + 1)) }, 'Next ›')));
   }
 
   // ── API Key modal ─────────────────────────────────────────────────────────────

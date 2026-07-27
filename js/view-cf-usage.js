@@ -117,7 +117,7 @@
       // Header
       h('div', { className: 'ph', style: { marginBottom: 16, flexWrap: 'wrap', gap: 8 } },
         h('span', { className: 'pt' }, '☁ CF Usage'),
-        h('span', { className: 'ps' }, 'Free-tier limits · resets daily at 00:00 UTC'),
+        h('span', { className: 'ps' }, 'Watchdog KV + Worker free-tier limits · resets daily at 00:00 UTC'),
         h('div', { style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 } },
           lastFetched && h('span', { className: 'muted', style: { fontSize: 10 } },
             `${data?._cached ? '⏱ cached · ' : ''}${lastFetched.toLocaleTimeString()}`),
@@ -127,18 +127,30 @@
             ? h('button', { className: 'chip', onClick: () => { setKeyDraft(''); setShowKeyInput(true); } }, 'Change Key')
             : h('button', { className: 'chip', onClick: () => { setKeyDraft(''); setShowKeyInput(true); } }, 'Set Key'))),
 
-      // API key input
-      showKeyInput && h('div', { className: 'panel', style: { marginBottom: 12, padding: 12, display: 'flex', gap: 8, alignItems: 'center' } },
-        h('span', { style: { fontSize: 12 } }, 'Watchdog API key:'),
-        h('input', {
-          type: 'password', value: keyDraft, placeholder: 'Enter key…',
-          onChange: e => setKeyDraft(e.target.value),
-          onKeyDown: e => e.key === 'Enter' && saveKey(),
-          style: { flex: 1, fontSize: 12, padding: '4px 8px', borderRadius: 4,
-            border: '1px solid var(--ink-3)', background: 'var(--bg-1)', color: 'var(--ink-1)' },
-        }),
-        h('button', { className: 'chip', onClick: saveKey, disabled: !keyDraft }, 'Save'),
-        h('button', { className: 'chip', onClick: () => setShowKeyInput(false) }, 'Cancel')),
+      // API key input — this reads the watchdog's own /cf-usage endpoint, so it's the SAME
+      // WATCHDOG_API_KEY as the Watchdog tab (shared localStorage key 'wd-key'). Explained
+      // inline (2026-07-27) because this view previously just said "Watchdog API key:" with
+      // no context — a user landing here first, before ever opening Watchdog, had no way to
+      // know what the key was, where to get it, or that setting it here also unlocks Watchdog.
+      showKeyInput && h('div', { className: 'panel', style: { marginBottom: 12, padding: 12 } },
+        h('div', { style: { fontSize: 12, marginBottom: 8 } },
+          'This page reads live usage from the ', h('b', null, 'ap127-watchdog'), ' Worker, which needs its ',
+          h('code', null, 'WATCHDOG_API_KEY'), ' to authorize the request — the ',
+          h('b', null, 'same key'), ' used on the Watchdog tab (enter it once, both tabs unlock).',
+          h('br', null),
+          h('span', { style: { color: 'var(--ink-3)', fontSize: 11 } },
+            'Stored only in this browser (localStorage) — never sent anywhere but this Worker.')),
+        h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+          h('span', { style: { fontSize: 12 } }, 'Key:'),
+          h('input', {
+            type: 'password', value: keyDraft, placeholder: 'Enter WATCHDOG_API_KEY…',
+            onChange: e => setKeyDraft(e.target.value),
+            onKeyDown: e => e.key === 'Enter' && saveKey(),
+            style: { flex: 1, fontSize: 12, padding: '4px 8px', borderRadius: 4,
+              border: '1px solid var(--ink-3)', background: 'var(--bg-1)', color: 'var(--ink-1)' },
+          }),
+          h('button', { className: 'chip', onClick: saveKey, disabled: !keyDraft }, 'Save'),
+          h('button', { className: 'chip', onClick: () => setShowKeyInput(false) }, 'Cancel'))),
 
       // Error state
       error && !needsSetup && h('div', { className: 'empty', style: { marginBottom: 12, color: 'var(--col-cancel)' } },

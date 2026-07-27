@@ -70,6 +70,25 @@
       h('b', { style: { color: 'var(--ink-2)', fontWeight: 500 } }, label));
   }
 
+  // How far ahead the Ops Portal has actually published, shown as its own chip because it's
+  // easy to mistake for a pipeline problem (see scheduleCoverage's comment in shared.js) when
+  // really it just means the academy hasn't posted next week yet. Color bands: 0 days is the
+  // one that actually needs attention — Weekly/Roster/Slot Finder have nothing beyond today.
+  function CoverageChip({ coverage }) {
+    const { maxDate, daysForward } = coverage || {};
+    const col = daysForward === 0 ? 'var(--col-cancel)' : daysForward <= 2 ? 'var(--col-pending)' : 'var(--col-done)';
+    let dateLabel = '—';
+    if (maxDate) { try { dateLabel = new Date(maxDate + 'T00:00:00Z').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' }); } catch { dateLabel = maxDate; } }
+    const title = maxDate
+      ? `Ops Portal has published through ${dateLabel} (${daysForward} day${daysForward === 1 ? '' : 's'} ahead of today)` +
+        (daysForward === 0 ? ' — nothing beyond today yet; this is the academy\'s own publish schedule, not a fetch problem' : '')
+      : 'No schedule data';
+    return h('div', { className: 'mono', title, style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, color: 'var(--ink-3)' } },
+      h('span', { style: { width: 7, height: 7, borderRadius: 999, background: col, boxShadow: `0 0 6px ${col}` } }),
+      h('span', { className: 'uc' }, 'PUB'),
+      h('b', { style: { color: 'var(--ink-2)', fontWeight: 500 } }, maxDate ? dateLabel : '—'));
+  }
+
   function TopBar({ view, mobile, onMenu }) {
     const d = window.useData();
     const t = d.reconciliation.totals;
@@ -84,6 +103,7 @@
       h('div', { style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 } },
         !mobile && h(FreshnessDot, { kind: 'PROG', fresh: d.freshness.progress }),
         !mobile && h(FreshnessDot, { kind: 'OPS', fresh: d.freshness.ops }),
+        !mobile && h(CoverageChip, { coverage: d.scheduleCoverage }),
         h('button', { className: 'chip', onClick: () => d.go('crosscheck'), title: `Cross-Check · ${t.conflict || 0} conflict · ${t.review || 0} to review`, style: { display: 'flex', alignItems: 'center', gap: 6 } },
           '⇄', h('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: 700, color: '#fff', background: conf ? 'var(--col-cancel)' : integrity ? 'var(--col-pending)' : 'var(--col-done)', borderRadius: 999, padding: '1px 6px', minWidth: 16, textAlign: 'center' } }, integrity || 0)),
         ['cockpit', 'light', 'warm'].map(th => h('button', { key: th, onClick: () => d.setTweak('theme', th), title: th + ' theme', className: 'chip' + (d.tweaks.theme === th ? ' sel' : ''), style: { padding: '4px 7px' } }, th[0].toUpperCase())),
@@ -99,6 +119,7 @@
       const active = view === v.id;
       const flag = v.id === 'crosscheck' && integrityFlag;
       return h('button', { key: v.id, onClick: () => { d.go(v.id); if (onClose) onClose(); }, title: rail ? v.label : '', className: 'mono uc',
+        'aria-current': active ? 'page' : undefined,
         style: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: rail ? 'center' : 'flex-start', gap: 10, padding: rail ? '9px 0' : '8px 12px', borderRadius: 6, cursor: 'pointer', textAlign: 'left', border: `1px solid ${active ? 'var(--highlight)' : 'transparent'}`,
           background: active ? 'color-mix(in oklch,var(--highlight) 14%,var(--surface))' : 'transparent', color: active ? 'var(--highlight)' : 'var(--ink-2)', fontWeight: active ? 600 : 500, fontSize: 10.5, width: '100%' } },
         h('span', { style: { width: rail ? 'auto' : 19, fontSize: 17, lineHeight: 1, textAlign: 'center', position: 'relative' } }, v.icon,
@@ -112,8 +133,9 @@
       mobile && h('div', { style: { padding: '8px 16px', borderBottom: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 6 } },
         h('div', { className: 'mono uc', style: { fontSize: 8, color: 'var(--ink-3)', letterSpacing: '0.1em' } }, 'DATA FRESHNESS'),
         h(FreshnessDot, { kind: 'PROG', fresh: d.freshness.progress }),
-        h(FreshnessDot, { kind: 'OPS', fresh: d.freshness.ops })),
-      h('nav', { style: { padding: rail ? '8px 6px' : 8, display: 'flex', flexDirection: 'column', gap: 2 } },
+        h(FreshnessDot, { kind: 'OPS', fresh: d.freshness.ops }),
+        h(CoverageChip, { coverage: d.scheduleCoverage })),
+      h('nav', { 'aria-label': 'Primary', style: { padding: rail ? '8px 6px' : 8, display: 'flex', flexDirection: 'column', gap: 2 } },
         (_sharePreset ? GROUPS.map(g => ({ ...g, items: g.items.filter(i => _sharePreset.includes(i.id)) })).filter(g => g.items.length > 0) : GROUPS)
         .map((g, gi) => h('div', { key: gi, style: { marginTop: g.label ? 10 : 0 } },
           g.label && !rail && h('div', { className: 'mono uc', style: { fontSize: 8, color: 'var(--ink-3)', padding: '2px 12px 4px', letterSpacing: '0.1em' } }, g.label),
@@ -545,7 +567,10 @@
       h('div', { style: { flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' } },
         !mobile && h(Sidebar, { view, collapsed }),
         mobile && menu && h('div', null, h('div', { onClick: () => setMenu(false), style: { position: 'fixed', inset: 0, background: 'oklch(0 0 0 / 0.5)', zIndex: 199 } }), h(Sidebar, { view, mobile: true, onClose: () => setMenu(false) })),
-        h('div', { style: { flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden' } }, Body ? h(Body, { view }) : h(Placeholder, { view }))));
+        // Semantic <main> landmark (2026-07-27 accessibility pass) — the whole app previously
+        // had no <main>/<nav> region markers at all beyond a bare <div id="root">, so a screen
+        // reader or keyboard user had no way to jump straight to content vs. chrome.
+        h('main', { style: { flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden' } }, Body ? h(Body, { view }) : h(Placeholder, { view }))));
   }
 
   // Top-level App owns theme/tweaks + viewport, wraps everything in the augmented
