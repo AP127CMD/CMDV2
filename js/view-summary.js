@@ -447,6 +447,43 @@
       return s;
     }, [batchesPresent, days, dailyBuckets]);
 
+    const weekLabelKeys = useMemo(() => { const set = new Set(); days.forEach(d => set.add(sWeekKey(d))); return [...set].sort(); }, [days]);
+    const monthLabelKeys = useMemo(() => { const set = new Set(); days.forEach(d => set.add(sMonthKey(d))); return [...set].sort(); }, [days]);
+
+    const weeklyBuckets = useMemo(() => {
+      const m = {}; // batch -> weekKey -> hours
+      filteredFlights.forEach(f => {
+        const b = f.batch || 'Unknown';
+        const wk = sWeekKey(f.date);
+        if (!m[b]) m[b] = {};
+        m[b][wk] = (m[b][wk] || 0) + hoursOf(f);
+      });
+      return m;
+    }, [filteredFlights, hoursOf]);
+    const monthlyBuckets = useMemo(() => {
+      const m = {}; // batch -> monthKey -> hours
+      filteredFlights.forEach(f => {
+        const b = f.batch || 'Unknown';
+        const mk = sMonthKey(f.date);
+        if (!m[b]) m[b] = {};
+        m[b][mk] = (m[b][mk] || 0) + hoursOf(f);
+      });
+      return m;
+    }, [filteredFlights, hoursOf]);
+
+    const weekLabels = useMemo(() => weekLabelKeys.map(sFmtWeek), [weekLabelKeys]);
+    const monthLabels = useMemo(() => monthLabelKeys.map(sFmtMonth), [monthLabelKeys]);
+    const weeklySeries = useMemo(() => {
+      const s = {};
+      batchesPresent.forEach(b => { s[b] = weekLabelKeys.map(wk => (weeklyBuckets[b] || {})[wk] || 0); });
+      return s;
+    }, [batchesPresent, weekLabelKeys, weeklyBuckets]);
+    const monthlySeries = useMemo(() => {
+      const s = {};
+      batchesPresent.forEach(b => { s[b] = monthLabelKeys.map(mk => (monthlyBuckets[b] || {})[mk] || 0); });
+      return s;
+    }, [batchesPresent, monthLabelKeys, monthlyBuckets]);
+
     const resetFilters = () => {
       setStatusSel(['Completed']);
       setBatchMode('ap');
@@ -581,6 +618,8 @@
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <StackedBatchChart title="DAILY FLIGHT COUNT BY BATCH" subtitle="STACKED · ONE BAR PER DAY" labels={dayLabels} batches={batchesPresent} series={dailyCountSeries} unit="flights"/>
               <StackedBatchChart title="DAILY FLIGHT HOURS BY BATCH" subtitle={`STACKED · ${metric.toUpperCase()} HOURS`} labels={dayLabels} batches={batchesPresent} series={dailyHoursSeries} unit="hours"/>
+              <StackedBatchChart title="WEEKLY HOURS BY BATCH" subtitle="MONDAY-START WEEKS" labels={weekLabels} batches={batchesPresent} series={weeklySeries} unit="hours"/>
+              <StackedBatchChart title="MONTHLY HOURS BY BATCH" subtitle="CALENDAR MONTH" labels={monthLabels} batches={batchesPresent} series={monthlySeries} unit="hours"/>
             </div>
           </div>
         </div>
