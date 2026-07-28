@@ -571,8 +571,8 @@ gone. The new tab is period- and multi-dimension-filterable, batch-centric analy
   (searchable multi-select), aircraft type, and simulator — all composing into one `filteredFlights`.
 - **13-tile KPI strip:** total/pending/completed/canceled/standby/sim counts, hours, completion rate,
   cancellation rate, avg hours/flight, batch count, student count, and AP-127 share of hours.
-- **Batch composition strip:** a single segmented bar + legend showing each batch's share of hours
-  (or flights) in the selected period.
+- **Batch composition strip:** a single segmented bar + legend showing each batch's share of
+  completed hours in the selected period.
 - **4 stacked bar charts** (`StackedBatchChart`, Chart.js): daily flight count, daily hours, weekly
   hours, and monthly hours — each stacked per batch, with per-segment data labels and a per-chart
   legend that toggles individual batch series on/off.
@@ -589,3 +589,39 @@ Built across Tasks 1-11 of `docs/superpowers/plans/2026-07-28-ops-analytics-reva
 3 columns, the chart grid collapses to one column, the filter panel's dimension grid stacks to 2
 columns without overlapping text, and both roster heatmaps scroll horizontally inside their own
 container — zero page-level horizontal overflow at 390px width.
+
+### Ops Analytics — whole-branch review fixes (2026-07-29, p118)
+
+`js/view-summary.js`
+
+A final whole-branch review (after all 12 build tasks individually passed review) caught 5 issues only
+visible reading the whole ~955-line file together — each individual task's diff was too narrow to show
+them. All fixed in one pass, re-reviewed clean:
+
+- **AP-127 ONLY toggle was a no-op** — `<FocusControls/>` rendered in the header, but `filteredFlights`
+  never read `hideOthers`/`highlightAP127`, so clicking ONLY changed nothing. Now filters correctly
+  (mirrors the `hideOthers && highlightAP127 && !isAP127Batch(...)` pattern already used in
+  `view-gantt.js`/`view-weekly.js`).
+- **STATUS=Standby matched zero flights** — Standby is `f.isStandby` (a flag), not a value of
+  `f.status`; selecting it alone blanked the tab. Fixed to OR against `isStandby` alongside the status
+  list, matching `shared.js`'s own `dayFlights` filter convention.
+- **Batch Composition strip showed invisible slivers** whenever the filtered set had flights but zero
+  *completed* hours (e.g. a Pending-only status filter) — every segment floored at its minimum-visible
+  width with 0.0% legends, no indication anything was filtered out. Now shows an explicit "NO COMPLETED
+  HOURS IN FILTERED SET" state instead.
+- **Chart data-label text was illegible in light/warm themes** (hardcoded near-black `#0b0e14`, tuned
+  only for the dark theme's lighter batch colors). Now resolves from `--bg`. Note: this — like every
+  other `getComputedStyle(document.documentElement)` color read in this app, a pre-existing pattern
+  predating this feature — is still theme-*invariant* in practice, because theme overrides live on
+  `body[data-theme]` and `document.documentElement` (`<html>`) never sees a descendant's overrides;
+  fixing that for real needs a codebase-wide change, out of scope here. This fix keeps the label and
+  bar colors resolving through the same (theme-invariant) mechanism, so they stay mutually legible.
+- **Roster heatmap resolved a cell's color even when unused** — `RosterHeatmap` called `colorOf(row,d)`
+  for every cell before checking if it had a nonzero value; at a 90-day period with many rows that's
+  tens of thousands of wasted `getComputedStyle` calls per render. Moved inside the `v > 0` branch.
+
+Also cleaned up in the same pass: stale internal "(Task N)" comments, a dormant leave-badge lookup bug
+in `BreakdownTable` (querying `leavesOnDate()`, which is keyed by person name, with a batch name — the
+old pre-rewrite file guarded this and the port dropped the guard; restored), and hoisted three
+inline-per-render subcomponents (`Tile`, `PresetChip`, `MetricChip`) to top-level to stop them
+remounting on every render.
