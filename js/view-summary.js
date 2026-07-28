@@ -406,6 +406,49 @@
     );
   }
 
+  // ── CumulativeTable — generic batch-grouped all-time summary list (Task 10, reused by Task 11) ──
+  function CumulativeTable({ title, groups, showBatchGroups, onRowClick }) {
+    const empty = groups.length === 0 || groups.every(g => g.rows.length === 0);
+    if (empty) {
+      return (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: 20, textAlign: 'center' }}>
+          <span className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>NO DATA</span>
+        </div>
+      );
+    }
+    return (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+          <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink)', fontWeight: 600 }}>{title}</div>
+          <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>LATEST FLIGHT · ALL-TIME COMPLETED LESSONS / HOURS</div>
+        </div>
+        <div style={{ padding: '6px 0' }}>
+          {groups.map(g => (
+            <div key={g.key}>
+              {showBatchGroups && (
+                <div style={{ padding: '5px 16px', background: `color-mix(in oklch, ${g.color} 10%, var(--surface))`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 2, background: g.color, flexShrink: 0 }}/>
+                  <span className="mono uc" style={{ fontSize: 10, fontWeight: 700, color: g.color }}>{g.key}</span>
+                  <span className="mono" style={{ fontSize: 9, color: 'var(--ink-3)' }}>{g.rows.length} · {g.totalLessons} lessons · {g.totalHours.toFixed(1)}h</span>
+                </div>
+              )}
+              {g.rows.map(r => (
+                <div key={r.name} onClick={() => onRowClick(r)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 16px', borderBottom: '1px solid var(--line-soft)', cursor: 'pointer' }}>
+                  <span className="mono" style={{ fontSize: 10, color: 'var(--ink-2)', width: 130, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>{r.name}</span>
+                  <span className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)', width: 70, flexShrink: 0 }}>{r.latestDate || '—'}</span>
+                  <span className="mono" style={{ fontSize: 9, color: 'var(--ink-3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.latestLesson}</span>
+                  <span className="mono num" style={{ fontSize: 9, color: 'var(--ink-2)', width: 36, textAlign: 'right', flexShrink: 0 }}>{r.lessons}</span>
+                  <span className="mono num" style={{ fontSize: 9, color: 'var(--col-done)', width: 52, textAlign: 'right', flexShrink: 0 }}>{r.hours.toFixed(1)}h</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // SummaryBoard — placeholder shell for now; filled in by Tasks 2-11.
   // ══════════════════════════════════════════════════════════════════════
@@ -659,6 +702,43 @@
       if (dayFlights.length > 0) app.setDrawer(dayFlights[dayFlights.length - 1].id);
     }, [filteredFlights, app]);
 
+    const cumulStudentGroups = useMemo(() => {
+      const byStudent = {};
+      FLIGHTS.forEach(f => {
+        if (!f.student) return;
+        if (!batchAllowed(f.batch)) return;
+        if (!byStudent[f.student]) byStudent[f.student] = [];
+        byStudent[f.student].push(f);
+      });
+      const rows = Object.keys(byStudent).map(name => {
+        const flights = byStudent[name];
+        let latest = null;
+        let lessons = 0, hours = 0;
+        const batchCount = {};
+        flights.forEach(f => {
+          if (!latest || f.date > latest.date) latest = f;
+          if (f.status === 'Completed') { lessons++; hours += hoursOf(f); }
+          const b = f.batch || 'Unknown';
+          batchCount[b] = (batchCount[b] || 0) + 1;
+        });
+        const dominantBatch = Object.entries(batchCount).sort((a, b) => b[1] - a[1])[0][0];
+        return { name, batch: dominantBatch, latestDate: latest.date, latestLesson: latest.lesson || '—', latestId: latest.id, lessons, hours };
+      });
+      const byBatch = {};
+      rows.forEach(r => { if (!byBatch[r.batch]) byBatch[r.batch] = []; byBatch[r.batch].push(r); });
+      const order = [...AP_BATCH_ORDER.filter(b => byBatch[b]), ...Object.keys(byBatch).filter(b => !AP_BATCH_ORDER.includes(b)).sort()];
+      return order.map(b => {
+        const rs = byBatch[b].sort((a, z) => z.hours - a.hours);
+        return {
+          key: b, color: sBatchColor(b), rows: rs,
+          totalLessons: rs.reduce((a, r) => a + r.lessons, 0),
+          totalHours: rs.reduce((a, r) => a + r.hours, 0),
+        };
+      });
+    }, [batchAllowed, hoursOf]);
+
+    const handleCumulRowClick = useCallback(r => { if (r.latestId) app.setDrawer(r.latestId); }, [app]);
+
     const resetFilters = () => {
       setStatusSel(['Completed']);
       setBatchMode('ap');
@@ -798,6 +878,7 @@
             </div>
             <BreakdownTable title="BATCH BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={batchStats}/>
             <RosterHeatmap title="▦ STUDENT ACTIVITY — click cell for detail" rows={rosterStudents} days={days} today={today} valueOf={studentValueOf} colorOf={studentColorOf} onCellClick={handleStudentCellClick}/>
+            <CumulativeTable title="STUDENT ALL-TIME SUMMARY" groups={cumulStudentGroups} showBatchGroups onRowClick={handleCumulRowClick}/>
           </div>
         </div>
         <Drawer/>
