@@ -199,6 +199,77 @@
     );
   }
 
+  // ── StackedBatchChart — reusable Chart.js stacked bar (Task 6, reused by Task 7) ──
+  function StackedBatchChart({ title, subtitle, labels, batches, series, unit }) {
+    const canvasRef = useRef(null);
+    const chartRef = useRef(null);
+
+    useEffect(() => {
+      if (!canvasRef.current) return;
+      if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
+      if (window.ChartDataLabels) { try { Chart.register(window.ChartDataLabels); } catch (e) {} }
+
+      const cs = getComputedStyle(document.documentElement);
+      const ink3 = cs.getPropertyValue('--ink-3').trim() || '#888';
+      const lineC = cs.getPropertyValue('--line').trim() || '#333';
+
+      const datasets = batches.map(b => {
+        const col = sResolveColor(sBatchColor(b));
+        return {
+          label: b,
+          data: (series[b] || labels.map(() => 0)).map(v => +v.toFixed(unit === 'hours' ? 2 : 0)),
+          backgroundColor: col,
+          borderColor: col,
+          borderWidth: 0.5,
+          stack: 'batches',
+          datalabels: {
+            color: '#0b0e14',
+            font: { family: 'monospace', size: 8, weight: '600' },
+            display: ctx => {
+              const v = ctx.dataset.data[ctx.dataIndex];
+              const meta = ctx.chart.getDatasetMeta(ctx.datasetIndex);
+              const bar = meta.data[ctx.dataIndex];
+              return v > 0 && bar && bar.height > 11;
+            },
+            formatter: v => (v > 0 ? (unit === 'hours' ? v.toFixed(1) : String(v)) : null),
+            anchor: 'center', align: 'center',
+          },
+        };
+      });
+
+      const ctx = canvasRef.current.getContext('2d');
+      chartRef.current = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true, position: 'top', labels: { color: ink3, font: { family: 'monospace', size: 9 }, boxWidth: 10, padding: 8 } },
+            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.raw).toFixed(unit === 'hours' ? 1 : 0)}${unit === 'hours' ? 'h' : ''}` } },
+          },
+          scales: {
+            x: { stacked: true, ticks: { color: ink3, font: { family: 'monospace', size: 8 }, maxRotation: 45, maxTicksLimit: 24 }, grid: { color: lineC } },
+            y: { stacked: true, beginAtZero: true, ticks: { color: ink3, font: { family: 'monospace', size: 9 }, callback: v => (unit === 'hours' ? v + 'h' : v) }, grid: { color: lineC } },
+          },
+        },
+      });
+
+      return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
+    }, [labels, batches, series, unit]);
+
+    return (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+          <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink)', fontWeight: 600 }}>{title}</div>
+          {subtitle && <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>{subtitle}</div>}
+        </div>
+        <div style={{ padding: '10px 12px', height: 240, position: 'relative' }}>
+          <canvas ref={canvasRef}/>
+        </div>
+      </div>
+    );
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // SummaryBoard — placeholder shell for now; filled in by Tasks 2-11.
   // ══════════════════════════════════════════════════════════════════════
@@ -350,6 +421,32 @@
         }));
     }, [batchStats]);
 
+    const days = useMemo(() => sDayRange(from, to), [from, to]);
+
+    const dailyBuckets = useMemo(() => {
+      const countMap = {}; // batch -> date -> count
+      const hourMap = {};  // batch -> date -> hours
+      filteredFlights.forEach(f => {
+        const b = f.batch || 'Unknown';
+        if (!countMap[b]) { countMap[b] = {}; hourMap[b] = {}; }
+        countMap[b][f.date] = (countMap[b][f.date] || 0) + 1;
+        hourMap[b][f.date] = (hourMap[b][f.date] || 0) + hoursOf(f);
+      });
+      return { countMap, hourMap };
+    }, [filteredFlights, hoursOf]);
+
+    const dayLabels = useMemo(() => days.map(sFmtShort), [days]);
+    const dailyCountSeries = useMemo(() => {
+      const s = {};
+      batchesPresent.forEach(b => { s[b] = days.map(d => (dailyBuckets.countMap[b] || {})[d] || 0); });
+      return s;
+    }, [batchesPresent, days, dailyBuckets]);
+    const dailyHoursSeries = useMemo(() => {
+      const s = {};
+      batchesPresent.forEach(b => { s[b] = days.map(d => (dailyBuckets.hourMap[b] || {})[d] || 0); });
+      return s;
+    }, [batchesPresent, days, dailyBuckets]);
+
     const resetFilters = () => {
       setStatusSel(['Completed']);
       setBatchMode('ap');
@@ -481,6 +578,10 @@
           <div style={{ padding: '10px 10px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <KpiStrip kpi={kpi} isMobile={isMobile}/>
             <CompositionStrip slices={compositionSlices} metricLabel={metric}/>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+              <StackedBatchChart title="DAILY FLIGHT COUNT BY BATCH" subtitle="STACKED · ONE BAR PER DAY" labels={dayLabels} batches={batchesPresent} series={dailyCountSeries} unit="flights"/>
+              <StackedBatchChart title="DAILY FLIGHT HOURS BY BATCH" subtitle={`STACKED · ${metric.toUpperCase()} HOURS`} labels={dayLabels} batches={batchesPresent} series={dailyHoursSeries} unit="hours"/>
+            </div>
           </div>
         </div>
         <Drawer/>
