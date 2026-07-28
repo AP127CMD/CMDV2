@@ -317,6 +317,95 @@
     );
   }
 
+  // ── RosterHeatmap — generic sticky-header day-by-person intensity table (Task 9, reused by Task 11) ──
+  function RosterHeatmap({ title, rows, days, today, valueOf, colorOf, onCellClick }) {
+    const CELL_W = Math.max(10, Math.min(26, Math.floor(700 / Math.max(days.length, 1))));
+    const CELL_H = 20;
+    const maxCell = useMemo(() => {
+      let mx = 0.25;
+      rows.forEach(r => days.forEach(d => { const v = valueOf(r, d); if (v > mx) mx = v; }));
+      return mx;
+    }, [rows, days, valueOf]);
+
+    if (rows.length === 0) {
+      return (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: 20, textAlign: 'center' }}>
+          <span className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>NO DATA IN PERIOD</span>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+          <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink)', fontWeight: 600 }}>{title}</div>
+        </div>
+        <div style={{ overflowX: 'auto', padding: '8px 0' }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 1 }}>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 110, padding: '2px 10px', textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-2)', zIndex: 2 }}>
+                  <span className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)' }}>NAME</span>
+                </th>
+                <th style={{ minWidth: 48, padding: '2px 6px', textAlign: 'right', position: 'sticky', left: 110, background: 'var(--bg-2)', zIndex: 2 }}>
+                  <span className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)' }}>TOTAL</span>
+                </th>
+                {days.map((d, i) => {
+                  const dObj = new Date(d + 'T12:00:00Z');
+                  const isMon = dObj.getUTCDay() === 1;
+                  const isToday = d === today;
+                  const showLabel = i === 0 || isMon || CELL_W >= 20;
+                  return (
+                    <th key={d} style={{ width: CELL_W, minWidth: CELL_W, padding: 0, textAlign: 'center', verticalAlign: 'bottom', borderLeft: isMon && i > 0 ? '1px solid var(--line)' : 'none' }}>
+                      {showLabel && (
+                        <div className="mono" style={{ fontSize: 7, color: isToday ? 'var(--highlight)' : 'var(--ink-4,#555)', fontWeight: isToday ? 700 : 400 }}>
+                          {dObj.getUTCDate()}
+                        </div>
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => {
+                const total = days.reduce((s, d) => s + valueOf(row, d), 0);
+                return (
+                  <tr key={row}>
+                    <td style={{ padding: '1px 10px', position: 'sticky', left: 0, background: 'var(--bg-2)', zIndex: 1, whiteSpace: 'nowrap', borderRight: '1px solid var(--line)' }}>
+                      <span className="mono" style={{ fontSize: 10, color: 'var(--ink-2)', fontWeight: 600 }}>{row}</span>
+                    </td>
+                    <td style={{ padding: '1px 6px', position: 'sticky', left: 110, background: 'var(--bg-2)', zIndex: 1, textAlign: 'right', borderRight: '1px solid var(--line)' }}>
+                      <span className="mono num" style={{ fontSize: 9, color: 'var(--ink-2)', fontWeight: 600 }}>{total.toFixed(1)}h</span>
+                    </td>
+                    {days.map(d => {
+                      const v = valueOf(row, d);
+                      const col = colorOf(row, d);
+                      const intensity = v <= 0 ? 0 : Math.min(1, v / maxCell);
+                      let cellBg = 'transparent';
+                      let cellBorder = '1px solid var(--line)';
+                      if (v > 0) {
+                        const pct = Math.round(Math.max(14, intensity * 85));
+                        cellBg = `color-mix(in oklch, ${col} ${pct}%, transparent)`;
+                        cellBorder = `1px solid color-mix(in oklch, ${col} ${Math.min(100, pct + 15)}%, transparent)`;
+                      }
+                      if (d === today) cellBorder = '1px solid var(--highlight)';
+                      return (
+                        <td key={d} onClick={() => onCellClick(row, d)}
+                          title={v > 0 ? `${row} · ${d} · ${v.toFixed(1)}h` : `${row} · ${d}: —`}
+                          style={{ width: CELL_W, height: CELL_H, padding: 0, background: cellBg, border: cellBorder, borderRadius: 2, cursor: v > 0 ? 'pointer' : 'default' }}/>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // SummaryBoard — placeholder shell for now; filled in by Tasks 2-11.
   // ══════════════════════════════════════════════════════════════════════
@@ -531,6 +620,45 @@
       return s;
     }, [batchesPresent, monthLabelKeys, monthlyBuckets]);
 
+    const rosterStudents = useMemo(() => {
+      const set = new Set();
+      filteredFlights.forEach(f => { if (f.student) set.add(f.student); });
+      return [...set].sort();
+    }, [filteredFlights]);
+
+    const studentDayMap = useMemo(() => {
+      const m = {};
+      filteredFlights.forEach(f => {
+        if (!f.student) return;
+        if (!m[f.student]) m[f.student] = {};
+        m[f.student][f.date] = (m[f.student][f.date] || 0) + hoursOf(f);
+      });
+      return m;
+    }, [filteredFlights, hoursOf]);
+
+    const studentBatchMap = useMemo(() => {
+      const counts = {};
+      filteredFlights.forEach(f => {
+        if (!f.student) return;
+        if (!counts[f.student]) counts[f.student] = {};
+        const b = f.batch || 'Unknown';
+        counts[f.student][b] = (counts[f.student][b] || 0) + 1;
+      });
+      const m = {};
+      Object.keys(counts).forEach(name => {
+        const entries = Object.entries(counts[name]).sort((a, b) => b[1] - a[1]);
+        m[name] = entries[0][0];
+      });
+      return m;
+    }, [filteredFlights]);
+
+    const studentValueOf = useCallback((row, d) => (studentDayMap[row] || {})[d] || 0, [studentDayMap]);
+    const studentColorOf = useCallback(row => sResolveColor(sBatchColor(studentBatchMap[row])), [studentBatchMap]);
+    const handleStudentCellClick = useCallback((row, d) => {
+      const dayFlights = filteredFlights.filter(f => f.student === row && f.date === d);
+      if (dayFlights.length > 0) app.setDrawer(dayFlights[dayFlights.length - 1].id);
+    }, [filteredFlights, app]);
+
     const resetFilters = () => {
       setStatusSel(['Completed']);
       setBatchMode('ap');
@@ -669,6 +797,7 @@
               <StackedBatchChart title="MONTHLY HOURS BY BATCH" subtitle="CALENDAR MONTH" labels={monthLabels} batches={batchesPresent} series={monthlySeries} unit="hours"/>
             </div>
             <BreakdownTable title="BATCH BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={batchStats}/>
+            <RosterHeatmap title="▦ STUDENT ACTIVITY — click cell for detail" rows={rosterStudents} days={days} today={today} valueOf={studentValueOf} colorOf={studentColorOf} onCellClick={handleStudentCellClick}/>
           </div>
         </div>
         <Drawer/>
