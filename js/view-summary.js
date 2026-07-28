@@ -161,6 +161,44 @@
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // CompositionStrip — batch composition stacked bar + legend
+  // ──────────────────────────────────────────────────────────────────────
+  function CompositionStrip({ slices, metricLabel }) {
+    if (slices.length === 0) {
+      return (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: '14px 16px', textAlign: 'center' }}>
+          <span className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>NO BATCHES IN FILTERED SET</span>
+        </div>
+      );
+    }
+    return (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+          <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink)', fontWeight: 600 }}>BATCH COMPOSITION</div>
+          <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>SHARE OF {metricLabel.toUpperCase()} HOURS IN PERIOD</div>
+        </div>
+        <div style={{ padding: '14px 16px' }}>
+          <div style={{ display: 'flex', height: 22, borderRadius: 4, overflow: 'hidden', border: '1px solid var(--line)' }}>
+            {slices.map(s => (
+              <div key={s.batch} title={`${s.batch}: ${s.pct.toFixed(1)}% · ${s.hours.toFixed(1)}h`}
+                style={{ width: `${Math.max(s.pct, 0.5)}%`, background: s.color, opacity: 0.88 }}/>
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
+            {slices.map(s => (
+              <div key={s.batch} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 9, height: 9, borderRadius: 2, background: s.color, flexShrink: 0 }}/>
+                <span className="mono uc" style={{ fontSize: 10, color: s.batch === HIGHLIGHT_BATCH ? 'var(--highlight)' : 'var(--ink-2)', fontWeight: s.batch === HIGHLIGHT_BATCH ? 700 : 400 }}>{s.batch}</span>
+                <span className="mono num" style={{ fontSize: 9, color: 'var(--ink-3)' }}>{s.flights} flt · {s.hours.toFixed(1)}h · {s.pct.toFixed(1)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // SummaryBoard — placeholder shell for now; filled in by Tasks 2-11.
   // ══════════════════════════════════════════════════════════════════════
@@ -274,6 +312,43 @@
         ap127SharePct: s.completedHours > 0 ? (ap127Hours / s.completedHours) * 100 : null,
       };
     }, [filteredFlights, hoursOf]);
+
+    const batchStats = useMemo(() => {
+      const m = {};
+      filteredFlights.forEach(f => {
+        const b = f.batch || 'Unknown';
+        if (!m[b]) m[b] = { batch: b, total: 0, pending: 0, completed: 0, canceled: 0, standby: 0, bookedHours: 0, completedHours: 0 };
+        m[b].total++;
+        m[b].bookedHours += (f.durMin || 0) / 60;
+        m[b].completedHours += hoursOf(f);
+        if (f.status === 'Pending') m[b].pending++;
+        if (f.status === 'Completed') m[b].completed++;
+        if (f.status === 'Canceled') m[b].canceled++;
+        if (f.isStandby) m[b].standby++;
+      });
+      return Object.values(m);
+    }, [filteredFlights, hoursOf]);
+
+    const batchesPresent = useMemo(() => {
+      const names = batchStats.map(b => b.batch);
+      const apOnes = AP_BATCH_ORDER.filter(b => names.includes(b));
+      const others = names.filter(b => !AP_BATCH_ORDER.includes(b)).sort();
+      return [...apOnes, ...others];
+    }, [batchStats]);
+
+    const compositionSlices = useMemo(() => {
+      const total = batchStats.reduce((a, b) => a + b.completedHours, 0);
+      return [...batchStats]
+        .filter(b => b.completedHours > 0 || b.total > 0)
+        .sort((a, b) => b.completedHours - a.completedHours)
+        .map(b => ({
+          batch: b.batch,
+          color: sBatchColor(b.batch),
+          flights: b.total,
+          hours: b.completedHours,
+          pct: total > 0 ? (b.completedHours / total) * 100 : 0,
+        }));
+    }, [batchStats]);
 
     const resetFilters = () => {
       setStatusSel(['Completed']);
@@ -405,6 +480,7 @@
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           <div style={{ padding: '10px 10px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <KpiStrip kpi={kpi} isMobile={isMobile}/>
+            <CompositionStrip slices={compositionSlices} metricLabel={metric}/>
           </div>
         </div>
         <Drawer/>
