@@ -83,15 +83,88 @@
   // SummaryBoard — placeholder shell for now; filled in by Tasks 2-11.
   // ══════════════════════════════════════════════════════════════════════
   function SummaryBoard() {
+    const app = useApp();
+    const { isMobile } = app;
+    const today = localToday();
+
+    const [preset, setPreset]         = useState('30d'); // '14d' | '30d' | '90d' | 'custom'
+    const [customFrom, setCustomFrom] = useState('');
+    const [customTo, setCustomTo]     = useState('');
+    const [metric, setMetric]         = useState('effective'); // 'effective' | 'block'
+
+    const { from, to } = useMemo(() => {
+      if (preset === 'custom' && customFrom && customTo && customFrom <= customTo) {
+        return { from: customFrom, to: customTo };
+      }
+      return sPresetRange(preset, today);
+    }, [preset, customFrom, customTo, today]);
+
+    // Seed the custom range the first time CUSTOM is picked, so it starts as a sane 30d window.
+    useEffect(() => {
+      if (preset === 'custom' && !customFrom && !customTo) {
+        const r = sPresetRange('30d', today);
+        setCustomFrom(r.from);
+        setCustomTo(r.to);
+      }
+    }, [preset]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const PresetChip = ({ p, label }) => (
+      <span onClick={() => setPreset(p)} className="mono uc" style={{
+        padding: '3px 9px', fontSize: 9, borderRadius: 4, cursor: 'pointer',
+        background: preset === p ? 'color-mix(in oklch,var(--ink-2) 14%,var(--surface))' : 'transparent',
+        border: `1px solid ${preset === p ? 'var(--ink-2)' : 'var(--line)'}`,
+        color: preset === p ? 'var(--ink)' : 'var(--ink-3)', fontWeight: preset === p ? 600 : 400,
+      }}>{label}</span>
+    );
+
+    const MetricChip = ({ m, label }) => (
+      <span onClick={() => setMetric(m)} className="mono uc" style={{
+        padding: '3px 9px', fontSize: 9, borderRadius: 4, cursor: 'pointer',
+        background: metric === m ? 'color-mix(in oklch,var(--highlight) 14%,var(--surface))' : 'transparent',
+        border: `1px solid ${metric === m ? 'var(--highlight)' : 'var(--line)'}`,
+        color: metric === m ? 'var(--highlight)' : 'var(--ink-3)', fontWeight: metric === m ? 600 : 400,
+      }}>{label}</span>
+    );
+
     return (
       <ArtboardShell style={{ display: 'flex', flexDirection: 'column' }}>
         <ThemeStyle/>
-        <div style={{ minHeight: 38, padding: '0 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ViewIcon id="analytics" size={12} color="var(--ink-2)"/>
-          <div className="mono uc" style={{ fontSize: 11, fontWeight: 600 }}>OPS ANALYTICS</div>
+        <div style={{ minHeight: 38, padding: '0 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', rowGap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--col-pending)', boxShadow: '0 0 8px var(--col-pending)' }}/>
+            <ViewIcon id="analytics" size={12} color="var(--ink-2)"/>
+            <div className="mono uc" style={{ fontSize: 11, fontWeight: 600 }}>OPS ANALYTICS</div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 8 }}>
+            <PresetChip p="14d" label="14D"/>
+            <PresetChip p="30d" label="30D"/>
+            <PresetChip p="90d" label="90D"/>
+            <PresetChip p="custom" label="CUSTOM"/>
+          </div>
+
+          {preset === 'custom' && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <DateCalendarTrigger value={customFrom} onChange={setCustomFrom} dateSet={DATE_SET}/>
+              <span className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>→</span>
+              <DateCalendarTrigger value={customTo} onChange={setCustomTo} dateSet={DATE_SET}/>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 4 }}>
+            <MetricChip m="effective" label="EFFECTIVE"/>
+            <MetricChip m="block" label="BLOCK"/>
+          </div>
+
+          <FocusControls/>
+
+          <div style={{ flex: 1 }}/>
+          <RefreshButton/>
+          <LastUpdate/>
         </div>
+
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span className="mono uc" style={{ fontSize: 10, color: 'var(--ink-3)' }}>Rebuilding — see implementation plan</span>
+          <span className="mono uc" style={{ fontSize: 10, color: 'var(--ink-3)' }}>{from} → {to} · body sections land in later tasks</span>
         </div>
         <Drawer/>
       </ArtboardShell>
