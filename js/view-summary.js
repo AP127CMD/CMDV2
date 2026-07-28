@@ -199,6 +199,53 @@
     );
   }
 
+  // ── BreakdownTable — batch breakdown horizontal-bar table (Task 8) ──
+  function BreakdownTable({ title, subtitle, rows, nameKey = 'batch' }) {
+    const sorted = [...rows].sort((a, b) => (b.completedHours || 0) - (a.completedHours || 0));
+    const maxHours = Math.max(...sorted.map(r => r.completedHours || 0), 0.01);
+    const todayLeaves = leavesOnDate(localToday());
+
+    return (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+          <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink)', fontWeight: 600 }}>{title}</div>
+          {subtitle && <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>{subtitle}</div>}
+        </div>
+        <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {sorted.length === 0 && <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)', padding: '8px 0' }}>NO DATA</div>}
+          {sorted.map(r => {
+            const name = r[nameKey];
+            const isHL = name === HIGHLIGHT_BATCH;
+            const barW = `${(((r.completedHours || 0) / maxHours) * 100).toFixed(1)}%`;
+            return (
+              <div key={name} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div style={{ width: 120, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+                  <span className="mono uc" style={{ fontSize: 10, color: isHL ? 'var(--highlight)' : 'var(--ink-2)', fontWeight: isHL ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={name}>{name}</span>
+                  {todayLeaves[name] && <LeaveBadge reason={todayLeaves[name]}/>}
+                </div>
+                <div style={{ flex: 1, height: 18, background: 'var(--bg-2)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ width: barW, height: '100%', display: 'flex', gap: 1, transition: 'width .3s' }}>
+                    {r.pending > 0 && <div title={`Pending: ${r.pending}`} style={{ flex: r.pending, background: 'var(--col-pending)', opacity: 0.85 }}/>}
+                    {r.completed > 0 && <div title={`Completed: ${r.completed}`} style={{ flex: r.completed, background: 'var(--col-done)', opacity: 0.85 }}/>}
+                    {r.canceled > 0 && <div title={`Canceled: ${r.canceled}`} style={{ flex: r.canceled, background: 'var(--col-cancel)', opacity: 0.85 }}/>}
+                    {r.standby > 0 && <div title={`Standby: ${r.standby}`} style={{ flex: r.standby, background: 'var(--col-stby)', opacity: 0.85 }}/>}
+                    {r.total === 0 && <div style={{ flex: 1, background: 'var(--line)', opacity: 0.2 }}/>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                  <div className="mono num" style={{ fontSize: 9, color: 'var(--col-done)', textAlign: 'right', width: 20 }} title="Completed">{r.completed}</div>
+                  <div className="mono" style={{ fontSize: 8, color: 'var(--ink-3)' }}>/</div>
+                  <div className="mono num" style={{ fontSize: 9, color: 'var(--col-cancel)', textAlign: 'right', width: 20 }} title="Canceled">{r.canceled}</div>
+                  <div className="mono num" style={{ width: 52, fontSize: 9, color: 'var(--col-done)', textAlign: 'right' }} title="Completed hours">✓{(r.completedHours || 0).toFixed(1)}h</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   // ── StackedBatchChart — reusable Chart.js stacked bar (Task 6, reused by Task 7) ──
   function StackedBatchChart({ title, subtitle, labels, batches, series, unit }) {
     const canvasRef = useRef(null);
@@ -621,6 +668,7 @@
               <StackedBatchChart title="WEEKLY HOURS BY BATCH" subtitle="MONDAY-START WEEKS" labels={weekLabels} batches={batchesPresent} series={weeklySeries} unit="hours"/>
               <StackedBatchChart title="MONTHLY HOURS BY BATCH" subtitle="CALENDAR MONTH" labels={monthLabels} batches={batchesPresent} series={monthlySeries} unit="hours"/>
             </div>
+            <BreakdownTable title="BATCH BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={batchStats}/>
           </div>
         </div>
         <Drawer/>
