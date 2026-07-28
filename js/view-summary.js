@@ -739,6 +739,69 @@
 
     const handleCumulRowClick = useCallback(r => { if (r.latestId) app.setDrawer(r.latestId); }, [app]);
 
+    const rosterInstructors = useMemo(() => {
+      const set = new Set();
+      filteredFlights.forEach(f => { if (f.instructor) set.add(f.instructor); });
+      return [...set].sort();
+    }, [filteredFlights]);
+
+    const instructorDayData = useMemo(() => {
+      const hours = {};      // instructor -> date -> hours
+      const batchHours = {}; // instructor -> date -> batch -> hours
+      filteredFlights.forEach(f => {
+        if (!f.instructor) return;
+        const h = hoursOf(f);
+        if (!hours[f.instructor]) { hours[f.instructor] = {}; batchHours[f.instructor] = {}; }
+        hours[f.instructor][f.date] = (hours[f.instructor][f.date] || 0) + h;
+        if (!batchHours[f.instructor][f.date]) batchHours[f.instructor][f.date] = {};
+        const b = f.batch || 'Unknown';
+        batchHours[f.instructor][f.date][b] = (batchHours[f.instructor][f.date][b] || 0) + h;
+      });
+      const dominantBatch = {};
+      Object.keys(batchHours).forEach(name => {
+        dominantBatch[name] = {};
+        Object.keys(batchHours[name]).forEach(date => {
+          const entries = Object.entries(batchHours[name][date]).sort((a, b) => b[1] - a[1]);
+          dominantBatch[name][date] = entries.length ? entries[0][0] : 'Unknown';
+        });
+      });
+      return { hours, dominantBatch };
+    }, [filteredFlights, hoursOf]);
+
+    const instructorValueOf = useCallback((row, d) => (instructorDayData.hours[row] || {})[d] || 0, [instructorDayData]);
+    const instructorColorOf = useCallback((row, d) => sResolveColor(sBatchColor((instructorDayData.dominantBatch[row] || {})[d])), [instructorDayData]);
+    const handleInstructorCellClick = useCallback((row, d) => {
+      const dayFlights = filteredFlights.filter(f => f.instructor === row && f.date === d);
+      if (dayFlights.length > 0) app.setDrawer(dayFlights[dayFlights.length - 1].id);
+    }, [filteredFlights, app]);
+
+    const cumulInstructorRows = useMemo(() => {
+      const byInstr = {};
+      FLIGHTS.forEach(f => {
+        if (!f.instructor) return;
+        if (instructorSel && !instructorSel.includes(f.instructor)) return;
+        if (!byInstr[f.instructor]) byInstr[f.instructor] = [];
+        byInstr[f.instructor].push(f);
+      });
+      const rows = Object.keys(byInstr).map(name => {
+        const flights = byInstr[name];
+        let latest = null, lessons = 0, hours = 0;
+        flights.forEach(f => {
+          if (!latest || f.date > latest.date) latest = f;
+          if (f.status === 'Completed') { lessons++; hours += hoursOf(f); }
+        });
+        return { name, latestDate: latest.date, latestLesson: latest.lesson || '—', latestId: latest.id, lessons, hours };
+      });
+      rows.sort((a, b) => b.hours - a.hours);
+      return rows;
+    }, [instructorSel, hoursOf]);
+
+    const cumulInstructorGroups = useMemo(() => ([{
+      key: 'ALL INSTRUCTORS', color: 'var(--ink-2)', rows: cumulInstructorRows,
+      totalLessons: cumulInstructorRows.reduce((a, r) => a + r.lessons, 0),
+      totalHours: cumulInstructorRows.reduce((a, r) => a + r.hours, 0),
+    }]), [cumulInstructorRows]);
+
     const resetFilters = () => {
       setStatusSel(['Completed']);
       setBatchMode('ap');
@@ -879,6 +942,8 @@
             <BreakdownTable title="BATCH BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={batchStats}/>
             <RosterHeatmap title="▦ STUDENT ACTIVITY — click cell for detail" rows={rosterStudents} days={days} today={today} valueOf={studentValueOf} colorOf={studentColorOf} onCellClick={handleStudentCellClick}/>
             <CumulativeTable title="STUDENT ALL-TIME SUMMARY" groups={cumulStudentGroups} showBatchGroups onRowClick={handleCumulRowClick}/>
+            <RosterHeatmap title="▦ INSTRUCTOR ACTIVITY — click cell for detail" rows={rosterInstructors} days={days} today={today} valueOf={instructorValueOf} colorOf={instructorColorOf} onCellClick={handleInstructorCellClick}/>
+            <CumulativeTable title="INSTRUCTOR ALL-TIME SUMMARY" groups={cumulInstructorGroups} showBatchGroups={false} onRowClick={handleCumulRowClick}/>
           </div>
         </div>
         <Drawer/>
