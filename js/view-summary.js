@@ -133,14 +133,16 @@
   // ──────────────────────────────────────────────────────────────────────
   // KpiStrip — 13-tile summary: totals, breakdown by status, rates, hours.
   // ──────────────────────────────────────────────────────────────────────
-  function KpiStrip({ kpi, isMobile }) {
-    const Tile = ({ label, value, color, sub }) => (
+  function Tile({ label, value, color, sub }) {
+    return (
       <div style={{ padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, borderTop: `2px solid ${color}`, minWidth: 76 }}>
         <div className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)' }}>{label}</div>
         <div className="num" style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.1, color: 'var(--ink)', marginTop: 2 }}>{value}</div>
         {sub && <div className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)', marginTop: 2 }}>{sub}</div>}
       </div>
     );
+  }
+  function KpiStrip({ kpi, isMobile }) {
     const pct = v => (v == null ? '—' : `${v.toFixed(0)}%`);
     return (
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'repeat(auto-fit,minmax(96px,1fr))', gap: 8 }}>
@@ -172,6 +174,14 @@
         </div>
       );
     }
+    const totalHours = slices.reduce((a, s) => a + s.hours, 0);
+    if (totalHours === 0) {
+      return (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: '14px 16px', textAlign: 'center' }}>
+          <span className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>NO COMPLETED HOURS IN FILTERED SET</span>
+        </div>
+      );
+    }
     return (
       <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
         <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
@@ -199,7 +209,7 @@
     );
   }
 
-  // ── BreakdownTable — batch breakdown horizontal-bar table (Task 8) ──
+  // ── BreakdownTable — batch breakdown horizontal-bar table ──
   function BreakdownTable({ title, subtitle, rows, nameKey = 'batch' }) {
     const sorted = [...rows].sort((a, b) => (b.completedHours || 0) - (a.completedHours || 0));
     const maxHours = Math.max(...sorted.map(r => r.completedHours || 0), 0.01);
@@ -221,7 +231,7 @@
               <div key={name} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <div style={{ width: 120, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
                   <span className="mono uc" style={{ fontSize: 10, color: isHL ? 'var(--highlight)' : 'var(--ink-2)', fontWeight: isHL ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={name}>{name}</span>
-                  {todayLeaves[name] && <LeaveBadge reason={todayLeaves[name]}/>}
+                  {nameKey !== 'batch' && todayLeaves[name] && <LeaveBadge reason={todayLeaves[name]}/>}
                 </div>
                 <div style={{ flex: 1, height: 18, background: 'var(--bg-2)', borderRadius: 3, overflow: 'hidden' }}>
                   <div style={{ width: barW, height: '100%', display: 'flex', gap: 1, transition: 'width .3s' }}>
@@ -246,7 +256,7 @@
     );
   }
 
-  // ── StackedBatchChart — reusable Chart.js stacked bar (Task 6, reused by Task 7) ──
+  // ── StackedBatchChart — reusable Chart.js stacked bar, shared by all 4 chart panels ──
   function StackedBatchChart({ title, subtitle, labels, batches, series, unit }) {
     const canvasRef = useRef(null);
     const chartRef = useRef(null);
@@ -259,6 +269,7 @@
       const cs = getComputedStyle(document.documentElement);
       const ink3 = cs.getPropertyValue('--ink-3').trim() || '#888';
       const lineC = cs.getPropertyValue('--line').trim() || '#333';
+      const labelColor = cs.getPropertyValue('--bg').trim() || '#0b0e14';
 
       const datasets = batches.map(b => {
         const col = sResolveColor(sBatchColor(b));
@@ -270,7 +281,7 @@
           borderWidth: 0.5,
           stack: 'batches',
           datalabels: {
-            color: '#0b0e14',
+            color: labelColor,
             font: { family: 'monospace', size: 8, weight: '600' },
             display: ctx => {
               const v = ctx.dataset.data[ctx.dataIndex];
@@ -317,7 +328,7 @@
     );
   }
 
-  // ── RosterHeatmap — generic sticky-header day-by-person intensity table (Task 9, reused by Task 11) ──
+  // ── RosterHeatmap — generic sticky-header day-by-person intensity table, reused by the instructor roster ──
   function RosterHeatmap({ title, rows, days, today, valueOf, colorOf, onCellClick }) {
     const CELL_W = Math.max(10, Math.min(26, Math.floor(700 / Math.max(days.length, 1))));
     const CELL_H = 20;
@@ -380,11 +391,11 @@
                     </td>
                     {days.map(d => {
                       const v = valueOf(row, d);
-                      const col = colorOf(row, d);
                       const intensity = v <= 0 ? 0 : Math.min(1, v / maxCell);
                       let cellBg = 'transparent';
                       let cellBorder = '1px solid var(--line)';
                       if (v > 0) {
+                        const col = colorOf(row, d);
                         const pct = Math.round(Math.max(14, intensity * 85));
                         cellBg = `color-mix(in oklch, ${col} ${pct}%, transparent)`;
                         cellBorder = `1px solid color-mix(in oklch, ${col} ${Math.min(100, pct + 15)}%, transparent)`;
@@ -406,7 +417,7 @@
     );
   }
 
-  // ── CumulativeTable — generic batch-grouped all-time summary list (Task 10, reused by Task 11) ──
+  // ── CumulativeTable — generic batch-grouped all-time summary list, reused by the instructor roster ──
   function CumulativeTable({ title, groups, showBatchGroups, onRowClick }) {
     const empty = groups.length === 0 || groups.every(g => g.rows.length === 0);
     if (empty) {
@@ -449,12 +460,35 @@
     );
   }
 
+  function PresetChip({ p, label, preset, setPreset }) {
+    return (
+      <span onClick={() => setPreset(p)} className="mono uc" style={{
+        padding: '3px 9px', fontSize: 9, borderRadius: 4, cursor: 'pointer',
+        background: preset === p ? 'color-mix(in oklch,var(--ink-2) 14%,var(--surface))' : 'transparent',
+        border: `1px solid ${preset === p ? 'var(--ink-2)' : 'var(--line)'}`,
+        color: preset === p ? 'var(--ink)' : 'var(--ink-3)', fontWeight: preset === p ? 600 : 400,
+      }}>{label}</span>
+    );
+  }
+
+  function MetricChip({ m, label, metric, setMetric }) {
+    return (
+      <span onClick={() => setMetric(m)} className="mono uc" style={{
+        padding: '3px 9px', fontSize: 9, borderRadius: 4, cursor: 'pointer',
+        background: metric === m ? 'color-mix(in oklch,var(--highlight) 14%,var(--surface))' : 'transparent',
+        border: `1px solid ${metric === m ? 'var(--highlight)' : 'var(--line)'}`,
+        color: metric === m ? 'var(--highlight)' : 'var(--ink-3)', fontWeight: metric === m ? 600 : 400,
+      }}>{label}</span>
+    );
+  }
+
   // ══════════════════════════════════════════════════════════════════════
-  // SummaryBoard — placeholder shell for now; filled in by Tasks 2-11.
+  // SummaryBoard — top-level Ops Analytics tab: period/metric header, filter
+  // panel, KPI strip, batch composition, charts, breakdown table, rosters.
   // ══════════════════════════════════════════════════════════════════════
   function SummaryBoard() {
     const app = useApp();
-    const { isMobile } = app;
+    const { isMobile, highlightAP127, hideOthers } = app;
     const today = localToday();
 
     const [preset, setPreset]         = useState('30d'); // '14d' | '30d' | '90d' | 'custom'
@@ -524,14 +558,19 @@
       return FLIGHTS.filter(f => {
         if (!f.date || f.date < from || f.date > to) return false;
         if (!batchAllowed(f.batch)) return false;
-        if (statusSel && statusSel.length > 0 && !statusSel.includes(f.status)) return false;
+        if (statusSel && statusSel.length > 0) {
+          const matchStatus = statusSel.includes(f.status);
+          const matchStby = statusSel.includes('Standby') && f.isStandby;
+          if (!matchStatus && !matchStby) return false;
+        }
         if (instructorSel && !instructorSel.includes(f.instructor)) return false;
         if (studentSel && !studentSel.includes(f.student)) return false;
         if (typeSel && !typeSel.includes(tailToType[f.tail] || 'Unknown')) return false;
         if (!simOn && f.isSim) return false;
+        if (hideOthers && highlightAP127 && !isAP127Batch(f.batch)) return false;
         return true;
       });
-    }, [from, to, batchAllowed, statusSel, instructorSel, studentSel, typeSel, simOn, tailToType]);
+    }, [from, to, batchAllowed, statusSel, instructorSel, studentSel, typeSel, simOn, tailToType, hideOthers, highlightAP127]);
 
     const kpi = useMemo(() => {
       const s = { total: filteredFlights.length, pending: 0, completed: 0, canceled: 0, standby: 0, sim: 0, bookedHours: 0, completedHours: 0 };
@@ -814,24 +853,6 @@
     const filtersActive = statusSel.length !== 1 || statusSel[0] !== 'Completed'
       || batchMode !== 'ap' || !!instructorSel || !!studentSel || !!typeSel || simOn;
 
-    const PresetChip = ({ p, label }) => (
-      <span onClick={() => setPreset(p)} className="mono uc" style={{
-        padding: '3px 9px', fontSize: 9, borderRadius: 4, cursor: 'pointer',
-        background: preset === p ? 'color-mix(in oklch,var(--ink-2) 14%,var(--surface))' : 'transparent',
-        border: `1px solid ${preset === p ? 'var(--ink-2)' : 'var(--line)'}`,
-        color: preset === p ? 'var(--ink)' : 'var(--ink-3)', fontWeight: preset === p ? 600 : 400,
-      }}>{label}</span>
-    );
-
-    const MetricChip = ({ m, label }) => (
-      <span onClick={() => setMetric(m)} className="mono uc" style={{
-        padding: '3px 9px', fontSize: 9, borderRadius: 4, cursor: 'pointer',
-        background: metric === m ? 'color-mix(in oklch,var(--highlight) 14%,var(--surface))' : 'transparent',
-        border: `1px solid ${metric === m ? 'var(--highlight)' : 'var(--line)'}`,
-        color: metric === m ? 'var(--highlight)' : 'var(--ink-3)', fontWeight: metric === m ? 600 : 400,
-      }}>{label}</span>
-    );
-
     return (
       <ArtboardShell style={{ display: 'flex', flexDirection: 'column' }}>
         <ThemeStyle/>
@@ -843,10 +864,10 @@
           </div>
 
           <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 8 }}>
-            <PresetChip p="14d" label="14D"/>
-            <PresetChip p="30d" label="30D"/>
-            <PresetChip p="90d" label="90D"/>
-            <PresetChip p="custom" label="CUSTOM"/>
+            <PresetChip p="14d" label="14D" preset={preset} setPreset={setPreset}/>
+            <PresetChip p="30d" label="30D" preset={preset} setPreset={setPreset}/>
+            <PresetChip p="90d" label="90D" preset={preset} setPreset={setPreset}/>
+            <PresetChip p="custom" label="CUSTOM" preset={preset} setPreset={setPreset}/>
           </div>
 
           {preset === 'custom' && (
@@ -858,8 +879,8 @@
           )}
 
           <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 4 }}>
-            <MetricChip m="effective" label="EFFECTIVE"/>
-            <MetricChip m="block" label="BLOCK"/>
+            <MetricChip m="effective" label="EFFECTIVE" metric={metric} setMetric={setMetric}/>
+            <MetricChip m="block" label="BLOCK" metric={metric} setMetric={setMetric}/>
           </div>
 
           <FocusControls/>
