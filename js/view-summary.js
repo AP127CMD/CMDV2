@@ -79,6 +79,57 @@
   // Aircraft type order/labels — duplicated from view-aircraft.js's U_TYPE_ORDER (IIFE-scoped there, not exported).
   const S_TYPE_ORDER = ['DA40TDI', 'DA40CS', 'C172', 'DA42TDI', 'DA42NG', 'R44', 'DA40_SIM', 'DA42_SIM', 'R44_SIM'];
 
+  // Generic multi-select chip picker. selected === null means "all" (matches the
+  // convention FilterBar already uses elsewhere in this app for filters.batches etc).
+  function MultiSelectChips({ label, options, selected, onChange, colorOf, searchable }) {
+    const [q, setQ] = useState('');
+    const isAll = !selected || selected.length === 0;
+    const isSel = v => isAll || selected.includes(v);
+    const toggle = v => {
+      const base = isAll ? options.slice() : selected.slice();
+      const next = base.includes(v) ? base.filter(x => x !== v) : [...base, v];
+      onChange(next.length === options.length || next.length === 0 ? null : next);
+    };
+    const shown = searchable && q ? options.filter(o => o.toLowerCase().includes(q.toLowerCase())) : options;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 140 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)', flex: 1 }}>{label}</span>
+          {!isAll && (
+            <span onClick={() => onChange(null)} className="mono uc" style={{ fontSize: 7, padding: '1px 5px', borderRadius: 2, cursor: 'pointer', border: '1px solid var(--line)', color: 'var(--ink-3)' }}>ALL</span>
+          )}
+        </div>
+        {searchable && (
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="search…"
+            style={{ fontSize: 9, padding: '3px 6px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 4, color: 'var(--ink)', outline: 'none', fontFamily: 'inherit' }}/>
+        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, maxHeight: 100, overflowY: 'auto' }}>
+          {shown.map(v => {
+            const on = isSel(v);
+            const col = colorOf ? colorOf(v) : 'var(--ink-2)';
+            return (
+              <span key={v} onClick={() => toggle(v)} className="mono uc" style={{
+                padding: '2px 7px', fontSize: 9, borderRadius: 3, cursor: 'pointer',
+                background: on ? `color-mix(in oklch,${col} 16%,transparent)` : 'transparent',
+                border: `1px solid ${on ? col : 'var(--line)'}`, color: on ? col : 'var(--ink-3)',
+                fontWeight: on ? 600 : 400,
+              }}>{v}</span>
+            );
+          })}
+          {shown.length === 0 && <span className="mono" style={{ fontSize: 8, color: 'var(--ink-3)' }}>no matches</span>}
+        </div>
+      </div>
+    );
+  }
+
+  function statusColor(s) {
+    if (s === 'Pending') return 'var(--col-pending)';
+    if (s === 'Completed') return 'var(--col-done)';
+    if (s === 'Canceled') return 'var(--col-cancel)';
+    if (s === 'Standby') return 'var(--col-stby)';
+    return 'var(--ink-2)';
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // SummaryBoard — placeholder shell for now; filled in by Tasks 2-11.
   // ══════════════════════════════════════════════════════════════════════
@@ -91,6 +142,15 @@
     const [customFrom, setCustomFrom] = useState('');
     const [customTo, setCustomTo]     = useState('');
     const [metric, setMetric]         = useState('effective'); // 'effective' | 'block'
+
+    const [statusSel, setStatusSel]         = useState(['Completed']);
+    const [batchMode, setBatchMode]         = useState('ap'); // 'ap' | 'all' | 'custom'
+    const [customBatches, setCustomBatches] = useState([]);
+    const [instructorSel, setInstructorSel] = useState(null);
+    const [studentSel, setStudentSel]       = useState(null);
+    const [typeSel, setTypeSel]             = useState(null);
+    const [simOn, setSimOn]                 = useState(false);
+    const [filterOpen, setFilterOpen]       = useState(false);
 
     const { from, to } = useMemo(() => {
       if (preset === 'custom' && customFrom && customTo && customFrom <= customTo) {
@@ -107,6 +167,64 @@
         setCustomTo(r.to);
       }
     }, [preset]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const allBatchNames = useMemo(() => [...new Set(FLIGHTS.map(f => f.batch))].filter(Boolean).sort(), []);
+    const allInstructors = useMemo(() => [...new Set(FLIGHTS.map(f => f.instructor))].filter(Boolean).sort(), []);
+    const allStudents = useMemo(() => [...new Set(FLIGHTS.map(f => f.student))].filter(Boolean).sort(), []);
+    const tailToType = useMemo(() => {
+      const m = {};
+      RESOURCES.forEach(r => { if (r.tail) m[r.tail] = r.acType || 'Unknown'; });
+      return m;
+    }, []);
+    const typeOptions = useMemo(() => {
+      const present = new Set(RESOURCES.filter(r => r.acType && !/Classroom/i.test(r.acType)).map(r => r.acType));
+      return S_TYPE_ORDER.filter(t => present.has(t));
+    }, []);
+
+    // Seed custom batches with the AP-only default the first time CUSTOM mode is picked.
+    useEffect(() => {
+      if (batchMode === 'custom' && customBatches.length === 0) {
+        setCustomBatches(allBatchNames.filter(b => /^AP-/i.test(b)));
+      }
+    }, [batchMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const batchAllowed = useCallback(b => {
+      if (batchMode === 'ap') return /^AP-/i.test(b || '');
+      if (batchMode === 'all') return true;
+      return customBatches.includes(b);
+    }, [batchMode, customBatches]);
+
+    const curMap = useMemo(() => (metric === 'effective' ? sBuildCurMap() : {}), [metric]);
+    const hoursOf = useCallback(f => {
+      if (f.status !== 'Completed') return 0;
+      const mins = metric === 'effective' ? sEffectiveMins(f, curMap) : (f.durMin || 0);
+      return mins / 60;
+    }, [metric, curMap]);
+
+    const filteredFlights = useMemo(() => {
+      return FLIGHTS.filter(f => {
+        if (!f.date || f.date < from || f.date > to) return false;
+        if (!batchAllowed(f.batch)) return false;
+        if (statusSel && statusSel.length > 0 && !statusSel.includes(f.status)) return false;
+        if (instructorSel && !instructorSel.includes(f.instructor)) return false;
+        if (studentSel && !studentSel.includes(f.student)) return false;
+        if (typeSel && !typeSel.includes(tailToType[f.tail] || 'Unknown')) return false;
+        if (!simOn && f.isSim) return false;
+        return true;
+      });
+    }, [from, to, batchAllowed, statusSel, instructorSel, studentSel, typeSel, simOn, tailToType]);
+
+    const resetFilters = () => {
+      setStatusSel(['Completed']);
+      setBatchMode('ap');
+      setCustomBatches([]);
+      setInstructorSel(null);
+      setStudentSel(null);
+      setTypeSel(null);
+      setSimOn(false);
+    };
+    const filtersActive = statusSel.length !== 1 || statusSel[0] !== 'Completed'
+      || batchMode !== 'ap' || !!instructorSel || !!studentSel || !!typeSel || simOn;
 
     const PresetChip = ({ p, label }) => (
       <span onClick={() => setPreset(p)} className="mono uc" style={{
@@ -163,8 +281,68 @@
           <LastUpdate/>
         </div>
 
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span onClick={() => setFilterOpen(v => !v)} className="mono uc" style={{
+              padding: '4px 8px', fontSize: 9, borderRadius: 4, cursor: 'pointer',
+              border: `1px solid ${filterOpen || filtersActive ? 'var(--col-pending)' : 'var(--line)'}`,
+              background: filterOpen || filtersActive ? 'color-mix(in oklch,var(--col-pending) 10%,transparent)' : 'transparent',
+              color: filterOpen || filtersActive ? 'var(--col-pending)' : 'var(--ink-3)',
+              fontWeight: filtersActive ? 600 : 400,
+            }}>FILTERS {filterOpen ? '▲' : '▾'}</span>
+            {filtersActive && (
+              <span onClick={resetFilters} className="mono uc" style={{ fontSize: 8, padding: '3px 7px', borderRadius: 3, cursor: 'pointer', border: '1px solid var(--line)', color: 'var(--ink-3)' }}>RESET TO DEFAULT</span>
+            )}
+          </div>
+          {filterOpen && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14, padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 6 }}>
+              <MultiSelectChips label="STATUS" options={['Pending','Completed','Canceled','Standby']} selected={statusSel.length ? statusSel : null} onChange={v => setStatusSel(v || [])} colorOf={statusColor}/>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
+                <span className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)' }}>BATCH</span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[['ap','AP ONLY'],['all','ALL'],['custom','CUSTOM']].map(([m,lbl]) => (
+                    <span key={m} onClick={() => setBatchMode(m)} className="mono uc" style={{
+                      padding: '2px 7px', fontSize: 9, borderRadius: 3, cursor: 'pointer',
+                      background: batchMode === m ? 'color-mix(in oklch,var(--ink-2) 16%,transparent)' : 'transparent',
+                      border: `1px solid ${batchMode === m ? 'var(--ink-2)' : 'var(--line)'}`,
+                      color: batchMode === m ? 'var(--ink)' : 'var(--ink-3)', fontWeight: batchMode === m ? 600 : 400,
+                    }}>{lbl}</span>
+                  ))}
+                </div>
+                {batchMode === 'custom' && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, maxHeight: 100, overflowY: 'auto' }}>
+                    {allBatchNames.map(b => {
+                      const on = customBatches.includes(b);
+                      const col = sBatchColor(b);
+                      return (
+                        <span key={b} onClick={() => setCustomBatches(prev => prev.includes(b) ? prev.filter(x => x !== b) : [...prev, b])}
+                          className="mono uc" style={{
+                            padding: '2px 7px', fontSize: 9, borderRadius: 3, cursor: 'pointer',
+                            background: on ? `color-mix(in oklch,${col} 16%,transparent)` : 'transparent',
+                            border: `1px solid ${on ? col : 'var(--line)'}`, color: on ? col : 'var(--ink-3)', fontWeight: on ? 600 : 400,
+                          }}>{b}</span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <MultiSelectChips label="INSTRUCTOR" options={allInstructors} selected={instructorSel} onChange={setInstructorSel} searchable/>
+              <MultiSelectChips label="STUDENT" options={allStudents} selected={studentSel} onChange={setStudentSel} searchable/>
+              <MultiSelectChips label="AIRCRAFT TYPE" options={typeOptions} selected={typeSel} onChange={setTypeSel}/>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)' }}>SIMULATOR</span>
+                <span onClick={() => setSimOn(v => !v)} className="mono uc" style={{
+                  padding: '2px 8px', fontSize: 9, borderRadius: 3, cursor: 'pointer', width: 'fit-content',
+                  background: simOn ? 'color-mix(in oklch,var(--col-sim) 16%,transparent)' : 'transparent',
+                  border: `1px solid ${simOn ? 'var(--col-sim)' : 'var(--line)'}`, color: simOn ? 'var(--col-sim)' : 'var(--ink-3)',
+                }}>{simOn ? 'SHOWING SIM' : 'HIDING SIM'}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span className="mono uc" style={{ fontSize: 10, color: 'var(--ink-3)' }}>{from} → {to} · body sections land in later tasks</span>
+          <span className="mono uc" style={{ fontSize: 10, color: 'var(--ink-3)' }}>{filteredFlights.length} flights matched · body sections land in later tasks</span>
         </div>
         <Drawer/>
       </ArtboardShell>
