@@ -130,6 +130,37 @@
     return 'var(--ink-2)';
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // KpiStrip — 13-tile summary: totals, breakdown by status, rates, hours.
+  // ──────────────────────────────────────────────────────────────────────
+  function KpiStrip({ kpi, isMobile }) {
+    const Tile = ({ label, value, color, sub }) => (
+      <div style={{ padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, borderTop: `2px solid ${color}`, minWidth: 76 }}>
+        <div className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)' }}>{label}</div>
+        <div className="num" style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.1, color: 'var(--ink)', marginTop: 2 }}>{value}</div>
+        {sub && <div className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)', marginTop: 2 }}>{sub}</div>}
+      </div>
+    );
+    const pct = v => (v == null ? '—' : `${v.toFixed(0)}%`);
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'repeat(auto-fit,minmax(96px,1fr))', gap: 8 }}>
+        <Tile label="TOTAL" value={kpi.total} color="var(--ink-2)" sub={`${kpi.bookedHours.toFixed(0)}h booked`}/>
+        <Tile label="PENDING" value={kpi.pending} color="var(--col-pending)"/>
+        <Tile label="COMPLETED" value={kpi.completed} color="var(--col-done)"/>
+        <Tile label="CANCELED" value={kpi.canceled} color="var(--col-cancel)"/>
+        <Tile label="STANDBY" value={kpi.standby} color="var(--col-stby)"/>
+        <Tile label="SIM" value={kpi.sim} color="var(--col-sim)"/>
+        <Tile label="HOURS" value={kpi.completedHours.toFixed(1)} color="var(--col-done)"/>
+        <Tile label="COMPLETION" value={pct(kpi.completionRate)} color="var(--col-done)"/>
+        <Tile label="CANCELLATION" value={pct(kpi.cancellationRate)} color="var(--col-cancel)"/>
+        <Tile label="AVG H/FLIGHT" value={kpi.avgHoursPerFlight == null ? '—' : kpi.avgHoursPerFlight.toFixed(1)} color="var(--ink-2)"/>
+        <Tile label="BATCHES" value={kpi.activeBatches} color="var(--ink-2)"/>
+        <Tile label="STUDENTS" value={kpi.activeStudents} color="var(--ink-2)"/>
+        <Tile label="AP-127 SHARE" value={pct(kpi.ap127SharePct)} color="var(--highlight)"/>
+      </div>
+    );
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // SummaryBoard — placeholder shell for now; filled in by Tasks 2-11.
   // ══════════════════════════════════════════════════════════════════════
@@ -213,6 +244,36 @@
         return true;
       });
     }, [from, to, batchAllowed, statusSel, instructorSel, studentSel, typeSel, simOn, tailToType]);
+
+    const kpi = useMemo(() => {
+      const s = { total: filteredFlights.length, pending: 0, completed: 0, canceled: 0, standby: 0, sim: 0, bookedHours: 0, completedHours: 0 };
+      const batchSet = new Set();
+      const studentSet = new Set();
+      let ap127Hours = 0;
+      filteredFlights.forEach(f => {
+        if (f.status === 'Pending') s.pending++;
+        if (f.status === 'Completed') s.completed++;
+        if (f.status === 'Canceled') s.canceled++;
+        if (f.isStandby) s.standby++;
+        if (f.isSim) s.sim++;
+        s.bookedHours += (f.durMin || 0) / 60;
+        const h = hoursOf(f);
+        s.completedHours += h;
+        if (f.batch === HIGHLIGHT_BATCH) ap127Hours += h;
+        if (f.batch) batchSet.add(f.batch);
+        if (f.student) studentSet.add(f.student);
+      });
+      const settled = s.completed + s.canceled;
+      return {
+        ...s,
+        completionRate: settled ? (s.completed / settled) * 100 : null,
+        cancellationRate: settled ? (s.canceled / settled) * 100 : null,
+        avgHoursPerFlight: s.completed ? s.completedHours / s.completed : null,
+        activeBatches: batchSet.size,
+        activeStudents: studentSet.size,
+        ap127SharePct: s.completedHours > 0 ? (ap127Hours / s.completedHours) * 100 : null,
+      };
+    }, [filteredFlights, hoursOf]);
 
     const resetFilters = () => {
       setStatusSel(['Completed']);
@@ -341,8 +402,10 @@
           )}
         </div>
 
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span className="mono uc" style={{ fontSize: 10, color: 'var(--ink-3)' }}>{filteredFlights.length} flights matched · body sections land in later tasks</span>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <div style={{ padding: '10px 10px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <KpiStrip kpi={kpi} isMobile={isMobile}/>
+          </div>
         </div>
         <Drawer/>
       </ArtboardShell>
