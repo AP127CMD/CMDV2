@@ -553,3 +553,39 @@ Two new panels added at the bottom of the Progress view showing lead/lag (actual
 - Names differ across feeds — always go through `reconcile.js` helpers for matching.
 - AP-127 nick/fi/se arrays are **index-aligned** to `ap127[]` order — keep order stable when refreshing snapshot.
 - Curriculum master plan (`cur127`) is an aggressive idealized schedule (expects ~26 lessons by 2026-05-31; best student ~15) → the whole cohort reads "behind plan". Use relative metrics (pace spread, day/hrs delta) for meaningful signals, not raw behind-plan counts.
+
+### Ops Analytics tab — full revamp (2026-07-28, p117)
+
+`js/view-summary.js` (full rewrite, ~955 lines, IIFE-wrapped — replaces the old donut-chart + 3-table
+"AP BATCH COMPARISON" layout entirely).
+
+The old Analytics tab (donut chart of flights-per-batch + separate AP-127 students / batch breakdown /
+instructor tables, no date-range or dimension filtering beyond the header's AP-127 focus toggle) is
+gone. The new tab is period- and multi-dimension-filterable, batch-centric analytics:
+
+- **Header:** period presets (14D / 30D / 90D / CUSTOM with explicit from/to date pickers), a
+  Block/Effective metric toggle (Effective substitutes curriculum `planned_mins` per lesson), the
+  existing AP-127 focus + ONLY controls, and SYNC.
+- **Filter panel** (collapsible): 6 independent dimensions — status (pending/completed/canceled/standby),
+  batch (AP only / all / custom multi-select), instructor (searchable multi-select), student
+  (searchable multi-select), aircraft type, and simulator — all composing into one `filteredFlights`.
+- **13-tile KPI strip:** total/pending/completed/canceled/standby/sim counts, hours, completion rate,
+  cancellation rate, avg hours/flight, batch count, student count, and AP-127 share of hours.
+- **Batch composition strip:** a single segmented bar + legend showing each batch's share of hours
+  (or flights) in the selected period.
+- **4 stacked bar charts** (`StackedBatchChart`, Chart.js): daily flight count, daily hours, weekly
+  hours, and monthly hours — each stacked per batch, with per-segment data labels and a per-chart
+  legend that toggles individual batch series on/off.
+- **Batch breakdown table:** per-batch pending/completed/canceled/standby counts and hours for the
+  selected period.
+- **Student and instructor rosters,** each a day-by-day heatmap (`RosterHeatmap`, click a cell to open
+  the flight drawer) governed by the active filters/period, plus an **all-time cumulative summary**
+  table (`CumulativeTable`, click a row to open the drawer) that is deliberately period-invariant —
+  it always reflects the student/instructor's full history regardless of the header's date range,
+  grouped by batch for students, flat (ungrouped) for instructors.
+
+Built across Tasks 1-11 of `docs/superpowers/plans/2026-07-28-ops-analytics-revamp.md`; full design in
+`docs/superpowers/specs/2026-07-28-ops-analytics-revamp-design.md`. Mobile-verified: KPI strip wraps to
+3 columns, the chart grid collapses to one column, the filter panel's dimension grid stacks to 2
+columns without overlapping text, and both roster heatmaps scroll horizontally inside their own
+container — zero page-level horizontal overflow at 390px width.
