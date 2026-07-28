@@ -356,8 +356,8 @@ In `js/view-summary.js`, add this function **above** `function SummaryBoard()`:
     const isAll = !selected || selected.length === 0;
     const isSel = v => isAll || selected.includes(v);
     const toggle = v => {
-      const base = isAll ? options.slice() : selected.slice();
-      const next = base.includes(v) ? base.filter(x => x !== v) : [...base, v];
+      if (isAll) { onChange([v]); return; } // first click from "all" isolates just this item
+      const next = selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v];
       onChange(next.length === options.length || next.length === 0 ? null : next);
     };
     const shown = searchable && q ? options.filter(o => o.toLowerCase().includes(q.toLowerCase())) : options;
