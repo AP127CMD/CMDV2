@@ -234,7 +234,7 @@
                 )}
                 {s.simHours > 0 && (
                   <div title={`${s.batch} sim: ${s.simPct.toFixed(1)}% · ${s.simHours.toFixed(1)}h`}
-                    style={{ flex: s.simHours, background: sLightenOklch(sResolveColor(s.color)), opacity: 0.9 }}/>
+                    style={{ flex: s.simHours, background: `color-mix(in oklch, ${s.color} 55%, var(--surface))`, opacity: 0.9 }}/>
                 )}
               </div>
             ))}
@@ -1007,7 +1007,7 @@
         }
         let lessonsDone = 0, lessonsTotal = 0, hoursDone = 0, hoursTotal = 0;
         roster.forEach(s => {
-          lessonsDone += s.done || 0;
+          lessonsDone += (s.flown || []).length;
           lessonsTotal += s.total || 0;
           const doneMin = (s.flown || []).reduce((a, f) => a + (f.actual_mins || 0), 0);
           const remMin = (s.planned || []).reduce((a, p) => a + (p.mins || 0), 0);
