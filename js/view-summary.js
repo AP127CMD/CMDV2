@@ -58,6 +58,31 @@
     return f.durMin || 0;
   }
 
+  // ── Batch Summary: progress-vs-plan lookups (window.NGT_CACHE, a separate data
+  // feed from FLIGHTS — the same one js/view-cohort.js's Progress tab already uses) ──
+  // AP-128 intentionally has no entry: it has zero data in the current feed.
+  const BATCH_ROSTER_KEY = { 'AP-124': 'ap124', 'AP-126': 'ap126', 'AP-127': 'ap127', 'AP-129': 'ap129' };
+  const BATCH_CUR_KEY = { 'AP-124': 'cur124', 'AP-126': 'cur126', 'AP-127': 'cur127' };
+
+  function sBatchRoster(batch) {
+    const key = BATCH_ROSTER_KEY[batch];
+    return (key && window.NGT_CACHE && window.NGT_CACHE[key]) || [];
+  }
+  function sBatchCurriculum(batch) {
+    const key = BATCH_CUR_KEY[batch];
+    return (key && window.NGT_CACHE && window.NGT_CACHE[key]) || null;
+  }
+  // Target completion date: the shared curriculum's own official last planned_date where one
+  // exists (AP-124/126/127); otherwise the latest of the batch's students' own individually
+  // computed `finish` dates (AP-129, which has no shared curriculum array).
+  function sBatchTargetDate(batch, roster) {
+    const cur = sBatchCurriculum(batch);
+    if (cur && cur.length) return cur[cur.length - 1].planned_date;
+    let latest = null;
+    roster.forEach(s => { if (s.finish && (!latest || s.finish > latest)) latest = s.finish; });
+    return latest;
+  }
+
   // ── Batch color system ───────────────────────────────────────────────────
   const AP_BATCH_ORDER = ['AP-124', 'AP-126', 'AP-127', 'AP-128', 'AP-129'];
   const NON_AP_PALETTE = ['oklch(0.65 0.03 250)', 'oklch(0.62 0.03 90)', 'oklch(0.60 0.03 20)', 'oklch(0.66 0.03 160)'];
@@ -904,6 +929,41 @@
         };
       });
     }, [batchAllowed, hoursOf]);
+
+    const batchSummaryRows = useMemo(() => {
+      return AP_BATCH_ORDER.filter(b => batchAllowed(b)).map(batch => {
+        const roster = sBatchRoster(batch);
+        if (roster.length === 0) {
+          return { batch, hasPlanData: false };
+        }
+        let lessonsDone = 0, lessonsTotal = 0, hoursDone = 0, hoursTotal = 0;
+        roster.forEach(s => {
+          lessonsDone += s.done || 0;
+          lessonsTotal += s.total || 0;
+          const doneMin = (s.flown || []).reduce((a, f) => a + (f.actual_mins || 0), 0);
+          const remMin = (s.planned || []).reduce((a, p) => a + (p.mins || 0), 0);
+          hoursDone += doneMin / 60;
+          hoursTotal += (doneMin + remMin) / 60;
+        });
+        const targetDate = sBatchTargetDate(batch, roster);
+        const daysRemaining = targetDate
+          ? Math.round((new Date(targetDate + 'T00:00:00Z') - new Date(today + 'T00:00:00Z')) / 86400000)
+          : null;
+        const lessonsRemaining = lessonsTotal - lessonsDone;
+        const hoursRemaining = hoursTotal - hoursDone;
+        const complete = lessonsRemaining <= 0;
+        const overdue = !complete && daysRemaining != null && daysRemaining <= 0;
+        const canPace = !complete && !overdue && daysRemaining != null && daysRemaining > 0;
+        return {
+          batch, hasPlanData: true, students: roster.length,
+          lessonsDone, lessonsTotal, lessonsRemaining,
+          hoursDone, hoursTotal, hoursRemaining,
+          targetDate, daysRemaining, complete, overdue,
+          hoursPerDay: canPace ? hoursRemaining / daysRemaining : null,
+          lessonsPerDay: canPace ? lessonsRemaining / daysRemaining : null,
+        };
+      });
+    }, [batchAllowed, today]);
 
     const handleCumulRowClick = useCallback(r => { if (r.latestId) app.setDrawer(r.latestId); }, [app]);
 
