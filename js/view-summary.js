@@ -234,7 +234,7 @@
                 )}
                 {s.simHours > 0 && (
                   <div title={`${s.batch} sim: ${s.simPct.toFixed(1)}% · ${s.simHours.toFixed(1)}h`}
-                    style={{ flex: s.simHours, background: `color-mix(in oklch, ${s.color} 55%, var(--surface))`, opacity: 0.9 }}/>
+                    style={{ flex: s.simHours, background: `color-mix(in oklab, ${s.color} 55%, var(--surface))`, opacity: 0.9 }}/>
                 )}
               </div>
             ))}
