@@ -75,6 +75,16 @@
     const varName = cssColor.slice(4, -1).split(',')[0].trim();
     return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#888';
   }
+  // Lightens an already-resolved oklch(...) color for the Sim-flight visual split.
+  // Takes a literal color (from sResolveColor), NOT a var(--x) reference.
+  function sLightenOklch(cssColor, amount) {
+    const m = /oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)/.exec(cssColor);
+    if (!m) return cssColor;
+    const L = Math.min(0.97, parseFloat(m[1]) + (amount != null ? amount : 0.16));
+    const C = parseFloat(m[2]) * 0.7;
+    const H = m[3];
+    return `oklch(${L.toFixed(3)} ${C.toFixed(3)} ${H})`;
+  }
 
   // Aircraft type order/labels — duplicated from view-aircraft.js's U_TYPE_ORDER (IIFE-scoped there, not exported).
   const S_TYPE_ORDER = ['DA40TDI', 'DA40CS', 'C172', 'DA42TDI', 'DA42NG', 'R44', 'DA40_SIM', 'DA42_SIM', 'R44_SIM'];
@@ -257,6 +267,9 @@
   }
 
   // ── StackedBatchChart — reusable Chart.js stacked bar, shared by all 4 chart panels ──
+  // series[batch] = { real: number[], sim: number[] } — real renders solid batch color,
+  // sim renders a lighter tint of the same color, both stacked into one bar per batch.
+  // A zero-height "TOTAL" dataset anchors a grand-total label above each full stack.
   function StackedBatchChart({ title, subtitle, labels, batches, series, unit }) {
     const canvasRef = useRef(null);
     const chartRef = useRef(null);
@@ -271,28 +284,53 @@
       const lineC = cs.getPropertyValue('--line').trim() || '#333';
       const labelColor = cs.getPropertyValue('--bg').trim() || '#0b0e14';
 
-      const datasets = batches.map(b => {
-        const col = sResolveColor(sBatchColor(b));
-        return {
+      const totals = labels.map((_, i) => batches.reduce((sum, b) => {
+        const bs = series[b] || { real: [], sim: [] };
+        return sum + (bs.real[i] || 0) + (bs.sim[i] || 0);
+      }, 0));
+
+      const fmtVal = v => (unit === 'hours' ? v.toFixed(1) : String(v));
+      const datalabelsFor = () => ({
+        color: labelColor,
+        font: { family: 'monospace', size: 8, weight: '600' },
+        display: ctx => {
+          const v = ctx.dataset.data[ctx.dataIndex];
+          const meta = ctx.chart.getDatasetMeta(ctx.datasetIndex);
+          const bar = meta.data[ctx.dataIndex];
+          return v > 0 && bar && bar.height > 11;
+        },
+        formatter: v => (v > 0 ? fmtVal(v) : null),
+        anchor: 'center', align: 'center',
+      });
+
+      const datasets = [];
+      batches.forEach(b => {
+        const bs = series[b] || { real: [], sim: [] };
+        const realCol = sResolveColor(sBatchColor(b));
+        const simCol = sLightenOklch(realCol);
+        datasets.push({
           label: b,
-          data: (series[b] || labels.map(() => 0)).map(v => +v.toFixed(unit === 'hours' ? 2 : 0)),
-          backgroundColor: col,
-          borderColor: col,
-          borderWidth: 0.5,
-          stack: 'batches',
-          datalabels: {
-            color: labelColor,
-            font: { family: 'monospace', size: 8, weight: '600' },
-            display: ctx => {
-              const v = ctx.dataset.data[ctx.dataIndex];
-              const meta = ctx.chart.getDatasetMeta(ctx.datasetIndex);
-              const bar = meta.data[ctx.dataIndex];
-              return v > 0 && bar && bar.height > 11;
-            },
-            formatter: v => (v > 0 ? (unit === 'hours' ? v.toFixed(1) : String(v)) : null),
-            anchor: 'center', align: 'center',
-          },
-        };
+          data: bs.real.map(v => +v.toFixed(unit === 'hours' ? 2 : 0)),
+          backgroundColor: realCol, borderColor: realCol, borderWidth: 0.5,
+          stack: 'batches', datalabels: datalabelsFor(),
+        });
+        datasets.push({
+          label: b + ' (SIM)',
+          data: bs.sim.map(v => +v.toFixed(unit === 'hours' ? 2 : 0)),
+          backgroundColor: simCol, borderColor: simCol, borderWidth: 0.5,
+          stack: 'batches', datalabels: datalabelsFor(),
+        });
+      });
+      datasets.push({
+        label: 'TOTAL',
+        data: labels.map(() => 0),
+        backgroundColor: 'transparent', borderWidth: 0, stack: 'batches',
+        datalabels: {
+          color: ink3, font: { family: 'monospace', size: 9, weight: '700' },
+          display: ctx => totals[ctx.dataIndex] > 0,
+          formatter: (v, ctx) => fmtVal(totals[ctx.dataIndex]),
+          anchor: 'end', align: 'end', offset: 4,
+        },
       });
 
       const ctx = canvasRef.current.getContext('2d');
@@ -300,10 +338,16 @@
         type: 'bar',
         data: { labels, datasets },
         options: {
-          responsive: true, maintainAspectRatio: false,
+          responsive: true, maintainAspectRatio: false, animation: false,
           plugins: {
-            legend: { display: true, position: 'top', labels: { color: ink3, font: { family: 'monospace', size: 9 }, boxWidth: 10, padding: 8 } },
-            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.raw).toFixed(unit === 'hours' ? 1 : 0)}${unit === 'hours' ? 'h' : ''}` } },
+            legend: {
+              display: true, position: 'top',
+              labels: { color: ink3, font: { family: 'monospace', size: 9 }, boxWidth: 10, padding: 8, filter: item => item.text !== 'TOTAL' },
+            },
+            tooltip: {
+              filter: item => item.dataset.label !== 'TOTAL',
+              callbacks: { label: c => `${c.dataset.label}: ${Number(c.raw).toFixed(unit === 'hours' ? 1 : 0)}${unit === 'hours' ? 'h' : ''}` },
+            },
           },
           scales: {
             x: { stacked: true, ticks: { color: ink3, font: { family: 'monospace', size: 8 }, maxRotation: 45, maxTicksLimit: 24 }, grid: { color: lineC } },
@@ -642,26 +686,37 @@
     const days = useMemo(() => sDayRange(from, to), [from, to]);
 
     const dailyBuckets = useMemo(() => {
-      const countMap = {}; // batch -> date -> count
-      const hourMap = {};  // batch -> date -> hours
+      const countReal = {}, countSim = {}, hourReal = {}, hourSim = {};
       filteredFlights.forEach(f => {
         const b = f.batch || 'Unknown';
-        if (!countMap[b]) { countMap[b] = {}; hourMap[b] = {}; }
-        countMap[b][f.date] = (countMap[b][f.date] || 0) + 1;
-        hourMap[b][f.date] = (hourMap[b][f.date] || 0) + hoursOf(f);
+        const target = f.isSim ? { c: countSim, h: hourSim } : { c: countReal, h: hourReal };
+        if (!target.c[b]) target.c[b] = {};
+        if (!target.h[b]) target.h[b] = {};
+        target.c[b][f.date] = (target.c[b][f.date] || 0) + 1;
+        target.h[b][f.date] = (target.h[b][f.date] || 0) + hoursOf(f);
       });
-      return { countMap, hourMap };
+      return { countReal, countSim, hourReal, hourSim };
     }, [filteredFlights, hoursOf]);
 
     const dayLabels = useMemo(() => days.map(sFmtShort), [days]);
     const dailyCountSeries = useMemo(() => {
       const s = {};
-      batchesPresent.forEach(b => { s[b] = days.map(d => (dailyBuckets.countMap[b] || {})[d] || 0); });
+      batchesPresent.forEach(b => {
+        s[b] = {
+          real: days.map(d => (dailyBuckets.countReal[b] || {})[d] || 0),
+          sim: days.map(d => (dailyBuckets.countSim[b] || {})[d] || 0),
+        };
+      });
       return s;
     }, [batchesPresent, days, dailyBuckets]);
     const dailyHoursSeries = useMemo(() => {
       const s = {};
-      batchesPresent.forEach(b => { s[b] = days.map(d => (dailyBuckets.hourMap[b] || {})[d] || 0); });
+      batchesPresent.forEach(b => {
+        s[b] = {
+          real: days.map(d => (dailyBuckets.hourReal[b] || {})[d] || 0),
+          sim: days.map(d => (dailyBuckets.hourSim[b] || {})[d] || 0),
+        };
+      });
       return s;
     }, [batchesPresent, days, dailyBuckets]);
 
@@ -669,36 +724,48 @@
     const monthLabelKeys = useMemo(() => { const set = new Set(); days.forEach(d => set.add(sMonthKey(d))); return [...set].sort(); }, [days]);
 
     const weeklyBuckets = useMemo(() => {
-      const m = {}; // batch -> weekKey -> hours
+      const real = {}, sim = {};
       filteredFlights.forEach(f => {
         const b = f.batch || 'Unknown';
         const wk = sWeekKey(f.date);
-        if (!m[b]) m[b] = {};
-        m[b][wk] = (m[b][wk] || 0) + hoursOf(f);
+        const target = f.isSim ? sim : real;
+        if (!target[b]) target[b] = {};
+        target[b][wk] = (target[b][wk] || 0) + hoursOf(f);
       });
-      return m;
+      return { real, sim };
     }, [filteredFlights, hoursOf]);
     const monthlyBuckets = useMemo(() => {
-      const m = {}; // batch -> monthKey -> hours
+      const real = {}, sim = {};
       filteredFlights.forEach(f => {
         const b = f.batch || 'Unknown';
         const mk = sMonthKey(f.date);
-        if (!m[b]) m[b] = {};
-        m[b][mk] = (m[b][mk] || 0) + hoursOf(f);
+        const target = f.isSim ? sim : real;
+        if (!target[b]) target[b] = {};
+        target[b][mk] = (target[b][mk] || 0) + hoursOf(f);
       });
-      return m;
+      return { real, sim };
     }, [filteredFlights, hoursOf]);
 
     const weekLabels = useMemo(() => weekLabelKeys.map(sFmtWeek), [weekLabelKeys]);
     const monthLabels = useMemo(() => monthLabelKeys.map(sFmtMonth), [monthLabelKeys]);
     const weeklySeries = useMemo(() => {
       const s = {};
-      batchesPresent.forEach(b => { s[b] = weekLabelKeys.map(wk => (weeklyBuckets[b] || {})[wk] || 0); });
+      batchesPresent.forEach(b => {
+        s[b] = {
+          real: weekLabelKeys.map(wk => (weeklyBuckets.real[b] || {})[wk] || 0),
+          sim: weekLabelKeys.map(wk => (weeklyBuckets.sim[b] || {})[wk] || 0),
+        };
+      });
       return s;
     }, [batchesPresent, weekLabelKeys, weeklyBuckets]);
     const monthlySeries = useMemo(() => {
       const s = {};
-      batchesPresent.forEach(b => { s[b] = monthLabelKeys.map(mk => (monthlyBuckets[b] || {})[mk] || 0); });
+      batchesPresent.forEach(b => {
+        s[b] = {
+          real: monthLabelKeys.map(mk => (monthlyBuckets.real[b] || {})[mk] || 0),
+          sim: monthLabelKeys.map(mk => (monthlyBuckets.sim[b] || {})[mk] || 0),
+        };
+      });
       return s;
     }, [batchesPresent, monthLabelKeys, monthlyBuckets]);
 
