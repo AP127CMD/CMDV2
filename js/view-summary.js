@@ -174,7 +174,7 @@
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // CompositionStrip — batch composition stacked bar + legend
+  // CompositionStrip — batch composition stacked bar + legend, split real/sim
   // ──────────────────────────────────────────────────────────────────────
   function CompositionStrip({ slices, metricLabel }) {
     if (slices.length === 0) {
@@ -196,13 +196,21 @@
       <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
         <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
           <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink)', fontWeight: 600 }}>BATCH COMPOSITION</div>
-          <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>SHARE OF {metricLabel.toUpperCase()} HOURS IN PERIOD</div>
+          <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>SHARE OF {metricLabel.toUpperCase()} HOURS IN PERIOD · SOLID = REAL · LIGHT = SIM</div>
         </div>
         <div style={{ padding: '14px 16px' }}>
           <div style={{ display: 'flex', height: 22, borderRadius: 4, overflow: 'hidden', border: '1px solid var(--line)' }}>
             {slices.map(s => (
-              <div key={s.batch} title={`${s.batch}: ${s.pct.toFixed(1)}% · ${s.hours.toFixed(1)}h`}
-                style={{ width: `${Math.max(s.pct, 0.5)}%`, background: s.color, opacity: 0.88 }}/>
+              <div key={s.batch} style={{ width: `${Math.max(s.pct, 0.5)}%`, display: 'flex' }}>
+                {s.realHours > 0 && (
+                  <div title={`${s.batch} real: ${s.realPct.toFixed(1)}% · ${s.realHours.toFixed(1)}h`}
+                    style={{ flex: s.realHours, background: s.color, opacity: 0.9 }}/>
+                )}
+                {s.simHours > 0 && (
+                  <div title={`${s.batch} sim: ${s.simPct.toFixed(1)}% · ${s.simHours.toFixed(1)}h`}
+                    style={{ flex: s.simHours, background: sLightenOklch(sResolveColor(s.color)), opacity: 0.9 }}/>
+                )}
+              </div>
             ))}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
@@ -210,7 +218,7 @@
               <div key={s.batch} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 9, height: 9, borderRadius: 2, background: s.color, flexShrink: 0 }}/>
                 <span className="mono uc" style={{ fontSize: 10, color: s.batch === HIGHLIGHT_BATCH ? 'var(--highlight)' : 'var(--ink-2)', fontWeight: s.batch === HIGHLIGHT_BATCH ? 700 : 400 }}>{s.batch}</span>
-                <span className="mono num" style={{ fontSize: 9, color: 'var(--ink-3)' }}>{s.flights} flt · {s.hours.toFixed(1)}h · {s.pct.toFixed(1)}%</span>
+                <span className="mono num" style={{ fontSize: 9, color: 'var(--ink-3)' }}>{s.flights} flt · {s.hours.toFixed(1)}h · {s.pct.toFixed(1)}%{s.simHours > 0 ? ` (${s.simHours.toFixed(1)}h sim)` : ''}</span>
               </div>
             ))}
           </div>
@@ -650,10 +658,12 @@
       const m = {};
       filteredFlights.forEach(f => {
         const b = f.batch || 'Unknown';
-        if (!m[b]) m[b] = { batch: b, total: 0, pending: 0, completed: 0, canceled: 0, standby: 0, bookedHours: 0, completedHours: 0 };
+        if (!m[b]) m[b] = { batch: b, total: 0, pending: 0, completed: 0, canceled: 0, standby: 0, bookedHours: 0, completedHours: 0, realHours: 0, simHours: 0 };
         m[b].total++;
         m[b].bookedHours += (f.durMin || 0) / 60;
-        m[b].completedHours += hoursOf(f);
+        const h = hoursOf(f);
+        m[b].completedHours += h;
+        if (f.isSim) m[b].simHours += h; else m[b].realHours += h;
         if (f.status === 'Pending') m[b].pending++;
         if (f.status === 'Completed') m[b].completed++;
         if (f.status === 'Canceled') m[b].canceled++;
@@ -679,7 +689,11 @@
           color: sBatchColor(b.batch),
           flights: b.total,
           hours: b.completedHours,
+          realHours: b.realHours,
+          simHours: b.simHours,
           pct: total > 0 ? (b.completedHours / total) * 100 : 0,
+          realPct: total > 0 ? (b.realHours / total) * 100 : 0,
+          simPct: total > 0 ? (b.simHours / total) * 100 : 0,
         }));
     }, [batchStats]);
 
