@@ -588,6 +588,75 @@
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // BatchSummary — all-time progress vs. curriculum plan, per batch
+  // ──────────────────────────────────────────────────────────────────────
+  function BatchSummary({ rows }) {
+    if (rows.length === 0) {
+      return (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: '14px 16px', textAlign: 'center' }}>
+          <span className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>NO BATCHES IN FILTERED SET</span>
+        </div>
+      );
+    }
+    const fmtH = v => (v == null ? '—' : v.toFixed(1) + 'h');
+    return (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+          <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink)', fontWeight: 600 }}>BATCH SUMMARY</div>
+          <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>ALL-TIME PROGRESS VS CURRICULUM PLAN</div>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                {['BATCH', 'STUDENTS', 'LESSONS', 'HOURS', 'TIME REMAINING', 'LESSONS REM.', 'HOURS REM.', 'REQUIRED PACE'].map(h => (
+                  <th key={h} style={{ padding: '6px 10px', textAlign: h === 'BATCH' ? 'left' : 'right', whiteSpace: 'nowrap' }}>
+                    <span className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)' }}>{h}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => {
+                const isHL = r.batch === HIGHLIGHT_BATCH;
+                const col = sBatchColor(r.batch);
+                if (!r.hasPlanData) {
+                  return (
+                    <tr key={r.batch} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                      <td style={{ padding: '6px 10px' }}>
+                        <span className="mono uc" style={{ fontSize: 10, color: isHL ? 'var(--highlight)' : 'var(--ink-2)', fontWeight: isHL ? 700 : 400 }}>{r.batch}</span>
+                      </td>
+                      <td colSpan={7} style={{ padding: '6px 10px', textAlign: 'center' }}>
+                        <span className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)' }}>NO PLAN DATA</span>
+                      </td>
+                    </tr>
+                  );
+                }
+                const paceLabel = r.complete ? 'DONE' : r.overdue ? 'OVERDUE' : `${(r.hoursPerDay || 0).toFixed(2)}h/d · ${(r.lessonsPerDay || 0).toFixed(2)}L/d`;
+                const paceColor = r.complete ? 'var(--col-done)' : r.overdue ? 'var(--col-cancel)' : 'var(--ink-2)';
+                return (
+                  <tr key={r.batch} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                    <td style={{ padding: '6px 10px' }}>
+                      <span className="mono uc" style={{ fontSize: 10, color: isHL ? 'var(--highlight)' : 'var(--ink-2)', fontWeight: isHL ? 700 : 400 }}>{r.batch}</span>
+                    </td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right' }}><span className="mono num" style={{ fontSize: 10, color: 'var(--ink-2)' }}>{r.students}</span></td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right' }}><span className="mono num" style={{ fontSize: 10, color: 'var(--ink-2)' }}>{r.lessonsDone} / {r.lessonsTotal}</span></td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right' }}><span className="mono num" style={{ fontSize: 10, color: 'var(--ink-2)' }}>{fmtH(r.hoursDone)} / {fmtH(r.hoursTotal)}</span></td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right' }}><span className="mono num" style={{ fontSize: 10, color: 'var(--ink-2)' }}>{r.daysRemaining != null ? `${r.daysRemaining}d` : '—'}</span></td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right' }}><span className="mono num" style={{ fontSize: 10, color: 'var(--ink-2)' }}>{r.lessonsRemaining}</span></td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right' }}><span className="mono num" style={{ fontSize: 10, color: 'var(--ink-2)' }}>{fmtH(r.hoursRemaining)}</span></td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right' }}><span className="mono num" style={{ fontSize: 10, color: paceColor, fontWeight: 600 }}>{paceLabel}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // SummaryBoard — top-level Ops Analytics tab: period/metric header, filter
   // panel, KPI strip, batch composition, charts, breakdown table, rosters.
@@ -1143,6 +1212,7 @@
           <div style={{ padding: '10px 10px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <KpiStrip kpi={kpi} isMobile={isMobile}/>
             <CompositionStrip slices={compositionSlices} metricLabel={metric}/>
+            <BatchSummary rows={batchSummaryRows}/>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <StackedBatchChart title="DAILY FLIGHT COUNT BY BATCH" subtitle="STACKED · ONE BAR PER DAY" labels={dayLabels} batches={batchesPresent} series={dailyCountSeries} unit="flights"/>
               <StackedBatchChart title="DAILY FLIGHT HOURS BY BATCH" subtitle={`STACKED · ${metric.toUpperCase()} HOURS`} labels={dayLabels} batches={batchesPresent} series={dailyHoursSeries} unit="hours"/>
