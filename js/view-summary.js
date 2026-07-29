@@ -382,7 +382,7 @@
   }
 
   // ── RosterHeatmap — generic sticky-header day-by-person intensity table, reused by the instructor roster ──
-  function RosterHeatmap({ title, rows, days, today, valueOf, colorOf, onCellClick }) {
+  function RosterHeatmap({ title, rows, days, today, valueOf, colorOf, onCellClick, groupOf }) {
     const CELL_W = Math.max(10, Math.min(26, Math.floor(700 / Math.max(days.length, 1))));
     const CELL_H = 20;
     const maxCell = useMemo(() => {
@@ -390,6 +390,23 @@
       rows.forEach(r => days.forEach(d => { const v = valueOf(r, d); if (v > mx) mx = v; }));
       return mx;
     }, [rows, days, valueOf]);
+
+    const renderItems = useMemo(() => {
+      if (!groupOf) return rows.map(r => ({ type: 'row', name: r }));
+      const byKey = {};
+      const order = [];
+      rows.forEach(r => {
+        const g = groupOf(r) || { key: 'Unknown', color: 'var(--ink-3)' };
+        if (!byKey[g.key]) { byKey[g.key] = { color: g.color, rows: [] }; order.push(g.key); }
+        byKey[g.key].rows.push(r);
+      });
+      const items = [];
+      order.forEach(key => {
+        items.push({ type: 'header', key, color: byKey[key].color, count: byKey[key].rows.length });
+        byKey[key].rows.forEach(r => items.push({ type: 'row', name: r }));
+      });
+      return items;
+    }, [rows, groupOf]);
 
     if (rows.length === 0) {
       return (
@@ -432,7 +449,18 @@
               </tr>
             </thead>
             <tbody>
-              {rows.map(row => {
+              {renderItems.map(item => {
+                if (item.type === 'header') {
+                  return (
+                    <tr key={'hdr-' + item.key}>
+                      <td colSpan={2 + days.length} style={{ padding: '4px 10px', background: `color-mix(in oklch, ${item.color} 10%, var(--surface))`, position: 'sticky', left: 0 }}>
+                        <span className="mono uc" style={{ fontSize: 9, fontWeight: 700, color: item.color }}>{item.key}</span>
+                        <span className="mono" style={{ fontSize: 8, color: 'var(--ink-3)', marginLeft: 6 }}>{item.count}</span>
+                      </td>
+                    </tr>
+                  );
+                }
+                const row = item.name;
                 const total = days.reduce((s, d) => s + valueOf(row, d), 0);
                 return (
                   <tr key={row}>
@@ -791,12 +819,6 @@
       return s;
     }, [batchesPresent, monthLabelKeys, monthlyBuckets]);
 
-    const rosterStudents = useMemo(() => {
-      const set = new Set();
-      filteredFlights.forEach(f => { if (f.student) set.add(f.student); });
-      return [...set].sort();
-    }, [filteredFlights]);
-
     const studentDayMap = useMemo(() => {
       const m = {};
       filteredFlights.forEach(f => {
@@ -823,8 +845,26 @@
       return m;
     }, [filteredFlights]);
 
+    const rosterStudents = useMemo(() => {
+      const set = new Set();
+      filteredFlights.forEach(f => { if (f.student) set.add(f.student); });
+      const names = [...set];
+      names.sort((a, b) => {
+        const ia = AP_BATCH_ORDER.indexOf(studentBatchMap[a]);
+        const ib = AP_BATCH_ORDER.indexOf(studentBatchMap[b]);
+        const oa = ia === -1 ? 999 : ia, ob = ib === -1 ? 999 : ib;
+        if (oa !== ob) return oa - ob;
+        return a.localeCompare(b);
+      });
+      return names;
+    }, [filteredFlights, studentBatchMap]);
+
     const studentValueOf = useCallback((row, d) => (studentDayMap[row] || {})[d] || 0, [studentDayMap]);
     const studentColorOf = useCallback(row => sResolveColor(sBatchColor(studentBatchMap[row])), [studentBatchMap]);
+    const studentGroupOf = useCallback(row => {
+      const b = studentBatchMap[row];
+      return { key: b || 'Unknown', color: sBatchColor(b) };
+    }, [studentBatchMap]);
     const handleStudentCellClick = useCallback((row, d) => {
       const dayFlights = filteredFlights.filter(f => f.student === row && f.date === d);
       if (dayFlights.length > 0) app.setDrawer(dayFlights[dayFlights.length - 1].id);
@@ -1050,7 +1090,7 @@
               <StackedBatchChart title="MONTHLY HOURS BY BATCH" subtitle="CALENDAR MONTH" labels={monthLabels} batches={batchesPresent} series={monthlySeries} unit="hours"/>
             </div>
             <BreakdownTable title="BATCH BREAKDOWN" subtitle="PENDING · COMPLETED · CANCELED · STANDBY" rows={batchStats}/>
-            <RosterHeatmap title="▦ STUDENT ACTIVITY — click cell for detail" rows={rosterStudents} days={days} today={today} valueOf={studentValueOf} colorOf={studentColorOf} onCellClick={handleStudentCellClick}/>
+            <RosterHeatmap title="▦ STUDENT ACTIVITY — click cell for detail" rows={rosterStudents} days={days} today={today} valueOf={studentValueOf} colorOf={studentColorOf} onCellClick={handleStudentCellClick} groupOf={studentGroupOf}/>
             <CumulativeTable title="STUDENT ALL-TIME SUMMARY" groups={cumulStudentGroups} showBatchGroups onRowClick={handleCumulRowClick}/>
             <RosterHeatmap title="▦ INSTRUCTOR ACTIVITY — click cell for detail" rows={rosterInstructors} days={days} today={today} valueOf={instructorValueOf} colorOf={instructorColorOf} onCellClick={handleInstructorCellClick}/>
             <CumulativeTable title="INSTRUCTOR ALL-TIME SUMMARY" groups={cumulInstructorGroups} showBatchGroups={false} onRowClick={handleCumulRowClick}/>
