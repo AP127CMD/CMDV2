@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p120` (all currently at p119)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p121` (all currently at p120)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,27 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p119` (2026-07-29 — **Ops Analytics follow-up — chart fixes, Sim
+**Last known:** all files `p120` (2026-07-29 — **Ops Analytics follow-up whole-branch review fixes.**
+A final review of the p119 follow-up round (see the p119 entry below for what that round built) found
+2 Important, emergent-only issues: (1) Batch Summary's lesson-done counts drifted after visiting other
+tabs — `js/view-program.js`'s `normalizeStudentDone()` mutates the same `window.NGT_CACHE` student
+objects `batchSummaryRows` reads (`s.done`), verified live (AP-127: 907→949 after a Program-tab visit,
+desyncing LESSONS REM. from HOURS REM.); fixed by reading `(s.flown||[]).length` instead — same array
+`hoursDone` already sums, immune to the mutation, re-verified held at 907 across the round-trip. (2)
+Composition strip's Sim tint broke outside the default theme — resolved via the same pre-existing
+`getComputedStyle(document.documentElement)` theme-invariance limitation as the canvas charts, but this
+was the FIRST theme-invariant color in this component's DOM output (previously pure CSS-var/theme-
+correct). First fix attempt (`color-mix(in oklch,...)`) removed the theme-invariance but rotated hue by
+up to 74° in the DEFAULT theme (AP-128 sim segment rendered magenta); switched to `color-mix(in
+oklab,...)` (rectangular space, holds hue within ~2-5°), re-verified via computed-style extraction for
+all 5 batches. Both fixes re-reviewed clean. Known non-blocking follow-ups (documented in `REVAMP.md`'s
+p120 entry, not fixed this round): non-AP roster group ordering not alphabetical, stack-total labels
+can drift ~0.1h from segment-label sum in an edge case, per-chart legend now 2× entries with only-half
+toggling, growing sim/real bucket-builder duplication (candidate for a shared helper next round),
+`sBatchRoster` doesn't guard a malformed (non-array) `NGT_CACHE` entry, `BATCH_ROSTER_KEY`/
+`BATCH_CUR_KEY` are a second batch-identity registry that could drift from `AP_BATCH_ORDER`, and the
+strip's sim tint darkens while the charts' sim tint lightens (same concept, inconsistent direction).
+Only file touched: `js/view-summary.js`.) p119 (2026-07-29 — **Ops Analytics follow-up — chart fixes, Sim
 split, batch-grouped roster, Batch Summary.** Six follow-up changes to the Ops Analytics tab
 based on user feedback after using the live `p118` rebuild, built via a 19-task subagent-driven
 plan (Tasks 13-18 code, Task 19 wrap-up: full end-to-end regression + cache-bust + docs). (1)

@@ -651,12 +651,17 @@ history: `docs/superpowers/plans/2026-07-29-ops-analytics-followup.md`.
   stays visually tied to its batch, not a separate color). KPI strip gains a new **SIM HOURS** tile;
   the existing HOURS/COMPLETION/CANCELLATION/AVG H/FLIGHT tiles now report real (non-sim) flights only
   — verified by toggling SIMULATOR off/on: SIM/SIM HOURS respond, HOURS/COMPLETION/CANCELLATION/
-  AVG H/FLIGHT/BATCHES/STUDENTS/AP-127 SHARE stay stable either way. Breakdown table and both rosters
-  stay combined (unaffected by the toggle, as before).
+  AVG H/FLIGHT/AP-127 SHARE stay stable either way. BATCHES/STUDENTS are combined counts (a batch or
+  student whose only activity in the period is simulator time still drops out when SIMULATOR is off —
+  intentional, not a bug). Breakdown table and both rosters stay combined (unaffected by the toggle,
+  as before).
 - **Student roster grouped by batch (new)** — `RosterHeatmap` gained an optional `groupOf` prop that
   renders a colored batch-header row (name + student count) above each batch's students, ordered
-  `AP_BATCH_ORDER` then alphabetical for the rest; wired for the student roster only. The instructor
-  roster call site is unchanged (no `groupOf`, flat list) — confirmed backward-compatible.
+  `AP_BATCH_ORDER` first, then non-AP batches in whichever order their first alphabetically-sorted
+  student happens to appear (a batch-name-alphabetical tiebreak for the non-AP tail is a known,
+  documented follow-up — see the 2026-07-29 whole-branch-review-fixes entry below); wired for the
+  student roster only. The instructor roster call site is unchanged (no `groupOf`, flat list) —
+  confirmed backward-compatible.
 - **Batch Summary (new)** — a new all-time section below Batch Composition: per-batch students,
   lessons done/total, hours done/total, time remaining, lessons/hours remaining, and required daily
   pace (or DONE/OVERDUE), sourced from `window.NGT_CACHE`'s separate progress-reconciliation feed (the
@@ -678,3 +683,52 @@ Batch Summary's AP-128 "NO PLAN DATA" row and its narrowing when the BATCH filte
 legend click, a roster heatmap cell click, a cumulative-table row click, and a Batch Summary
 batch-name click (confirmed inert, no handler) — zero console errors throughout, no integration
 issues found, no code fix needed. Only file touched: `js/view-summary.js`.
+
+### Ops Analytics follow-up — whole-branch review fixes (2026-07-29, p120)
+
+`js/view-summary.js`
+
+A final whole-branch review of the six changes above (opus, full diff since the `p118` state) found
+two Important, emergent-only issues — each invisible to the six individual task reviews, since both
+are cross-cutting interactions that only exist once the whole round is viewed together:
+
+- **Batch Summary's lesson-done counts drifted after visiting other tabs.** `batchSummaryRows` read
+  `s.done` off the shared `window.NGT_CACHE` student records — but `js/view-program.js`'s
+  `normalizeStudentDone()` mutates those SAME objects in place (raising `done`/`remaining`/`pct`) the
+  first time the user opens School Performance, School Analysis, or Simulation. Verified against the
+  live feed: AP-127's lesson-done count read 907 on a fresh load, 949 after a Program-tab visit — and
+  since `hoursDone`/`hoursTotal` are summed from the (unmutated) `flown`/`planned` arrays, a
+  post-mutation Batch Summary row showed `LESSONS REM.` and `HOURS REM.` describing two different sets
+  of remaining work, so the two REQUIRED PACE figures (h/d and L/d) stopped agreeing with each other.
+  Fixed: read `(s.flown || []).length` instead of `s.done` — the same array `hoursDone` already sums,
+  so lessons and hours now stay aligned by construction regardless of what any other view does to the
+  shared cache object. Re-verified: value held at 907 across a Program-tab round-trip.
+- **Composition strip's Sim tint broke in non-default themes.** The sim sub-segment resolved its color
+  via `getComputedStyle(document.documentElement)` (the same pre-existing, documented, codebase-wide
+  theme-invariance limitation noted in the `p118` entry above) — before this round `CompositionStrip`
+  was pure CSS-var and fully theme-correct; this round put the first theme-invariant color into its
+  DOM output. In the live light theme this produced a dark-violet-next-to-pale-pink mismatch for
+  AP-127 and a near-invisible sim segment for AP-129. First fix attempt (`color-mix(in oklch, ...)`)
+  removed the theme-invariance but introduced a NEW defect the review's own re-check caught: `oklch`
+  interpolates through the polar hue channel, rotating some batches' sim tint by up to 74° (AP-128's
+  sim segment rendered magenta, AP-129's rendered green) — worst in the *default* cockpit theme, where
+  the original code had been hue-correct. Final fix: `color-mix(in oklab, ...)` — a rectangular color
+  space, holds hue within ~2-5° for all five batches in every theme (verified live via computed-style
+  extraction: AP-128 cockpit 50°→48.8°, AP-127 cockpit 316°→313°). `StackedBatchChart`'s
+  `sLightenOklch()` (the canvas path, which genuinely cannot consume `color-mix()`/CSS vars) is
+  untouched.
+
+Both fixes re-reviewed clean. **Known, documented, deliberately-not-fixed-this-round follow-ups**
+(all Minor, all "safely post-deploy" per the review): the non-AP batch group order in the student
+roster follows first-appearing-student-alphabetically rather than batch-name-alphabetically (cosmetic,
+only visible under `BATCH=ALL`/`CUSTOM`); stack-total labels can drift by up to 0.1h from the sum of
+their rounded segment labels in an edge case; the per-chart legend now has up to 2× the entries (real
++ sim per batch) and a legend click only toggles one half of a batch's pair; the Sim/Real bucket
+builders in `dailyBuckets`/`weeklyBuckets`/`monthlyBuckets` have grown more duplicated (candidate for
+a `sBucketBy`/`sProject` helper pair — a "do it next round" per the review, not this one); `sBatchRoster`
+doesn't guard against `NGT_CACHE[key]` being a malformed non-array (would throw on render, low
+likelihood given the feed is a static generated snapshot); `BATCH_ROSTER_KEY`/`BATCH_CUR_KEY` are a
+second batch-identity registry alongside `AP_BATCH_ORDER` that could drift out of sync if a new batch
+is added later without updating both; and the strip's sim tint now visually darkens (mixes toward
+`--surface`) while the charts' sim tint lightens (`sLightenOklch`) — same concept, two directions,
+worth a deliberate future decision rather than an accidental inconsistency.
