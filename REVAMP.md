@@ -625,3 +625,56 @@ in `BreakdownTable` (querying `leavesOnDate()`, which is keyed by person name, w
 old pre-rewrite file guarded this and the port dropped the guard; restored), and hoisted three
 inline-per-render subcomponents (`Tile`, `PresetChip`, `MetricChip`) to top-level to stop them
 remounting on every render.
+
+### Ops Analytics follow-up — chart fixes, Sim split, batch-grouped roster, Batch Summary (2026-07-29, p119)
+
+`js/view-summary.js`
+
+Six follow-up changes based on user feedback after using the live `p118` rebuild, built via a
+19-task subagent-driven plan (Tasks 13-18 code, Task 19 wrap-up). Design:
+`docs/superpowers/specs/2026-07-29-ops-analytics-followup-design.md`; task-by-task implementation
+history: `docs/superpowers/plans/2026-07-29-ops-analytics-followup.md`.
+
+- **Chart data-labels only rendering on hover (fix)** — `StackedBatchChart`'s Chart.js `options` had
+  no `animation` override, so the default ~1000ms entrance animation raced the `datalabels` plugin's
+  per-segment `display` callback (which checks the *rendered* bar element's height, not final until
+  after layout settles); hovering forced a redraw that happened to land after layout stabilized, which
+  is why labels only ever appeared on hover. Set `animation: false` — labels are now correct from first
+  paint, no other logic changed.
+- **Per-stack total labels (new)** — all 4 `StackedBatchChart` panels (daily count, daily hours, weekly
+  hours, monthly hours) now render a grand-total figure above each full bar, via a zero-height `TOTAL`
+  dataset whose `datalabels` anchor sits just past the top of the real stack (excluded from the legend
+  and tooltip).
+- **Sim flights included by default, with a visual split (new)** — the `SIMULATOR` filter now defaults
+  to ON (was off). All 4 charts and the Batch Composition strip split each batch's segment into a solid
+  (real) + lighter-tint (sim) stacked pair (`sLightenOklch()` on the batch's own resolved color, so Sim
+  stays visually tied to its batch, not a separate color). KPI strip gains a new **SIM HOURS** tile;
+  the existing HOURS/COMPLETION/CANCELLATION/AVG H/FLIGHT tiles now report real (non-sim) flights only
+  — verified by toggling SIMULATOR off/on: SIM/SIM HOURS respond, HOURS/COMPLETION/CANCELLATION/
+  AVG H/FLIGHT/BATCHES/STUDENTS/AP-127 SHARE stay stable either way. Breakdown table and both rosters
+  stay combined (unaffected by the toggle, as before).
+- **Student roster grouped by batch (new)** — `RosterHeatmap` gained an optional `groupOf` prop that
+  renders a colored batch-header row (name + student count) above each batch's students, ordered
+  `AP_BATCH_ORDER` then alphabetical for the rest; wired for the student roster only. The instructor
+  roster call site is unchanged (no `groupOf`, flat list) — confirmed backward-compatible.
+- **Batch Summary (new)** — a new all-time section below Batch Composition: per-batch students,
+  lessons done/total, hours done/total, time remaining, lessons/hours remaining, and required daily
+  pace (or DONE/OVERDUE), sourced from `window.NGT_CACHE`'s separate progress-reconciliation feed (the
+  same one `js/view-cohort.js`'s Progress tab uses — pre-computed `flown`/`planned` minutes per
+  student, NOT derived from `FLIGHTS`/`hoursOf`, so it's unaffected by the header's Effective/Block
+  metric toggle). Governed by the header's BATCH filter, same convention as the existing cumulative
+  tables. **AP-128 shows an explicit "NO PLAN DATA" row** rather than being hidden — it has zero
+  entries anywhere in `NGT_CACHE` (confirmed against the live feed, not a display bug). Target date =
+  the shared curriculum's own official last `planned_date` for AP-124/126/127; the latest of the
+  batch's students' individual `finish` dates for AP-129 (no shared curriculum array exists for it).
+- **Confirmed correct, no change** — the daily/weekly/monthly hours charts showing 0 for the most
+  recent dates in a period is expected behavior (those flights are still `Pending`, not yet flown),
+  not a bug; left as-is per explicit user sign-off in the design spec.
+
+Full end-to-end regression pass (Task 19) exercised all six changes together on one fresh load —
+data labels visible without hovering on all 4 charts, a total above every stacked bar, SIMULATOR
+defaulting to "SHOWING SIM", the sim toggle round-tripping correctly, the roster's batch headers,
+Batch Summary's AP-128 "NO PLAN DATA" row and its narrowing when the BATCH filter changes, a chart
+legend click, a roster heatmap cell click, a cumulative-table row click, and a Batch Summary
+batch-name click (confirmed inert, no handler) — zero console errors throughout, no integration
+issues found, no code fix needed. Only file touched: `js/view-summary.js`.
