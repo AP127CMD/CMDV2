@@ -162,7 +162,8 @@
         <Tile label="CANCELED" value={kpi.canceled} color="var(--col-cancel)"/>
         <Tile label="STANDBY" value={kpi.standby} color="var(--col-stby)"/>
         <Tile label="SIM" value={kpi.sim} color="var(--col-sim)"/>
-        <Tile label="HOURS" value={kpi.completedHours.toFixed(1)} color="var(--col-done)"/>
+        <Tile label="HOURS" value={kpi.completedHours.toFixed(1)} color="var(--col-done)" sub="real only"/>
+        <Tile label="SIM HOURS" value={kpi.simHours.toFixed(1)} color="var(--col-sim)"/>
         <Tile label="COMPLETION" value={pct(kpi.completionRate)} color="var(--col-done)"/>
         <Tile label="CANCELLATION" value={pct(kpi.cancellationRate)} color="var(--col-cancel)"/>
         <Tile label="AVG H/FLIGHT" value={kpi.avgHoursPerFlight == null ? '—' : kpi.avgHoursPerFlight.toFixed(1)} color="var(--ink-2)"/>
@@ -554,7 +555,7 @@
     const [instructorSel, setInstructorSel] = useState(null);
     const [studentSel, setStudentSel]       = useState(null);
     const [typeSel, setTypeSel]             = useState(null);
-    const [simOn, setSimOn]                 = useState(false);
+    const [simOn, setSimOn]                 = useState(true);
     const [filterOpen, setFilterOpen]       = useState(false);
 
     const { from, to } = useMemo(() => {
@@ -625,7 +626,8 @@
     }, [from, to, batchAllowed, statusSel, instructorSel, studentSel, typeSel, simOn, tailToType, hideOthers, highlightAP127]);
 
     const kpi = useMemo(() => {
-      const s = { total: filteredFlights.length, pending: 0, completed: 0, canceled: 0, standby: 0, sim: 0, bookedHours: 0, completedHours: 0 };
+      const s = { total: filteredFlights.length, pending: 0, completed: 0, canceled: 0, standby: 0, sim: 0, bookedHours: 0, completedHours: 0, simHours: 0 };
+      let realCompleted = 0, realCanceled = 0;
       const batchSet = new Set();
       const studentSet = new Set();
       let ap127Hours = 0;
@@ -637,17 +639,23 @@
         if (f.isSim) s.sim++;
         s.bookedHours += (f.durMin || 0) / 60;
         const h = hoursOf(f);
-        s.completedHours += h;
-        if (f.batch === HIGHLIGHT_BATCH) ap127Hours += h;
+        if (f.isSim) {
+          s.simHours += h;
+        } else {
+          s.completedHours += h;
+          if (f.status === 'Completed') realCompleted++;
+          if (f.status === 'Canceled') realCanceled++;
+          if (f.batch === HIGHLIGHT_BATCH) ap127Hours += h;
+        }
         if (f.batch) batchSet.add(f.batch);
         if (f.student) studentSet.add(f.student);
       });
-      const settled = s.completed + s.canceled;
+      const settled = realCompleted + realCanceled;
       return {
         ...s,
-        completionRate: settled ? (s.completed / settled) * 100 : null,
-        cancellationRate: settled ? (s.canceled / settled) * 100 : null,
-        avgHoursPerFlight: s.completed ? s.completedHours / s.completed : null,
+        completionRate: settled ? (realCompleted / settled) * 100 : null,
+        cancellationRate: settled ? (realCanceled / settled) * 100 : null,
+        avgHoursPerFlight: realCompleted ? s.completedHours / realCompleted : null,
         activeBatches: batchSet.size,
         activeStudents: studentSet.size,
         ap127SharePct: s.completedHours > 0 ? (ap127Hours / s.completedHours) * 100 : null,
@@ -929,10 +937,10 @@
       setInstructorSel(null);
       setStudentSel(null);
       setTypeSel(null);
-      setSimOn(false);
+      setSimOn(true);
     };
     const filtersActive = statusSel.length !== 1 || statusSel[0] !== 'Completed'
-      || batchMode !== 'ap' || !!instructorSel || !!studentSel || !!typeSel || simOn;
+      || batchMode !== 'ap' || !!instructorSel || !!studentSel || !!typeSel || !simOn;
 
     return (
       <ArtboardShell style={{ display: 'flex', flexDirection: 'column' }}>
