@@ -732,3 +732,86 @@ second batch-identity registry alongside `AP_BATCH_ORDER` that could drift out o
 is added later without updating both; and the strip's sim tint now visually darkens (mixes toward
 `--surface`) while the charts' sim tint lightens (`sLightenOklch`) — same concept, two directions,
 worth a deliberate future decision rather than an accidental inconsistency.
+
+### AP127 Detail V4 — new redesigned duplicate tab (2026-08-02, p121)
+
+`js/view-cohort-v4.js` (new, ~1850 lines), `js/shell.js`, `index.html`, `css/progress.css`
+
+User asked for a full redesign pass on the AP127 Detail tab without touching the existing one, so it
+duplicated to a brand-new sidebar tab **"AP127 Detail V4"** (`view-id: cohort-v4`) built from a full
+copy of `js/view-cohort.js`'s logic. **`js/view-cohort.js` itself is untouched — byte-identical.**
+V4 is fully independent: every DOM id is `d127v4-`/`tt-*-v4` prefixed and every function the original
+exposes on `window` (for its inline `onclick=` markup) is re-exposed under a `...V4` key, so both
+tabs' scripts can load on the same page without clobbering each other's globals — verified by
+cross-checking every `getElementById` call against the markup and every inline handler against the
+`Object.assign(window, {...})` export list (script, not just eyeballed). Internal helper names were
+deliberately kept identical to the original (same math, easy to diff) — safe since both files are
+separately IIFE-scoped closures.
+
+- **Fixed the sticky time-slider covering the tab title.** Root cause: the original's history
+  scrubber (`position:sticky;top:48px`) sits *before* the `<h1>` title in DOM order, and its natural
+  resting position is above the sticky threshold — so it "activates" and pins over the title almost
+  as soon as any scroll happens, live-verified on the original tab (screenshot showed the title text
+  rendering cut off/behind the bar). V4 reorders the markup (title first, non-sticky) and merges the
+  scrubber + search/sort/date controls into one sticky toolbar at `top:0` (relative to the panel's own
+  scroll container, not the old copy-pasted `48px`) directly below the title — standard sticky-header
+  pattern, confirmed live: title stays fully visible, toolbar pins cleanly once scrolled past.
+- **Pace Monitor redesigned** — the dense multi-row table replaced with 4 headline cards (Plan End,
+  Cohort ETC, On Track, At Risk) + bullet-bar comparisons (actual vs. a target tick mark) for Hours/wk
+  and Lessons/wk at both the 1-SP and 28-SP-batch level, plus a highlighted "Required Action" banner.
+  Same underlying math as the original (verified against it side-by-side — both showed identical
+  102h/wk actual, 233h/wk need, etc.) — presentation only.
+- **Pace Band redesigned** as a Chart.js histogram (students binned by lessons-done) + a smoothed
+  curve overlay + a dashed batch-average reference line/label, replacing the old 3-band colored-chip
+  list.
+- **New: Consecutive & Idle Streaks chart** — per-student daily streak series (+N = currently on an
+  N-day flying streak, −N = currently on an N-day idle streak, flips sign on state change) plus a
+  batch-average line. Deliberately reuses the *same* `AP127_RACE_SOLO` filter variable and per-student
+  hue formula as the Actual vs Planned chart (not just visually matching colors — an actual shared
+  selection state), so isolating a student there also isolates them here.
+- **New: Daily Output bar chart** (lessons or hours per day/week/month, toggleable) with a moving-
+  average overlay line (7-period/4-period/3-period depending on granularity), data labels, and hover
+  tooltips — uses the already-loaded `chartjs-plugin-datalabels` (registered once via
+  `Chart.register(window.ChartDataLabels)`, same guarded pattern `view-summary.js` already uses).
+- **Overall Progress Bar View redesigned** — x-axis now spans the *full* curriculum (was: only up to
+  the furthest-ahead student's done count) so the empty space reads as "lessons remaining"; bars are
+  now stacked by curriculum phase (color-matched to the existing phase legend) instead of one solid
+  rainbow hue per student, with the student's current/next lesson code printed at the bar's end via a
+  small canvas plugin.
+  - Building this exposed a real, pre-existing gap in the phase-classifier (`ap127LessonPhase`,
+    reused verbatim from the original): its regexes are prefix-anchored against bare codes like `GL`/
+    `XV`, but the actual curriculum codes are compound (`CSPGL 36`, `CDXV 29`, `CMDGL 5`, verified by
+    sampling every distinct code prefix in `progress-data.js`) — so almost everything except literal
+    `CDGL *` fell into "Other." Fixed **only in the V4 copy** (the original's Timeline dot-coloring is
+    unchanged) by switching to substring matching in a priority order verified against all 21 real
+    prefixes, keeping `M` (multi-engine, `CM*`) and `CDGL` prefix-anchored so they still win over their
+    embedded `GL`/`XV` substrings. Confirmed live: stacked bars went from solid-orange-then-gray to a
+    real CDGL→IF/IL→XV/XI→GL breakdown, and the new Phase Progress Funnel chart went from one bucket
+    to meaningful per-phase percentages.
+- **New: Phase Progress Funnel chart** — batch-wide done-vs-remaining lesson-slots per curriculum
+  phase, showing where the batch is bottlenecked.
+- **New: AP127 Roster** — day-by-day activity heatmap (cells colored by lesson phase, one row per
+  student, sticky name column) plus an all-time cumulative summary grouped by instructor — the Ops
+  Analytics tab's roster pattern (`RosterHeatmap`/grouped cumulative list), rebuilt AP127-only and
+  matching this file's plain-DOM-string rendering style rather than importing the React component
+  (which lives in a separate IIFE closure in `view-summary.js` and isn't exposed to `window`).
+- **New: Weekday Activity Pattern chart** — all-time lessons+hours by day-of-week, dual y-axis.
+- **New: "Needs Attention" watchlist** — compact side-panel list of students idle ≥5 days or ≥3h
+  behind plan, click-through to the same detail drawer as the main table.
+- Everything else (Combined Progress vs Plan, Batch Lead/Lag History, Actual vs Planned, Individual
+  Lead/Lag vs Plan, Flight Timeline vs Progress, drawer) is carried over with identical behavior —
+  duplicated, not reinvented.
+- Also fixed (V4 only): `closeAP127Drawer()` now null-guards its `getElementById` lookup — the
+  original throws if Escape is pressed while the *other* tab's drawer DOM doesn't exist, because both
+  files' `keydown` listeners are always registered once each script loads, regardless of which tab is
+  currently mounted.
+
+Verified live (local static server, both AP127 Detail and AP127 Detail V4 exercised): zero console
+errors on load or on any interaction tried (sort, search, time-travel scrubber, range/period/unit
+toggles, student solo-filter, row click → drawer → close, mobile 375px width). The apparent "browser
+hung mid-scroll" symptom during testing was `chartjs-plugin-zoom`'s wheel handler on the Combined
+Progress chart capturing the scroll gesture (pre-existing behavior, also present in the original tab)
+— not a real hang; confirmed via `scrollTop` assignment + `Chart.getChart()` canvas count while the
+gesture-based scroll was "stuck." Data itself (911/2688 lessons, -902.3h vs plan, batch ETC 2026-07-29
+already past the 2026-11-27 plan end) is identical between the two tabs and reflects the bundled
+snapshot's own staleness relative to "today," not a bug in either tab.

@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p121` (all currently at p120)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p122` (all currently at p121)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,27 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p120` (2026-07-29 — **Ops Analytics follow-up whole-branch review fixes.**
+**Last known:** all files `p121` (2026-08-02 — **New tab: AP127 Detail V4** — a full redesigned
+duplicate of AP127 Detail (`js/view-cohort.js`, untouched, byte-identical) at a new sidebar entry
+`cohort-v4` / `js/view-cohort-v4.js` (new file, ~1850 lines). Fixed the sticky time-slider covering
+the tab title (reordered markup, `top:0` sticky toolbar) — reproduced live on the original tab first
+to confirm the bug, fix applied to V4 only. Redesigned Pace Monitor (bullet-bar actual-vs-target +
+headline cards, same math as original), Pace Band (histogram + smoothed curve + avg line, was a
+3-band chip list), and Overall Progress Bar View (x-axis now spans the full curriculum, stacked by
+curriculum phase instead of one rainbow hue per student — this also exposed and fixed, V4-only, a
+real gap in `ap127LessonPhase`'s prefix-anchored regexes, which missed almost every real compound
+lesson code like `CSPGL 36`/`CDXV 29` and dumped them all into "Other"). Added 4 new charts/panels:
+Consecutive & Idle Streaks (shares its student-filter/color state with Actual vs Planned), Daily
+Output bar+moving-average (day/week/month), Phase Progress Funnel, Weekday Activity Pattern, plus an
+AP127-only Roster (day-by-day phase heatmap + instructor-grouped cumulative totals, adapted from Ops
+Analytics' roster pattern) and a "Needs Attention" watchlist. Every other panel (Combined Progress vs
+Plan, Batch Lead/Lag History, Actual vs Planned, Individual Lead/Lag vs Plan, Flight Timeline vs
+Progress, drawer) is carried over with identical behavior. Isolation: every DOM id is
+`d127v4-`/`tt-*-v4` prefixed and every `window`-exposed function carries a `...V4` key (verified by
+script, not eyeballed) so both tabs' scripts coexist without clobbering each other's globals — only
+files touched: `js/view-cohort-v4.js` (new), `js/shell.js`, `index.html`, `css/progress.css`. Verified
+live via a local static server: both tabs exercised end-to-end (sort/search/scrubber/toggles/drawer),
+zero console errors, mobile 375px checked. Full write-up: REVAMP.md's p121 entry.) p120 (2026-07-29 — **Ops Analytics follow-up whole-branch review fixes.**
 A final review of the p119 follow-up round (see the p119 entry below for what that round built) found
 2 Important, emergent-only issues: (1) Batch Summary's lesson-done counts drifted after visiting other
 tabs — `js/view-program.js`'s `normalizeStudentDone()` mutates the same `window.NGT_CACHE` student

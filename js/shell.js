@@ -15,6 +15,7 @@
     ] },
     { label: 'Progress', items: [
       { id: 'cohort', label: 'AP127 Detail', icon: '▰' },
+      { id: 'cohort-v4', label: 'AP127 Detail V4', icon: '◈' },
       { id: 'student', label: 'Student Lens', icon: '👤' },
       { id: 'plans', label: 'Curriculum Prog', icon: '▤' },
     ] },
@@ -522,6 +523,7 @@
       analytics: window.SummaryBoard,
       aircraft: window.AircraftStatusView,
       cohort: window.CohortView,
+      'cohort-v4': window.CohortViewV4,
       plans: window.ProgressDetailView,
       performance: window.SchoolPerformanceView,
       'school-analysis': window.SchoolAnalysisView,
