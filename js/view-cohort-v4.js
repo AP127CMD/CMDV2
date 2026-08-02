@@ -189,9 +189,10 @@
       </div>
     </div>
     <div class="d127-panel">
-      <div class="d127-h"><span class="d127-t">Overall Progress Bar View</span><span class="d127-s">Stacked by phase · x-axis = full curriculum</span></div>
+      <div class="d127-h"><span class="d127-t">Overall Progress Bar View</span><span class="d127-s">x-axis = lesson number · dashed lines = major stage starts</span></div>
       <div class="d127-body">
-        <div class="d127-note">Each segment = lessons done in that phase (color matches the phase legend above, no per-student rainbow). Empty space = lessons remaining. Text at bar end = current/next lesson.</div>
+        <div class="d127-note">Bar reaches the lesson number each SP has completed to. Bar color = phase of their last-flown lesson (no per-student rainbow). Text at bar end = current/next lesson.</div>
+        <div class="d127-phase-legend" id="d127v4-overall-legend"></div>
         <div style="position:relative;height:560px;width:100%"><canvas id="d127v4-overall"></canvas></div>
       </div>
     </div>
@@ -216,14 +217,15 @@
             <option value="30">Last 30 days</option>
             <option value="60" selected>Last 60 days</option>
             <option value="90">Last 90 days</option>
+            <option value="0">All time</option>
           </select>
         </div>
       </div>
       <div class="d127-body">
-        <div class="d127-note">Day-by-day activity heatmap (colored by lesson phase, hover a cell for detail) plus all-time totals grouped by instructor.</div>
+        <div class="d127-note">Day-by-day activity heatmap (colored by lesson phase, hover a cell for detail) plus totals grouped by instructor — both scoped to the range above.</div>
         <div id="d127v4-heat"></div>
-        <div class="d127v4-sec-lbl" style="margin-top:16px">By Instructor · All-Time</div>
-        <div id="d127v4-fi-roster"></div>
+        <div class="d127v4-sec-lbl" style="margin-top:16px" id="d127v4-fi-heading">By Instructor</div>
+        <div id="d127v4-fi-roster" class="d127v4-fi-grid"></div>
       </div>
     </div>
   </div>
@@ -1026,26 +1028,36 @@ function buildAP127ConsIdle(all,asOf){
   });
 }
 
-// ── Overall Progress Bar View v2 — stacked by curriculum phase, x-axis spans the full curriculum ──
+// ── Overall Progress Bar View v3 — single bar per SP at x=lesson number reached (no stacking),
+// colored by current phase, with dashed vertical lines marking where the curriculum's major
+// stages (Initial Solo, Multiengine) first begin. ──
+function ap127OverallStage(code){
+  const c=String(code||"").trim();
+  if(/^CM/i.test(c))return"Multiengine";
+  if(/SP|PIC/i.test(c))return"Initial Solo";
+  return"Phase 1-4";
+}
+function ap127OverallMilestones(cur){
+  const seen=new Set(["Phase 1-4"]); // implicit starting stage — no line needed at position 0
+  const out=[];
+  cur.forEach((c,i)=>{
+    const stage=ap127OverallStage(c.lesson);
+    if(!seen.has(stage)){seen.add(stage);out.push({idx:i,label:stage});}
+  });
+  return out;
+}
 function buildAP127OverallChart(all,curriculum,maxDate){
   const sorted=ap127PaceSort(all,ap127AsOf());
   const cur=G.cur127||[];
   const totalLessons=cur.length||curriculum||1;
-  const phases=[...AP127_PHASE_DEFS,AP127_PHASE_OTHER];
-  const datasets=phases.map(p=>({
-    label:p.label,
-    data:sorted.map(s=>(s.flown||[]).filter(f=>ap127LessonPhase(f.lesson).k===p.k).length),
-    backgroundColor:p.c,
-    stack:"prog",
-  }));
-  const remainingData=sorted.map(s=>Math.max(0,totalLessons-(s.done||0)));
-  datasets.push({label:"Remaining",data:remainingData,backgroundColor:"rgba(255,255,255,0.06)",stack:"prog"});
+  const milestones=ap127OverallMilestones(cur);
+  const barColors=sorted.map(s=>ap127LessonPhase((s.flown||[]).at(-1)?.lesson).c);
   const currentLabelPlugin={
     id:"d127v4CurrentLabel",
     afterDatasetsDraw(chart){
       const{ctx}=chart;
       ctx.save();ctx.font="9px JetBrains Mono, monospace";ctx.fillStyle="#8b949e";ctx.textAlign="left";ctx.textBaseline="middle";
-      const meta=chart.getDatasetMeta(phases.length-1); // end of the last real phase segment = done position
+      const meta=chart.getDatasetMeta(0);
       sorted.forEach((s,i)=>{
         const bar=meta.data[i];if(!bar)return;
         const last=(s.flown||[]).at(-1);
@@ -1055,22 +1067,49 @@ function buildAP127OverallChart(all,curriculum,maxDate){
       ctx.restore();
     }
   };
+  const milestonePlugin={
+    id:"d127v4Milestones",
+    afterDatasetsDraw(chart){
+      const{ctx,scales:{x,y}}=chart;
+      if(!milestones.length)return;
+      ctx.save();
+      milestones.forEach(m=>{
+        const px=x.getPixelForValue(m.idx);
+        ctx.strokeStyle="rgba(232,138,255,0.55)";ctx.lineWidth=1.3;ctx.setLineDash([5,3]);
+        ctx.beginPath();ctx.moveTo(px,y.top);ctx.lineTo(px,y.bottom);ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font="700 8.5px JetBrains Mono, monospace";ctx.fillStyle="#e88aff";ctx.textAlign="left";ctx.textBaseline="top";
+        ctx.fillText(m.label,px+3,y.top+2);
+      });
+      ctx.restore();
+    }
+  };
+  const legend=document.getElementById("d127v4-overall-legend");
+  if(legend){
+    legend.innerHTML=[...AP127_PHASE_DEFS,AP127_PHASE_OTHER].map(d=>`<span class="d127-pc"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("")
+      +`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#e88aff;border-radius:2px;width:14px;height:3px"></span>major stage begins</span>`;
+  }
   CHARTS.ap127overall=mkC("d127v4-overall",{
     type:"bar",
-    data:{labels:sorted.map(s=>ap127ShortName(s.name)),datasets},
+    data:{labels:sorted.map(s=>ap127ShortName(s.name)),datasets:[{
+      label:"Lesson reached",
+      data:sorted.map(s=>s.done||0),
+      backgroundColor:barColors,
+      barPercentage:.7,
+    }]},
     options:{
       indexAxis:"y",responsive:true,maintainAspectRatio:false,
       plugins:{
         datalabels:{display:false},
-        legend:{display:true,position:"top",labels:{color:"#8b949e",font:{family:"JetBrains Mono",size:9},boxWidth:10,filter:item=>item.text!=="Remaining"}},
-        tooltip:{filter:item=>item.dataset.label!=="Remaining",callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x}`}}
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>`Lesson ${ctx.parsed.x} of ${totalLessons}`}}
       },
       scales:{
-        x:{stacked:true,min:0,max:totalLessons,ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e"},grid:{color:"#21262d"}},
-        y:{stacked:true,afterFit:scale=>{scale.width=100;},ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e",autoSkip:false},grid:{color:"#21262d"}}
+        x:{min:0,max:totalLessons,ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e"},grid:{color:"#21262d"},title:{display:true,text:"Lesson number",color:"#6e7681",font:{family:"JetBrains Mono",size:8}}},
+        y:{afterFit:scale=>{scale.width=100;},ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e",autoSkip:false},grid:{color:"#21262d"}}
       }
     },
-    plugins:[currentLabelPlugin]
+    plugins:[currentLabelPlugin,milestonePlugin]
   });
 }
 
@@ -1648,8 +1687,12 @@ function buildAP127Roster(){
   const all=ap127AsOfStudents();if(!all.length)return;
   const today=ap127AsOf();
   const rangeEl=document.getElementById("d127v4-roster-range");
-  const rangeDays=rangeEl?parseInt(rangeEl.value||"60"):60;
-  const start=(()=>{const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-rangeDays);return d.toISOString().slice(0,10);})();
+  const rangeVal=rangeEl?parseInt(rangeEl.value||"60"):60;
+  const batchStart=all.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort()[0]||today;
+  const start=rangeVal===0?batchStart:(()=>{const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-rangeVal);return d.toISOString().slice(0,10);})();
+  const rangeLabel=rangeVal===0?`All time · since ${ap127ShortDate(batchStart)}`:`Last ${rangeVal}d`;
+  const heading=document.getElementById("d127v4-fi-heading");
+  if(heading)heading.textContent=`By Instructor · ${rangeLabel}`;
   const days=ap127AllDatesRange(start,today);
   const sorted=[...all].sort((a,b)=>a.name.localeCompare(b.name));
 
@@ -1682,6 +1725,8 @@ function buildAP127Roster(){
   const heatEl=document.getElementById("d127v4-heat");
   if(heatEl)heatEl.innerHTML=`<div class="d127v4-heat-wrap">${heatHtml}</div>`;
 
+  const rangeFlown=s=>(s.flown||[]).filter(f=>f.date&&f.date>=start&&f.date<=today);
+  const rangeHours=s=>rangeFlown(s).reduce((a,f)=>a+(ap127FlightMins(f)/60||0),0);
   const byFI={};
   all.forEach(s=>{
     const fi=AP127_FI_FULL[s.fi]||s.fi||"Unassigned";
@@ -1690,18 +1735,18 @@ function buildAP127Roster(){
   const fiKeys=Object.keys(byFI).sort((a,b)=>byFI[b].length-byFI[a].length||a.localeCompare(b));
   const fiEl=document.getElementById("d127v4-fi-roster");
   if(fiEl)fiEl.innerHTML=fiKeys.map(fi=>{
-    const students=byFI[fi].slice().sort((a,b)=>(b.done||0)-(a.done||0));
-    const totalHrs=students.reduce((a,s)=>a+ap127Hours(s),0);
-    const totalLes=students.reduce((a,s)=>a+(s.done||0),0);
+    const students=byFI[fi].slice().sort((a,b)=>rangeFlown(b).length-rangeFlown(a).length);
+    const totalHrs=students.reduce((a,s)=>a+rangeHours(s),0);
+    const totalLes=students.reduce((a,s)=>a+rangeFlown(s).length,0);
     return `<div class="d127v4-fi-group">
       <div class="d127v4-fi-hdr"><span>${fi}</span><span style="color:var(--tx3);font-weight:400">${students.length} SP · ${totalLes} les · ${totalHrs.toFixed(1)}h</span></div>
       ${students.map(s=>{
-        const last=(s.flown||[]).at(-1)||{};
+        const last=rangeFlown(s).at(-1);
         return `<div class="d127v4-fi-row">
           <b>${ap127ShortName(s.name)}</b>
-          <span class="d127-mono" style="color:var(--tx3);width:70px">${s.done||0} les</span>
-          <span class="d127-mono" style="color:var(--tx3);width:60px">${ap127Hours(s).toFixed(1)}h</span>
-          <span class="d127-mono" style="color:var(--tx3);width:90px">${last.date?ap127ShortDate(last.date):"-"}</span>
+          <span class="d127-mono" style="color:var(--tx3);width:44px;text-align:right;flex-shrink:0">${rangeFlown(s).length}L</span>
+          <span class="d127-mono" style="color:var(--tx3);width:44px;text-align:right;flex-shrink:0">${rangeHours(s).toFixed(1)}h</span>
+          <span class="d127-mono" style="color:var(--tx3);width:56px;text-align:right;flex-shrink:0">${last?ap127ShortDate(last.date):"-"}</span>
         </div>`;
       }).join("")}
     </div>`;

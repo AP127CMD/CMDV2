@@ -815,3 +815,48 @@ Progress chart capturing the scroll gesture (pre-existing behavior, also present
 gesture-based scroll was "stuck." Data itself (911/2688 lessons, -902.3h vs plan, batch ETC 2026-07-29
 already past the 2026-11-27 plan end) is identical between the two tabs and reflects the bundled
 snapshot's own staleness relative to "today," not a bug in either tab.
+
+### AP127 Detail V4 — follow-up round on Overall Progress + Roster (2026-08-02, p122)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Same day as the `p121` build above — direct user feedback after trying the live `p121` tab.
+
+- **Overall Progress Bar View reworked again.** The `p121` version stacked each SP's bar into 7
+  phase-colored segments; the user wanted that reverted (no accumulation/stacking) in favor of a
+  single bar reaching the lesson NUMBER they've completed to, still colored by phase (of their
+  last-flown lesson, not per-student rainbow) so the "which stage is this SP in" signal survives
+  without the stacking. Added dashed vertical **milestone lines** marking where the curriculum's
+  major stages first begin — "Initial Solo" and "Multiengine" — computed from `G.cur127` in
+  curriculum order via a new coarse classifier, `ap127OverallStage()`: `CM*`-prefixed lessons →
+  Multiengine, any lesson containing `SP`/`PIC` → Initial Solo, everything else is the implicit
+  starting stage (no line needed at position 0, the chart already starts there). This is
+  deliberately coarser than the 7-way `ap127LessonPhase()` classifier used for bar/cell coloring
+  elsewhere — the real curriculum interleaves solo/dual/night lessons rather than running them in
+  clean contiguous blocks (confirmed by sampling `progress-data.js` again), so "first occurrence of
+  each named stage" is the honest reading of "add a line where each major phase begins," not a full
+  partition. Since a single dataset with a per-bar `backgroundColor` array can't drive Chart.js's
+  own legend, replaced it with a static phase-color legend row (reusing the exact dot-legend pattern
+  and color list already used by the Flight Timeline panel, so the two stay visually consistent).
+- **Roster range now goes to "All time."** Added `<option value="0">All time</option>` to
+  `#d127v4-roster-range` (same convention as the Pace Monitor's own range select); when selected,
+  the heatmap's start date falls back to the batch's earliest flown date instead of `today − Nd`.
+- **By-Instructor list now respects the same range selector** — previously it always showed
+  all-time totals regardless of what the heatmap's range dropdown was set to. New
+  `rangeFlown()`/`rangeHours()` helpers filter each student's `flown` array to `[start, today]`
+  before summing lessons/hours, and the section heading now shows the active range live (e.g. "By
+  Instructor · All time · since 20 Apr" or "· Last 30d").
+- **By-Instructor made compact** — `#d127v4-fi-roster` is now a CSS grid
+  (`grid-template-columns:repeat(auto-fill,minmax(310px,1fr))`, was one flat full-width column) with
+  tighter row padding (`1.5px 8px 1.5px 14px`, was `4px 10px 4px 20px`) and smaller font (9.5px, was
+  10.5px) — multiple instructor groups now sit side by side instead of one long vertical list. First
+  attempt (260px column minimum + the original 60/52/80px stat-column widths) visually broke student
+  names into "Napon…"/"Vasap…" ellipsis — there simply wasn't enough leftover flex space. Fixed by
+  widening the grid minimum to 310px **and** shrinking the three stat columns to 44/44/56px;
+  re-verified live that full "First L." names render without truncation at every grid width.
+
+Verified live on a local static server: both AP127 Detail and AP127 Detail V4 exercised, phase
+milestone lines checked against the actual curriculum data (Initial Solo line lands ~lesson 35,
+Multiengine ~lesson 90, matching where `CSP*`/`CM*` codes first appear in `progress-data.js`), both
+roster range selectors exercised including "All time," zero console errors. Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css`.

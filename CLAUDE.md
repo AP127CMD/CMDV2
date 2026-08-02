@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p122` (all currently at p121)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p123` (all currently at p122)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,29 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p121` (2026-08-02 — **New tab: AP127 Detail V4** — a full redesigned
+**Last known:** all files `p122` (2026-08-02 — **AP127 Detail V4 follow-up round**, same day as the
+`p121` build below, per direct user feedback after using the live `p121` tab. (1) **Overall Progress
+Bar View reworked again** — user wanted the stacked-by-phase bars replaced with a single bar per SP
+(x-axis = lesson number reached, no accumulation/stacking), colored by the phase of their last-flown
+lesson (still no per-student rainbow), plus dashed vertical lines marking where the curriculum's major
+stages first begin ("Initial Solo", "Multiengine" — derived from `G.cur127` in curriculum order via a
+new coarse 3-bucket `ap127OverallStage()` classifier: `CM*`-prefixed = Multiengine, any `SP`/`PIC`
+substring = Initial Solo, else the implicit starting stage — no line needed at position 0). A static
+phase-color legend row (reusing the Timeline's dot-legend pattern) replaces the old per-dataset Chart.js
+legend, since a single-dataset bar with a `backgroundColor` array can't drive one. (2) **Roster range
+now goes to "All time"** — added a `value="0"` option to `#d127v4-roster-range` (same pattern as the
+Pace Monitor's range select), heatmap start falls back to `batchStart` when 0. (3) **By-Instructor
+list now respects the same range selector** (previously always all-time regardless of the heatmap's
+range) — a `rangeFlown()`/`rangeHours()` helper filters each student's `flown` to `[start, today]`
+before summing, and the section heading updates to show the active range (e.g. "By Instructor · All
+time · since 20 Apr"). (4) **By-Instructor made compact** — `#d127v4-fi-roster` is now a CSS grid
+(`repeat(auto-fill, minmax(310px,1fr))`, was a single flat column) with tighter row padding/font-size;
+first attempt at 260px columns + wider stat-column widths truncated names to "Napon…"/"Vasap…" —
+fixed by widening the grid minmax to 310px AND shrinking the 3 stat-column widths (44/44/56px, was
+60/52/80px), verified live that full "First L." names render without ellipsis again. Verified live
+(local static server): both AP127 Detail and AP127 Detail V4, zero console errors, phase-milestone
+lines and both roster range selectors exercised. Only file touched: `js/view-cohort-v4.js` (+
+`css/progress.css` for the grid/row tightening). Full write-up: REVAMP.md's p122 entry.) p121 (2026-08-02 — **New tab: AP127 Detail V4** — a full redesigned
 duplicate of AP127 Detail (`js/view-cohort.js`, untouched, byte-identical) at a new sidebar entry
 `cohort-v4` / `js/view-cohort-v4.js` (new file, ~1850 lines). Fixed the sticky time-slider covering
 the tab title (reordered markup, `top:0` sticky toolbar) — reproduced live on the original tab first
