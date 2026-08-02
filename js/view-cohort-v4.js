@@ -148,10 +148,12 @@
           <button class="cpv-btn lb-period sel" data-p="day" onclick="setLBPeriodV4('day')">Day</button>
           <button class="cpv-btn lb-period" data-p="week" onclick="setLBPeriodV4('week')">Week</button>
           <button class="cpv-btn lb-period" data-p="month" onclick="setLBPeriodV4('month')">Month</button>
+          <span style="width:1px;height:14px;background:var(--bd);display:inline-block;margin:0 2px"></span>
+          <button class="cpv-btn lb-showall" onclick="setLBShowAllV4()" title="Toggle whether periods with zero flights are shown">Hide off days</button>
         </div>
       </div>
       <div class="d127-body">
-        <div class="d127-note">Bars = batch total per period. Blue line = moving average (7d / 4wk / 3mo depending on view). Hover for exact values.</div>
+        <div class="d127-note">Bars = batch total per period, including days with no flights by default. Blue line = moving average (7d / 4wk / 3mo depending on view). Hover for exact values.</div>
         <div style="position:relative;height:280px"><canvas id="d127v4-lessonbar"></canvas></div>
       </div>
     </div>
@@ -406,20 +408,24 @@ function renderAP127Pace(){
   const fH=h=>h===null?"—":h>=100?h.toFixed(0)+"h":h>=10?h.toFixed(1)+"h":h.toFixed(2)+"h";
   const fL=l=>l===null?"—":l>=100?l.toFixed(0)+" les":l>=10?l.toFixed(1)+" les":l.toFixed(2)+" les";
 
-  const bullet=(label,actual,need,fmt,sub)=>{
+  // actual/need are always WEEKLY figures — the sub-line always shows the same day+month
+  // breakdown underneath both the 1-SP and 28-SP sections, so "per week" never gets confused
+  // with "per month" (previously one section's sub-line said "/day", the other said "/month").
+  const bullet=(label,actual,need,fmt)=>{
     const has=need!==null&&need!==undefined;
     const max=Math.max(actual,has?need:0,0.0001)*1.18;
     const actPct=Math.min(100,(actual/max)*100);
     const needPct=has?Math.min(100,(need/max)*100):0;
     const ahead=has&&actual>=need;
     const color=!has?"var(--tx3)":ahead?"var(--done)":"#ef4444";
+    const sub=`≈ ${fmt(actual/7)} / day · ${fmt(actual*4.345)} / month`;
     return `<div class="d127v4-bullet-row">
       <div class="d127v4-bullet-lbl"><span>${label}</span><span><b>${fmt(actual)}</b> <span style="color:var(--tx3)">/ target ${has?fmt(need):"—"}</span></span></div>
       <div class="d127v4-bullet-track">
         <div class="d127v4-bullet-fill" style="width:${actPct}%;background:${color}"></div>
         ${has?`<div class="d127v4-bullet-target" style="left:${needPct}%" title="Target: ${fmt(need)}"></div>`:""}
       </div>
-      ${sub?`<div style="font-size:9px;color:var(--tx3);margin-top:3px;font-family:'JetBrains Mono',monospace">${sub}</div>`:""}
+      <div style="font-size:9px;color:var(--tx3);margin-top:3px;font-family:'JetBrains Mono',monospace">${sub}</div>
     </div>`;
   };
 
@@ -441,13 +447,13 @@ function renderAP127Pace(){
   const bulletsHtml=`
     <div class="d127v4-sec-lbl">1 SP · Per Week Pace</div>
     <div class="d127v4-bullets">
-      ${bullet("Hours / wk",aHrWkSP,nHrWkSP,fH,`≈ ${fH(aHrWkSP/7)} / day`)}
-      ${bullet("Lessons / wk",aLesWkSP,nLesWkSP,fL,`≈ ${fL(aLesWkSP/7)} / day`)}
+      ${bullet("Hours / wk",aHrWkSP,nHrWkSP,fH)}
+      ${bullet("Lessons / wk",aLesWkSP,nLesWkSP,fL)}
     </div>
     <div class="d127v4-sec-lbl">28 SP · Batch Total Per Week</div>
     <div class="d127v4-bullets">
-      ${bullet("Hours / wk",aHrWkB,nHrWkB,fH,`≈ ${fH(aHrWkB*4.33)} / month`)}
-      ${bullet("Lessons / wk",aLesWkB,nLesWkB,fL,`≈ ${fL(aLesWkB*4.33)} / month`)}
+      ${bullet("Hours / wk",aHrWkB,nHrWkB,fH)}
+      ${bullet("Lessons / wk",aLesWkB,nLesWkB,fL)}
     </div>
     <div class="d127v4-action-banner">
       <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Required Action</div>
@@ -1511,13 +1517,34 @@ function buildAP127PaceBand(all,asOf){
 // ── Daily Output bar + moving average — Day/Week/Month, Lessons/Hours ──
 let AP127V4_LB_UNIT="hours";
 let AP127V4_LB_PERIOD="day";
+let AP127V4_LB_SHOWALL=true; // include off-periods (zero flights) by default — toggle to hide them
 function setLBUnit(u){AP127V4_LB_UNIT=u;document.querySelectorAll(".lb-unit").forEach(b=>b.classList.toggle("sel",b.dataset.u===u));buildAP127LessonBar();}
 function setLBPeriod(p){AP127V4_LB_PERIOD=p;document.querySelectorAll(".lb-period").forEach(b=>b.classList.toggle("sel",b.dataset.p===p));buildAP127LessonBar();}
+function setLBShowAll(){
+  AP127V4_LB_SHOWALL=!AP127V4_LB_SHOWALL;
+  document.querySelectorAll(".lb-showall").forEach(b=>b.classList.toggle("sel",!AP127V4_LB_SHOWALL));
+  buildAP127LessonBar();
+}
 function ap127v4WeekStart(ds){const d=new Date(ds+"T00:00:00");const dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow);return d.toISOString().slice(0,10);}
 function ap127v4PeriodKey(ds,period){
   if(period==="day")return ds;
   if(period==="week")return ap127v4WeekStart(ds);
   return ds.slice(0,7)+"-01";
+}
+function ap127v4PeriodRange(start,end,period){
+  if(period==="day")return ap127AllDatesRange(start,end);
+  const out=[];
+  let guard=0;
+  if(period==="week"){
+    let d=new Date(ap127v4WeekStart(start)+"T00:00:00");
+    const endD=new Date(ap127v4WeekStart(end)+"T00:00:00");
+    while(d<=endD&&guard<520){out.push(d.toISOString().slice(0,10));d.setDate(d.getDate()+7);guard++;}
+    return out;
+  }
+  let d=new Date(start.slice(0,7)+"-01T00:00:00");
+  const endD=new Date(end.slice(0,7)+"-01T00:00:00");
+  while(d<=endD&&guard<240){out.push(d.toISOString().slice(0,7)+"-01");d.setMonth(d.getMonth()+1);guard++;}
+  return out;
 }
 function buildAP127LessonBar(){
   const all=ap127AsOfStudents();if(!all.length)return;
@@ -1527,15 +1554,19 @@ function buildAP127LessonBar(){
   const isHrs=AP127V4_LB_UNIT==="hours";
   const period=AP127V4_LB_PERIOD;
   const byPeriod={};
+  let firstDate=null;
   all.forEach(s=>(s.flown||[]).forEach(f=>{
     if(!f.date||f.date>today)return;
+    if(firstDate===null||f.date<firstDate)firstDate=f.date;
     const key=ap127v4PeriodKey(f.date,period);
     const v=isHrs?(ap127FlightMins(f)||lessonsMap[f.lesson]||0)/60:1;
     byPeriod[key]=(byPeriod[key]||0)+v;
   }));
-  const keys=Object.keys(byPeriod).sort();
+  if(firstDate===null)return;
+  const allKeys=ap127v4PeriodRange(firstDate,today,period);
+  const keys=AP127V4_LB_SHOWALL?allKeys:allKeys.filter(k=>byPeriod[k]>0);
   if(!keys.length)return;
-  const values=keys.map(k=>+byPeriod[k].toFixed(2));
+  const values=keys.map(k=>+((byPeriod[k]||0).toFixed(2)));
   const maWindow=period==="day"?7:period==="week"?4:3;
   const ma=values.map((_,i)=>{
     const lo=Math.max(0,i-maWindow+1);
@@ -1826,6 +1857,7 @@ function opsAugment(students, curriculum) {
     ap127AsOfV4: ap127AsOf,
     setLBUnitV4: setLBUnit,
     setLBPeriodV4: setLBPeriod,
+    setLBShowAllV4: setLBShowAll,
     buildAP127RosterV4: buildAP127Roster,
     CHARTS_V4: CHARTS,
   });

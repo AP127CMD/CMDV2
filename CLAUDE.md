@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p124` (all currently at p123)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p125` (all currently at p124)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,22 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p123` (2026-08-02 — **AP127 Detail V4 — authoritative syllabus phases**,
+**Last known:** all files `p124` (2026-08-02 — **AP127 Detail V4 — Pace Monitor clarity + Daily
+Output off-days toggle**, fourth round of same-day feedback. (1) **Pace Monitor's day/month
+sub-labels were asymmetric and confusing** — the "1 SP" section's bullets showed "≈ X / day"
+underneath, the "28 SP" section's showed "≈ X / month" underneath, both under an identically-worded
+"Hours / wk" header, so it read like two different metrics rather than the same weekly figure
+broken down two ways. Fixed by having the shared `bullet()` helper always compute and show BOTH
+`≈ X/day · Y/month` under every bullet (1 SP and 28 SP alike) — one consistent format everywhere,
+no more guessing which section's footnote means what. (2) **Daily Output chart now includes
+zero-flight days by default** — previously `byPeriod` only ever got a key for periods that had at
+least one flight, so off-days were silently absent from the x-axis entirely (a quiet week looked
+compressed, not idle). New `ap127v4PeriodRange()` generates the full day/week/month sequence from
+the batch's first flown date to today regardless of activity; a new toggle button ("Hide off days",
+off by default) switches back to the old activity-only view when a denser chart is preferred. Only
+file touched: `js/view-cohort-v4.js`. Verified live: both tabs, zero console errors, toggle
+re-checked both states, bullet sub-labels re-checked in both Pace Monitor sections. Full write-up:
+REVAMP.md's p124 entry.) p123 (2026-08-02 — **AP127 Detail V4 — authoritative syllabus phases**,
 third round of same-day feedback on the `p122` build below. Discovered the real curriculum structure
 by fetching `data/syllabus.json` from the user-referenced `https://ap127-flight-training.pages.dev`
 (Study > Diagram tab): 4 official phases, exact lesson-NUMBER ranges (Phase I 1-13 "Basic Flight

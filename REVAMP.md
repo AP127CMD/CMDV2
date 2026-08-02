@@ -912,3 +912,36 @@ lines land exactly at lesson 14/33/56, Phase Progress Funnel shows real per-phas
 (100%/92%/11%/0% at verification time, previously one lumped "mostly Other" bucket), Roster's "All
 time" range and cell hover detail both re-checked after the rewrite. Only files touched:
 `js/view-cohort-v4.js`, `css/progress.css`.
+
+### AP127 Detail V4 — Pace Monitor clarity + Daily Output off-days toggle (2026-08-02, p124)
+
+`js/view-cohort-v4.js`
+
+Fourth round of same-day feedback.
+
+- **Pace Monitor's day/month sub-labels were asymmetric.** The redesigned bullet bars (from `p121`)
+  showed a footnote under each bar — "1 SP · Per Week Pace" bullets said `≈ X / day`, "28 SP · Batch
+  Total Per Week" bullets said `≈ X / month`, both underneath an identically-worded "Hours / wk" /
+  "Lessons / wk" header. Nothing in the UI explained *why* one section converted to days and the
+  other to months, so it read as if the two sections were showing different kinds of numbers rather
+  than the same weekly figure sliced two ways. Fixed at the source: the shared `bullet()` helper now
+  always computes and renders `≈ X/day · Y/month` under every bullet, 1-SP and 28-SP sections alike
+  — one consistent format, so "per week" (the bar itself) never gets confused with "per month" (part
+  of the footnote) again. Removed the per-call-site `sub` string parameter entirely now that it's
+  derived internally from `actual` — less duplication, and impossible for the two sections to drift
+  out of sync with each other again.
+- **Daily Output chart silently dropped zero-flight periods.** `byPeriod` was only ever populated
+  from `flown` records, so a period (day/week/month) with no lessons simply had no key and no bar —
+  the x-axis quietly skipped it, which made a genuinely idle week look visually compressed rather
+  than idle (two adjacent bars with a week-long real gap between them rendered right next to each
+  other). New `ap127v4PeriodRange(start, end, period)` generates the *complete* sequence of periods
+  from the batch's first flown date to today, independent of which periods actually have data; those
+  full-range keys are now the default. Added a toggle button, **"Hide off days"** (off by default,
+  matching the user's "include all day" request), that switches back to the old data-only view for
+  when a denser chart is preferred — `AP127V4_LB_SHOWALL` flag, wired the same way as the existing
+  unit/period toggles.
+
+Verified live (local static server): both tabs, zero console errors, toggle exercised in both
+states (visible gaps for off-days when on, packed contiguous bars when off), Pace Monitor's 1-SP and
+28-SP sections both re-checked showing the identical `day · month` footnote format. Only file
+touched: `js/view-cohort-v4.js`.
