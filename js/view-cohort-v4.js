@@ -189,9 +189,9 @@
       </div>
     </div>
     <div class="d127-panel">
-      <div class="d127-h"><span class="d127-t">Overall Progress Bar View</span><span class="d127-s">x-axis = lesson number · dashed lines = major stage starts</span></div>
+      <div class="d127-h"><span class="d127-t">Overall Progress Bar View</span><span class="d127-s">x-axis = lesson number · stacked by syllabus phase</span></div>
       <div class="d127-body">
-        <div class="d127-note">Bar reaches the lesson number each SP has completed to. Bar color = phase of their last-flown lesson (no per-student rainbow). Text at bar end = current/next lesson.</div>
+        <div class="d127-note">Each SP's bar is split into segments per official curriculum phase (same colors as Flight Timeline and the Roster below). Dashed lines mark exactly where each phase starts (lesson 14/33/56). Text at bar end = current/next lesson.</div>
         <div class="d127-phase-legend" id="d127v4-overall-legend"></div>
         <div style="position:relative;height:560px;width:100%"><canvas id="d127v4-overall"></canvas></div>
       </div>
@@ -204,18 +204,12 @@
       </div>
     </div>
     <div class="d127-panel">
-      <div class="d127-h"><span class="d127-t">Weekday Activity Pattern</span><span class="d127-s">All-time · which days the batch actually flies</span></div>
-      <div class="d127-body">
-        <div style="position:relative;height:240px"><canvas id="d127v4-weekday"></canvas></div>
-      </div>
-    </div>
-    <div class="d127-panel">
       <div class="d127-h" style="flex-wrap:wrap;gap:6px">
         <span class="d127-t">AP127 Roster</span>
         <div style="display:flex;gap:6px;align-items:center">
           <select id="d127v4-roster-range" class="d127-wsel" onchange="buildAP127RosterV4()">
-            <option value="30">Last 30 days</option>
-            <option value="60" selected>Last 60 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="60">Last 60 days</option>
             <option value="90">Last 90 days</option>
             <option value="0">All time</option>
           </select>
@@ -283,24 +277,27 @@ function _scrBatchStart(){const all=G?.ap127||[];return all.flatMap(s=>(s.flown|
 function _scrDateFromFrac(frac){const s=new Date(_scrBatchStart()+'T00:00:00').getTime(),e=new Date(ap127TodayBKK()+'T00:00:00').getTime();return new Date(s+frac*(e-s)).toISOString().slice(0,10);}
 function _scrSetThumb(frac){const th=document.getElementById('tt-thumb-v4'),ch=document.getElementById('tt-chip-v4');if(!th)return;th.style.left=(frac*100)+'%';if(ch){const ds=frac>=0.99?ap127TodayBKK():_scrDateFromFrac(frac);ch.textContent=ds?ap127ShortDate(ds):'';}}
 let _scrDebounce=null;
-// V4-only refinement of the original's prefix-anchored tests: real curriculum codes are
-// compound (e.g. "CSPGL 36", "CDXV 29", "CMDGL 5") so a strict `^` prefix match against bare
-// "GL"/"XV"/etc missed almost everything but "CDGL *" and dumped the rest into Other. M (multi-
-// engine, "CM*") and CDGL (the very first dual-GL block) still need to win by PREFIX so they
-// don't get reclassified by their embedded GL/XV substrings; everything else matches by
-// substring, checked in this priority order. Verified against every distinct lesson-code prefix
-// in progress-data.js.
-const AP127_PHASE_DEFS=[
-  {k:"M",   label:"M",   test:/^CM/i,  c:"#f472b6"},
-  {k:"CDGL",label:"CDGL",test:/^CDGL/i,c:"#fb923c"},
-  {k:"IF",  label:"IF/IL",test:/IF|IL/i,c:"#38bdf8"},
-  {k:"XV",  label:"XV/XI",test:/XV|XI/i,c:"#a78bfa"},
-  {k:"NL",  label:"NL",  test:/NL/i,   c:"#818cf8"},
-  {k:"GL",  label:"GL",  test:/GL/i,   c:"#4ade80"},
-  {k:"SP",  label:"SP/PIC",test:/SP|PIC/i,c:"#f59e0b"},
+// Authoritative 4-phase curriculum structure — lesson-NUMBER ranges (not code-prefix guesses),
+// pulled from the syllabus.json backing https://ap127-flight-training.pages.dev (Study > Diagram):
+// Phase I "Basic Flight Training" 1-13, Phase II "Consolidation and IFR Introduction" 14-32,
+// Phase III "Advanced VFR and Night Flying" 33-55, Phase IV "IFR and Multi-Engine Training" 56-96.
+// Every AP127 lesson code ends in its curriculum lesson number (e.g. "CSPGL 36" = lesson 36), so
+// phase membership is exact, not inferred from the code's letters. Colors match that site's own
+// Ph.1-4 timeline bar. Used consistently here for the Timeline dots, Roster heatmap, Phase Funnel,
+// and Overall Progress bars so "phase" means the same thing (and the same color) everywhere in V4.
+const AP127_SYLLABUS_PHASES=[
+  {n:1,label:"Phase I",  title:"Basic Flight Training",           lo:1, hi:13,c:"#38bdf8"},
+  {n:2,label:"Phase II", title:"Consolidation & IFR Introduction", lo:14,hi:32,c:"#4ade80"},
+  {n:3,label:"Phase III",title:"Advanced VFR & Night Flying",      lo:33,hi:55,c:"#f59e0b"},
+  {n:4,label:"Phase IV", title:"IFR & Multi-Engine Training",      lo:56,hi:96,c:"#a78bfa"},
 ];
-const AP127_PHASE_OTHER={k:"OTH",label:"Other",c:"#6b7280"};
-function ap127LessonPhase(code){if(!code)return AP127_PHASE_OTHER;const c=String(code).trim();for(const d of AP127_PHASE_DEFS){if(d.test.test(c))return d;}return AP127_PHASE_OTHER;}
+const AP127_PHASE_OTHER={label:"Other",title:"Unrecognized lesson code",c:"#6b7280"};
+function ap127LessonNum(code){const m=String(code||"").match(/(\d+)\s*$/);return m?parseInt(m[1],10):null;}
+function ap127SyllabusPhase(code){
+  const n=ap127LessonNum(code);
+  if(n==null)return AP127_PHASE_OTHER;
+  return AP127_SYLLABUS_PHASES.find(p=>n>=p.lo&&n<=p.hi)||AP127_PHASE_OTHER;
+}
 function ap127IdleLineColor(d){if(d<=2)return"#e6edf3";if(d<=5)return"#fbbf24";return"#ff6b6b";}
 function ap127ShortName(n){const p=n.trim().split(/\s+/);return p.length<2?n:p[0]+" "+p[p.length-1][0]+".";}
 function ap127FmtDate(ds){if(!ds)return"-";if(ds==="TBC")return"TBC";try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}catch{return ds;}}
@@ -563,7 +560,6 @@ function renderAP127Detail(){
   buildAP127PaceBand(all,today0);
   buildAP127LessonBar();
   buildAP127Funnel(all,today0);
-  buildAP127Weekday(all);
   buildAP127Watchlist(all,today0);
   buildAP127Roster();
   updateScrubber();
@@ -617,10 +613,10 @@ function buildAP127Timeline(all,curriculum,maxDate){
   const countX=maxDay+1;
   const legend=document.getElementById("d127v4-phase-legend");
   if(legend){
-    const items=[...AP127_PHASE_DEFS,AP127_PHASE_OTHER].map(d=>`<span class="d127-pc"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("");
+    const items=AP127_SYLLABUS_PHASES.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("");
     legend.innerHTML=items+`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#fca5a5;border-radius:2px;width:14px;height:3px"></span>gap &gt; 7 days</span><span class="d127-pc"><span class="d127-pdot" style="background:#e6edf3;border-radius:2px;width:14px;height:3px"></span>idle 1-2d</span><span class="d127-pc"><span class="d127-pdot" style="background:#fbbf24;border-radius:2px;width:14px;height:3px"></span>idle 3-5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#ff6b6b;border-radius:2px;width:14px;height:3px"></span>idle &gt;5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#f59e0b;width:2px;height:10px;border-radius:0"></span>today</span>`;
   }
-  const phaseColor=code=>ap127LessonPhase(code).c;
+  const phaseColor=code=>ap127SyllabusPhase(code).c;
   const datasets=[];
   sorted.forEach((s,idx)=>{
     const flights=(s.flown||[]).filter(f=>f.date).sort((a,b)=>a.date.localeCompare(b.date));
@@ -1028,36 +1024,28 @@ function buildAP127ConsIdle(all,asOf){
   });
 }
 
-// ── Overall Progress Bar View v3 — single bar per SP at x=lesson number reached (no stacking),
-// colored by current phase, with dashed vertical lines marking where the curriculum's major
-// stages (Initial Solo, Multiengine) first begin. ──
-function ap127OverallStage(code){
-  const c=String(code||"").trim();
-  if(/^CM/i.test(c))return"Multiengine";
-  if(/SP|PIC/i.test(c))return"Initial Solo";
-  return"Phase 1-4";
-}
-function ap127OverallMilestones(cur){
-  const seen=new Set(["Phase 1-4"]); // implicit starting stage — no line needed at position 0
-  const out=[];
-  cur.forEach((c,i)=>{
-    const stage=ap127OverallStage(c.lesson);
-    if(!seen.has(stage)){seen.add(stage);out.push({idx:i,label:stage});}
-  });
-  return out;
-}
+// ── Overall Progress Bar View v4 — stacked per SP by the syllabus's real 4 phases, with fixed
+// dashed boundary lines at the exact lesson numbers each phase starts (13/32/55). Same phase
+// colors as the Timeline dots and the Roster heatmap, so "phase" reads the same everywhere. ──
 function buildAP127OverallChart(all,curriculum,maxDate){
   const sorted=ap127PaceSort(all,ap127AsOf());
   const cur=G.cur127||[];
-  const totalLessons=cur.length||curriculum||1;
-  const milestones=ap127OverallMilestones(cur);
-  const barColors=sorted.map(s=>ap127LessonPhase((s.flown||[]).at(-1)?.lesson).c);
+  const totalLessons=cur.length||curriculum||96;
+  const datasets=AP127_SYLLABUS_PHASES.map(p=>({
+    label:p.label,
+    data:sorted.map(s=>(s.flown||[]).filter(f=>{const n=ap127LessonNum(f.lesson);return n!=null&&n>=p.lo&&n<=p.hi;}).length),
+    backgroundColor:p.c,
+    stack:"prog",
+  }));
+  const remainingData=sorted.map(s=>Math.max(0,totalLessons-(s.done||0)));
+  datasets.push({label:"Remaining",data:remainingData,backgroundColor:"rgba(255,255,255,0.06)",stack:"prog"});
+  const boundaries=AP127_SYLLABUS_PHASES.slice(1).map(p=>({idx:p.lo-1,label:p.label})); // Phase I starts at 0, no line needed
   const currentLabelPlugin={
     id:"d127v4CurrentLabel",
     afterDatasetsDraw(chart){
       const{ctx}=chart;
       ctx.save();ctx.font="9px JetBrains Mono, monospace";ctx.fillStyle="#8b949e";ctx.textAlign="left";ctx.textBaseline="middle";
-      const meta=chart.getDatasetMeta(0);
+      const meta=chart.getDatasetMeta(AP127_SYLLABUS_PHASES.length-1); // end of the last real phase segment = done position
       sorted.forEach((s,i)=>{
         const bar=meta.data[i];if(!bar)return;
         const last=(s.flown||[]).at(-1);
@@ -1067,49 +1055,43 @@ function buildAP127OverallChart(all,curriculum,maxDate){
       ctx.restore();
     }
   };
-  const milestonePlugin={
-    id:"d127v4Milestones",
+  const boundaryPlugin={
+    id:"d127v4PhaseBoundaries",
     afterDatasetsDraw(chart){
       const{ctx,scales:{x,y}}=chart;
-      if(!milestones.length)return;
       ctx.save();
-      milestones.forEach(m=>{
-        const px=x.getPixelForValue(m.idx);
-        ctx.strokeStyle="rgba(232,138,255,0.55)";ctx.lineWidth=1.3;ctx.setLineDash([5,3]);
+      boundaries.forEach(b=>{
+        const px=x.getPixelForValue(b.idx);
+        ctx.strokeStyle="rgba(255,255,255,0.32)";ctx.lineWidth=1.2;ctx.setLineDash([4,3]);
         ctx.beginPath();ctx.moveTo(px,y.top);ctx.lineTo(px,y.bottom);ctx.stroke();
         ctx.setLineDash([]);
-        ctx.font="700 8.5px JetBrains Mono, monospace";ctx.fillStyle="#e88aff";ctx.textAlign="left";ctx.textBaseline="top";
-        ctx.fillText(m.label,px+3,y.top+2);
+        ctx.font="700 8.5px JetBrains Mono, monospace";ctx.fillStyle="#c9d1d9";ctx.textAlign="left";ctx.textBaseline="top";
+        ctx.fillText(b.label,px+3,y.top+2);
       });
       ctx.restore();
     }
   };
   const legend=document.getElementById("d127v4-overall-legend");
   if(legend){
-    legend.innerHTML=[...AP127_PHASE_DEFS,AP127_PHASE_OTHER].map(d=>`<span class="d127-pc"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("")
-      +`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#e88aff;border-radius:2px;width:14px;height:3px"></span>major stage begins</span>`;
+    legend.innerHTML=AP127_SYLLABUS_PHASES.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("")
+      +`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:rgba(255,255,255,0.32);border-radius:2px;width:14px;height:3px"></span>phase boundary</span>`;
   }
   CHARTS.ap127overall=mkC("d127v4-overall",{
     type:"bar",
-    data:{labels:sorted.map(s=>ap127ShortName(s.name)),datasets:[{
-      label:"Lesson reached",
-      data:sorted.map(s=>s.done||0),
-      backgroundColor:barColors,
-      barPercentage:.7,
-    }]},
+    data:{labels:sorted.map(s=>ap127ShortName(s.name)),datasets},
     options:{
       indexAxis:"y",responsive:true,maintainAspectRatio:false,
       plugins:{
         datalabels:{display:false},
         legend:{display:false},
-        tooltip:{callbacks:{label:ctx=>`Lesson ${ctx.parsed.x} of ${totalLessons}`}}
+        tooltip:{filter:item=>item.dataset.label!=="Remaining",callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x} lessons`}}
       },
       scales:{
-        x:{min:0,max:totalLessons,ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e"},grid:{color:"#21262d"},title:{display:true,text:"Lesson number",color:"#6e7681",font:{family:"JetBrains Mono",size:8}}},
-        y:{afterFit:scale=>{scale.width=100;},ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e",autoSkip:false},grid:{color:"#21262d"}}
+        x:{stacked:true,min:0,max:totalLessons,ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e"},grid:{color:"#21262d"},title:{display:true,text:"Lesson number",color:"#6e7681",font:{family:"JetBrains Mono",size:8}}},
+        y:{stacked:true,afterFit:scale=>{scale.width=100;},ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e",autoSkip:false},grid:{color:"#21262d"}}
       }
     },
-    plugins:[currentLabelPlugin,milestonePlugin]
+    plugins:[currentLabelPlugin,boundaryPlugin]
   });
 }
 
@@ -1593,11 +1575,12 @@ function buildAP127Funnel(all){
   if(!all.length)return;
   const cur=G.cur127||[];
   const n=all.length;
-  const phaseSlots=AP127_PHASE_DEFS.map(p=>({...p,total:cur.filter(c=>p.test.test(String(c.lesson||"").trim())).length}));
+  const inPhase=(code,p)=>{const num=ap127LessonNum(code);return num!=null&&num>=p.lo&&num<=p.hi;};
+  const phaseSlots=AP127_SYLLABUS_PHASES.map(p=>({...p,total:cur.filter(c=>inPhase(c.lesson,p)).length}));
   const labels=phaseSlots.map(p=>p.label);
   const doneData=phaseSlots.map(p=>{
     let done=0;
-    all.forEach(s=>{done+=(s.flown||[]).filter(f=>p.test.test(String(f.lesson||"").trim())).length;});
+    all.forEach(s=>{done+=(s.flown||[]).filter(f=>inPhase(f.lesson,p)).length;});
     return done;
   });
   const totalSlots=phaseSlots.map(p=>p.total*n);
@@ -1622,41 +1605,6 @@ function buildAP127Funnel(all){
       scales:{
         x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e"},grid:{color:"#21262d"}},
         y:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#8b949e"},grid:{display:false}}
-      }
-    }
-  });
-}
-
-// ── Weekday Activity Pattern ──
-function buildAP127Weekday(all){
-  if(!all.length)return;
-  const cur=G.cur127||[];
-  const lessonsMap={};cur.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
-  const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-  const lessons=new Array(7).fill(0), hours=new Array(7).fill(0);
-  all.forEach(s=>(s.flown||[]).forEach(f=>{
-    if(!f.date)return;
-    const dow=(new Date(f.date+"T00:00:00").getDay()+6)%7;
-    lessons[dow]++;
-    hours[dow]+=(ap127FlightMins(f)||lessonsMap[f.lesson]||0)/60;
-  }));
-  CHARTS.ap127weekday=mkC("d127v4-weekday",{
-    type:"bar",
-    data:{labels:WD,datasets:[
-      {label:"Lessons",data:lessons,backgroundColor:"rgba(56,189,248,0.65)",yAxisID:"y",borderRadius:3},
-      {label:"Hours",data:hours.map(v=>+v.toFixed(1)),backgroundColor:"rgba(232,138,255,0.55)",yAxisID:"y1",borderRadius:3},
-    ]},
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      plugins:{
-        legend:{display:true,labels:{color:"#8b949e",font:{family:"JetBrains Mono",size:9},boxWidth:10}},
-        datalabels:{anchor:"end",align:"top",color:"#8b949e",font:{family:"JetBrains Mono",size:8},
-          formatter:(v,ctx)=>ctx.dataset.label==="Hours"?v.toFixed(1)+"h":v},
-      },
-      scales:{
-        x:{ticks:{font:{family:"JetBrains Mono",size:9},color:"#8b949e"},grid:{display:false}},
-        y:{position:"left",beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#38bdf8"},grid:{color:"#21262d"}},
-        y1:{position:"right",beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#e88aff"},grid:{display:false}}
       }
     }
   });
@@ -1687,7 +1635,7 @@ function buildAP127Roster(){
   const all=ap127AsOfStudents();if(!all.length)return;
   const today=ap127AsOf();
   const rangeEl=document.getElementById("d127v4-roster-range");
-  const rangeVal=rangeEl?parseInt(rangeEl.value||"60"):60;
+  const rangeVal=rangeEl?parseInt(rangeEl.value||"30"):30;
   const batchStart=all.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort()[0]||today;
   const start=rangeVal===0?batchStart:(()=>{const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-rangeVal);return d.toISOString().slice(0,10);})();
   const rangeLabel=rangeVal===0?`All time · since ${ap127ShortDate(batchStart)}`:`Last ${rangeVal}d`;
@@ -1696,26 +1644,32 @@ function buildAP127Roster(){
   const days=ap127AllDatesRange(start,today);
   const sorted=[...all].sort((a,b)=>a.name.localeCompare(b.name));
 
-  const CELL_W=Math.max(8,Math.min(16,Math.floor(760/Math.max(days.length,1))));
+  const CELL_W=Math.max(7,Math.min(15,Math.floor(760/Math.max(days.length,1))));
   let heatHtml=`<table class="d127v4-heat-table"><thead><tr><th class="d127v4-heat-name">Name</th><th class="d127v4-heat-total">Total</th>`;
+  let lastMonth=null;
   days.forEach((d,i)=>{
     const dObj=new Date(d+"T12:00:00Z");
     const isMon=dObj.getUTCDay()===1;
     const show=i===0||isMon||CELL_W>=14;
-    heatHtml+=`<th style="width:${CELL_W}px;min-width:${CELL_W}px;padding:0">${show?`<div class="d127v4-heat-daylbl">${dObj.getUTCDate()}</div>`:""}</th>`;
+    const month=dObj.getUTCMonth();
+    const newMonth=month!==lastMonth;
+    if(show)lastMonth=month;
+    const lbl=show?(newMonth?dObj.toLocaleDateString("en-GB",{day:"numeric",month:"short",timeZone:"UTC"}):String(dObj.getUTCDate())):"";
+    heatHtml+=`<th style="width:${CELL_W}px;min-width:${CELL_W}px;padding:0">${lbl?`<div class="d127v4-heat-daylbl">${lbl}</div>`:""}</th>`;
   });
   heatHtml+=`</tr></thead><tbody>`;
   sorted.forEach(s=>{
-    const byDate={};(s.flown||[]).forEach(f=>{if(f.date)byDate[f.date]=(byDate[f.date]||0)+(ap127FlightMins(f)/60||0.1);});
-    const total=days.reduce((a,d)=>a+(byDate[d]||0),0);
-    heatHtml+=`<tr><td class="d127v4-heat-name"><b>${ap127ShortName(s.name)}</b><small>${s.nick||""}</small></td><td class="d127v4-heat-total">${total.toFixed(1)}h</td>`;
+    const inRange=(s.flown||[]).filter(f=>f.date&&f.date>=start&&f.date<=today);
+    const totalHrs=inRange.reduce((a,f)=>a+(ap127FlightMins(f)/60||0),0);
+    heatHtml+=`<tr><td class="d127v4-heat-name"><b>${ap127ShortName(s.name)}</b></td><td class="d127v4-heat-total">${inRange.length}L · ${totalHrs.toFixed(1)}h</td>`;
     days.forEach(d=>{
       const dayFlights=(s.flown||[]).filter(f=>f.date===d);
-      let bg="var(--s3)",title=`${d}: —`;
+      let bg="var(--s3)",title=`${ap127ShortName(s.name)} · ${ap127FmtDate(d)}: no flight`;
       if(dayFlights.length){
-        const ph=ap127LessonPhase(dayFlights[0].lesson);
+        const ph=ap127SyllabusPhase(dayFlights[0].lesson);
         bg=ph.c;
-        title=`${ap127ShortName(s.name)} · ${d} · ${dayFlights.map(f=>f.lesson).join(", ")}`;
+        const detail=dayFlights.map(f=>`${f.lesson} (${hm(ap127FlightMins(f))||"—"})`).join(", ");
+        title=`${ap127ShortName(s.name)} · ${ap127FmtDate(d)} · ${detail}`;
       }
       heatHtml+=`<td style="padding:1px"><div class="d127v4-heat-cell" style="background:${bg}" title="${escHtml(title)}"></div></td>`;
     });

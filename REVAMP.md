@@ -860,3 +860,55 @@ milestone lines checked against the actual curriculum data (Initial Solo line la
 Multiengine ~lesson 90, matching where `CSP*`/`CM*` codes first appear in `progress-data.js`), both
 roster range selectors exercised including "All time," zero console errors. Only files touched:
 `js/view-cohort-v4.js`, `css/progress.css`.
+
+### AP127 Detail V4 — authoritative syllabus phases (2026-08-02, p123)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Third round of same-day feedback on the `p121`/`p122` builds above. The user pointed at
+`https://ap127-flight-training.pages.dev` (Study > Diagram tab) as the source of truth for "phase" —
+worth reading closely, because the two prior attempts at phase classification (`p121`'s prefix/
+substring guesses off the lesson code letters, `p122`'s "first occurrence of Solo/Multiengine"
+milestones) were both approximations of something that turned out to have an exact, machine-readable
+answer.
+
+- **Found the real data.** That site loads `data/syllabus.json` (confirmed via
+  `read_network_requests`, then fetched directly with `fetch()` in the browser console) — 4 official
+  phases with exact lesson-NUMBER ranges: **Phase I "Basic Flight Training" 1-13**, **Phase II
+  "Consolidation and IFR Introduction" 14-32**, **Phase III "Advanced VFR and Night Flying" 33-55**,
+  **Phase IV "IFR and Multi-Engine Training" 56-96** (96 lessons total, matching the app's own
+  "96-lesson curriculum" figure). It also ships a `lessonCodeKey` decoder: `C`=Check (as a
+  *trailing* suffix — `CSPGLC`, `CSPXVC`, `CSPXIC`, `CMSPXIC`, exactly the 4 codes ending in `C`,
+  matching the diagram's own "CHK 4" tally), `D`=Dual, `S`=Solo, `SP`=SPIC, `M`=Multi-Engine,
+  `G`=General Handling, `I`=IFR, `N`=Night, `XV`=VFR Cross Country, `XI`=IFR Cross Country. Every
+  code in `progress-data.js` decodes cleanly against this key.
+- **Replaced the classifier.** Since every AP127 lesson code ends in its curriculum lesson number
+  (`"CSPGL 36"` = lesson 36 — verified against the syllabus.json dump directly, not assumed), phase
+  membership is now a plain number-range lookup (`ap127SyllabusPhase()`/`ap127LessonNum()`) instead
+  of the old regex guessing. This is exact, not heuristic.
+- **Made "phase" mean the same thing everywhere in V4.** The user asked for Overall Progress's phase
+  colors to match Flight Timeline and the Roster — they didn't, because each had grown its own
+  classification independently across the three rounds. All four phase-colored surfaces (Timeline
+  dots, Roster heatmap cells, Phase Progress Funnel, Overall Progress) now call the same
+  `ap127SyllabusPhase()` and share the same 4-color palette (chosen to match the syllabus site's own
+  Ph.1-4 timeline bar colors, so it's a familiar mapping to anyone who's used that site).
+- **Overall Progress Bar View, third design.** Back to a **stacked** bar per SP (the `p122` build had
+  reverted to a single solid bar per explicit user request at the time) — this time stacked by the
+  real 4 phases, plus **fixed dashed boundary lines at the exact lesson numbers each phase starts**
+  (14, 33, 56 — not the approximate "first SP/PIC or CM code" markers from `p122`). Legend and bar
+  colors now match Timeline/Roster exactly.
+- **Removed Weekday Activity Pattern** (one of the 3 bonus additions from the original `p121` build) —
+  explicit user call, not requested going forward.
+- **Roster polish:** dropped the SP callsign line under each name (one less thing competing for
+  space); the Total column now reads `"18L · 24.7h"` (lesson count alongside hours, was hours-only);
+  day-column headers show `"1 Jul"` on the first visible column of a new month instead of a bare day
+  number every time; cell hover text now includes each flight's duration (`"CSGL 24 (1h15m)"`, was
+  just the lesson code); default range dropped from 60 to 30 days (By-Instructor already inherited
+  this via the shared selector from the `p122` round); heatmap cell size, row padding, and font sizes
+  tightened further.
+
+Verified live on a local static server: both tabs, zero console errors, Overall Progress boundary
+lines land exactly at lesson 14/33/56, Phase Progress Funnel shows real per-phase completion
+(100%/92%/11%/0% at verification time, previously one lumped "mostly Other" bucket), Roster's "All
+time" range and cell hover detail both re-checked after the rewrite. Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css`.

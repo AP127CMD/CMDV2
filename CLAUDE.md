@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p123` (all currently at p122)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p124` (all currently at p123)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,31 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p122` (2026-08-02 — **AP127 Detail V4 follow-up round**, same day as the
+**Last known:** all files `p123` (2026-08-02 — **AP127 Detail V4 — authoritative syllabus phases**,
+third round of same-day feedback on the `p122` build below. Discovered the real curriculum structure
+by fetching `data/syllabus.json` from the user-referenced `https://ap127-flight-training.pages.dev`
+(Study > Diagram tab): 4 official phases, exact lesson-NUMBER ranges (Phase I 1-13 "Basic Flight
+Training", Phase II 14-32 "Consolidation and IFR Introduction", Phase III 33-55 "Advanced VFR and
+Night Flying", Phase IV 56-96 "IFR and Multi-Engine Training") plus a lesson-code decoder key
+(C=Check suffix, D=Dual, S=Solo, SP=SPIC, M=Multi-Engine, G/I/N/X=activity letters). Replaced the
+old prefix/substring-guessing `ap127LessonPhase()` with `ap127SyllabusPhase()` — exact, since every
+lesson code ends in its curriculum lesson number (e.g. "CSPGL 36" = lesson 36) and phase membership
+is a direct number-range lookup, no more inference. Applied this SAME classifier everywhere "phase"
+appears in V4 — Flight Timeline dots, Roster heatmap cells, Phase Progress Funnel, and Overall
+Progress — so they're now colour-consistent (previously Overall Progress used one ad hoc scheme,
+Timeline/Roster another). Overall Progress Bar View rebuilt again: back to a STACKED bar per SP (one
+segment per phase, up to 4), with fixed dashed boundary lines at the exact lesson numbers each phase
+starts (14/33/56) — this replaces the two prior attempts (stacked-by-guessed-phase in `p121`, then
+single-bar-with-approximate-milestones in `p122`) now that the real boundaries are known. Removed
+the Weekday Activity Pattern chart (user's bonus-feature call, not requested). Roster: no more SP
+callsign under the name, Total column now shows lesson count alongside hours ("18L · 24.7h"), day
+headers show month on the first visible column of each month, cell hover text now includes flight
+duration, default range dropped to 30 days (matching By-Instructor's own default), and both the
+heatmap and the row/column CSS were tightened further for density. Verified live (local static
+server): both tabs, zero console errors, Overall Progress boundary lines land exactly at lesson
+14/33/56 as expected, Phase Progress Funnel now shows real per-phase completion (100%/92%/11%/0% at
+verification time) instead of one lumped bucket. Only files touched: `js/view-cohort-v4.js`,
+`css/progress.css`. Full write-up: REVAMP.md's p123 entry.) p122 (2026-08-02 — **AP127 Detail V4 follow-up round**, same day as the
 `p121` build below, per direct user feedback after using the live `p121` tab. (1) **Overall Progress
 Bar View reworked again** — user wanted the stacked-by-phase bars replaced with a single bar per SP
 (x-axis = lesson number reached, no accumulation/stacking), colored by the phase of their last-flown
