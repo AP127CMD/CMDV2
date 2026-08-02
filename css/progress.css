@@ -173,6 +173,8 @@
 .d127v4-heat-name b{font-size:9.5px;font-weight:700;}
 .d127v4-heat-total{white-space:nowrap;padding:0 8px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--tx2);}
 .d127v4-heat-cell{width:12px;height:13px;border-radius:2px;background:var(--s3);cursor:default;}
+.d127v4-heat-cell.d127v4-heat-today{box-shadow:inset 0 0 0 1.5px var(--c127);}
+th.d127v4-heat-today-col{background:color-mix(in oklch,var(--c127) 14%,transparent);}
 .d127v4-heat-daylbl{font-family:'JetBrains Mono',monospace;font-size:6.5px;color:var(--tx3);text-align:center;white-space:nowrap;}
 .d127v4-heat-group td{padding:5px 10px!important;background:var(--s2);position:sticky;left:0;}
 .d127v4-fi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:6px 10px;align-items:start;}

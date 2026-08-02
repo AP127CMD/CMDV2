@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p125` (all currently at p124)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p126` (all currently at p125)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,47 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p124` (2026-08-02 — **AP127 Detail V4 — Pace Monitor clarity + Daily
+**Last known:** all files `p125` (2026-08-02 — **AP127 Detail V4 — cross-chart consistency pass**,
+fifth round of same-day feedback, and the most consequential one: found and fixed a real numeric
+discrepancy, not just UX polish. **Root cause: two competing "hours per flight" formulas coexisted
+across the tab.** `ap127Hours()` (used by the KPI card, Progress Ranking table, Pace Monitor —
+inherited unchanged from the original tab) computes each flight's hours as
+`lessonsMap[lesson]||actualMins` (curriculum's standard duration wins, actual logged duration is
+only a fallback). Six panels added across earlier V4 rounds — Actual vs Planned, Combined Progress's
+chart line, Batch Lead/Lag History, Individual Lead/Lag vs Plan, Daily Output, and the Roster —
+had each independently reinvented the same per-flight sum with the fallback order REVERSED
+(`actualMins||lessonsMap[lesson]`) or dropped entirely (Roster: actual-only, no fallback). Same real
+flights, different totals, because standard and actual durations aren't always identical. User
+caught it by comparing Batch Lead/Lag History's "Now" (-880.7h at the time) against the KPI card
+and Combined Progress vs Plan's "vs Plan Today," which agreed with each other but not with Batch
+Lead/Lag. Fixed by rewriting all six sites to call the same `lessonsMap[lesson]||actualMins`
+formula (Roster gained its own local `lessonsMap`/`hrsOf()` since it didn't have one). Re-verified
+live: KPI card, Combined Progress vs Plan, and Batch Lead/Lag History now all show **-880.7h**
+identically (was -880.7h / -880.7h / a different number before the fix); lessons mode spot-checked
+too (-337 across all three, was already consistent since lesson *counting* was never ambiguous —
+only the hours *conversion* per lesson was). Also this round: (1) **Pace Distribution's average
+line was landing in the wrong bin entirely**, not just off-center — `avgDone` is a fractional mean
+(e.g. 32.96) but bins are integer-bounded (`[31,32]`, `[33,34]`, ...), so a `>=lo && <=hi` match
+left a gap no fractional value could ever land in, silently falling through to the "last bin"
+fallback and drawing the line at the far right of the chart regardless of the real average; fixed
+by matching against the bin's true continuous range `[lo, hi+1)`, then interpolating the exact
+pixel position within that bin (the fix from the previous session only handled the second half of
+this — worth re-verifying claimed fixes against real rendered output, which is exactly how this
+deeper bug surfaced). Pace Distribution bars now also show the full SP name list on hover, not just
+a count. (2) **Roster "today" highlight matched nothing** — `ap127AllDatesRange()` (and two sibling
+helpers) parsed date strings as LOCAL midnight but serialized via `.toISOString()` (always UTC),
+silently shifting every generated date backward by one day in any timezone east of UTC (Bangkok
+included) — the exact bug class this project's CLAUDE.md already documents from prior `bkkToday()`/
+`bkkNowMin()` incidents, just newly reintroduced in V4-only code. Fixed by parsing and stepping in
+UTC throughout. Roster flight cells are now clickable (opens the same student drawer used
+elsewhere). (3) **Overall Progress Bar View gained a "MASTER PLAN" reference row** (the full
+96-lesson curriculum, always 100% filled, as row 0) plus finer syllabus key points beyond the 4
+phase boundaries — Initial Solo (lesson 14), Instrument (15), Cross-Country (29), Sim (56),
+Multi-Engine (91), and all 4 Checkride lessons (54/55/90/96) — computed dynamically from
+`G.cur127`'s own lesson codes via the same decoder key as the phase classifier, not hardcoded.
+Verified live end-to-end: both tabs, zero console errors, original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file touched:
+`js/view-cohort-v4.js`. Full write-up: REVAMP.md's p125 entry.) p124 (2026-08-02 — **AP127 Detail V4 — Pace Monitor clarity + Daily
 Output off-days toggle**, fourth round of same-day feedback. (1) **Pace Monitor's day/month
 sub-labels were asymmetric and confusing** — the "1 SP" section's bullets showed "≈ X / day"
 underneath, the "28 SP" section's showed "≈ X / month" underneath, both under an identically-worded

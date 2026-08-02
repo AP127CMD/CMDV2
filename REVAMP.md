@@ -945,3 +945,72 @@ Verified live (local static server): both tabs, zero console errors, toggle exer
 states (visible gaps for off-days when on, packed contiguous bars when off), Pace Monitor's 1-SP and
 28-SP sections both re-checked showing the identical `day · month` footnote format. Only file
 touched: `js/view-cohort-v4.js`.
+
+### AP127 Detail V4 — cross-chart consistency pass (2026-08-02, p125)
+
+`js/view-cohort-v4.js`
+
+Fifth round of same-day feedback. This one surfaced a real numeric bug, not just UX polish — the
+user asked *"why is Done vs Plan different between charts?"* after noticing Batch Lead/Lag
+History's "Now" delta didn't match the KPI card or Combined Progress vs Plan.
+
+**The hours-per-flight inconsistency.** `ap127Hours()` — the helper behind the KPI card, Progress
+Ranking table, and Pace Monitor, inherited unchanged from the original AP127 Detail tab — computes
+each flight's hours as `lessonsMap[f.lesson] || ap127FlightMins(f)`: the curriculum's *standard*
+duration for that lesson code wins; the flight's own logged duration is only a fallback for codes
+missing from the curriculum. Across the four earlier V4 rounds, six other panels independently
+reimplemented "hours done" with the fallback order **reversed** —
+`ap127FlightMins(f) || lessonsMap[f.lesson]` (actual-first) — or dropped the fallback entirely:
+
+- Actual vs Planned (`buildAP127RaceChart`'s `cumSeries`)
+- Combined Progress vs Plan's chart line (`buildAP127CombinedChart`'s `actualByDate` — note this
+  is distinct from the panel's own KPI tiles above the chart, which already called `ap127Hours()`
+  and were therefore already correct; only the plotted line itself was off)
+- Batch Lead/Lag History (`buildAP127HistBatch`)
+- Individual Lead/Lag vs Plan (`buildAP127HistSolo`)
+- Daily Output (`buildAP127LessonBar`)
+- Roster (`buildAP127Roster`'s Total column and By-Instructor hours — this one had no fallback at
+  all, pure `ap127FlightMins(f)`)
+
+Same real flights, different totals, because a lesson's actual flown duration and its curriculum
+standard duration aren't always identical — accumulated over hundreds of flights, this produces a
+visibly different "hours done" figure depending on which panel you're looking at. Fixed by rewriting
+all six sites to the same `lessonsMap[f.lesson] || ap127FlightMins(f)` formula (Roster gained its
+own local `lessonsMap` + `hrsOf()` helper since it never had one). `ap127Hours()` now carries a
+comment documenting this as the canonical convention, so a future addition doesn't reinvent it a
+seventh way.
+
+Re-verified live via `window.CHARTS_V4`/DOM inspection rather than eyeballing: KPI card, Combined
+Progress vs Plan's "vs Plan Today," and Batch Lead/Lag History's "Now" all read **-880.7h**
+identically post-fix (they disagreed before). Lessons mode spot-checked too (-337 across all three)
+— already consistent beforehand, since lesson *counting* is just `(s.flown||[]).length`, unambiguous
+regardless of formula; only the hours *conversion per lesson* was ever in question.
+
+**Two more real bugs found while re-verifying the previous session's claimed fixes against actual
+rendered output** (both from earlier today's rounds, not newly introduced):
+
+- **Pace Distribution's average line landed in the wrong bin, not just off-center.** The prior fix
+  (same day, earlier round) corrected the *within-bin* interpolation but missed a more fundamental
+  issue: `avgDone` is a fractional mean (e.g. 32.96), but bins are integer-bounded (`[31,32]`,
+  `[33,34]`, ...) and the match used `avgDone >= b.lo && avgDone <= b.hi` — a fractional value like
+  32.96 satisfies neither `<=32` nor `>=33`, falls through every bin, and the `findIndex` failure
+  fallback (`bins.length-1`) drew the line at the far right of the chart regardless of the real
+  average. Confirmed live before fixing: labeled "AVG 33.0" but rendered between the "41–42" and
+  "43" bins instead of near "31–32"/"33–34" where 33.0 actually sits. Fixed by matching against
+  each bin's true continuous range `[lo, hi+1)`. Also added: hovering a bar now lists the actual SP
+  names in that bin, not just a count.
+- **Roster's "highlight today" matched nothing, ever.** `ap127AllDatesRange()` (and its siblings
+  `ap127v4WeekStart`/`ap127v4PeriodRange`, all V4-only, added in earlier rounds) parsed date strings
+  as LOCAL midnight but serialized via `.toISOString()`, which is always UTC — in any timezone east
+  of UTC (Bangkok included) this silently shifts every generated date string back by a day, so the
+  generated day list never actually contained the string equal to `ap127AsOf()`'s (timezone-correct)
+  "today." This is the exact bug class this project has hit and fixed before in `bkkToday()`/
+  `bkkNowMin()` — just freshly reintroduced in new V4-only helpers. Confirmed live: 0 elements
+  matched `.d127v4-heat-today` anywhere in the DOM before the fix, 28 after (one per student row)
+  plus the header column. Fixed by parsing with a `Z` suffix and stepping via `setUTCDate`/
+  `setUTCMonth` throughout all three helpers. Roster flight cells are now also clickable (opens the
+  same student drawer used elsewhere in the tab), and marker labels near the Overall Progress
+  chart's right edge (lessons close to 96) now right-align instead of running off-canvas.
+
+Verified live end-to-end: both tabs, zero console errors, original AP127 Detail (`js/view-cohort.js`)
+confirmed still byte-identical/untouched. Only file touched: `js/view-cohort-v4.js`.
