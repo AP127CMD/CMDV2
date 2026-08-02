@@ -139,7 +139,7 @@
 
 /* ##AP127V4CSS_START## — AP127 DETAIL V4 (additive; .d127- classes above are reused as-is) */
 .d127v4-sticky{position:sticky;top:0;z-index:90;background:var(--bg);border-bottom:1px solid var(--bd);padding:8px 16px;display:flex;flex-direction:column;gap:8px;margin:0 -14px;}
-.d127v4-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.d127v4-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
 .d127v4-card{background:var(--s2);border:1px solid var(--bd2);border-radius:7px;padding:9px 12px;text-align:center;}
 .d127v4-card .d127-kl{justify-content:center;}
 .d127v4-card .d127-kv{font-size:22px;}
@@ -154,6 +154,7 @@
 .d127v4-bullet-target-lbl{position:absolute;top:-16px;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--tx2);white-space:nowrap;}
 .d127v4-sec-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--c127);text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px;}
 .d127v4-sec-lbl:first-child{margin-top:0;}
+.d127v4-sec-lbl-sub{font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin:9px 0 6px;opacity:.85;}
 .d127v4-action-banner{border-left:3px solid var(--acc);background:var(--s2);border-radius:0 7px 7px 0;padding:10px 12px;margin-top:12px;font-size:11.5px;line-height:1.6;color:var(--tx2);}
 .d127v4-action-banner b{color:var(--tx);}
 @media(max-width:900px){.d127v4-cards{grid-template-columns:repeat(2,1fr);}.d127v4-bullets{grid-template-columns:1fr;}}

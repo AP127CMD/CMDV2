@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p128` (all currently at p127)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p129` (all currently at p128)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,20 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p127` (2026-08-02 — **AP127 Detail V4 — KPI card hours + curriculum-hours
+**Last known:** all files `p128` (2026-08-02 — **AP127 Detail V4 — Pace Monitor: Day/Week/Month
+bars + Plan End countdown**, eighth round of same-day feedback. Removed the "Cohort ETC" card (a
+single-number ETC computed from all-time average pace felt redundant next to the per-period bars
+below it). "Plan End" card now shows a "Xd remaining" subline (days from today to the 27 Nov 2026
+curriculum end date, reusing the already-computed `daysRem`). The Pace Monitor's actual-vs-target
+bars — previously one "per week" bar per metric with a text-only day/month conversion footnote —
+are now three fully separate bar pairs (Per Day / Per Week / Per Month), each showing its own
+actual, target, and an explicit `(+/-Xh gap)` readout, for both the "1 SP" and "28 SP · Batch
+Total" sections (12 bars total, up from 4). Cards grid dropped from 4 to 3 columns to match. Dead
+code from the removed ETC card (`avgHrsDone`/`avgRemHrs`/`allTimeDaySP`/`etcDate` calc) removed
+too. Verified live: bars render correctly for both sections, gap figures match actual-minus-target
+by hand-check, zero console errors, original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progress.css`. Full
+write-up: REVAMP.md's p128 entry.) p127 (2026-08-02 — **AP127 Detail V4 — KPI card hours + curriculum-hours
 disclosure**, seventh round of same-day feedback. Two small KPI-card additions: (1) "Batch Progress"
 card's subtext now shows hours done alongside lessons done — `923 les / 1,135.3h of 2688 les / 5040h
 flown` — instead of lessons-only; (2) "Students" card's subtext now shows the curriculum's total hours

@@ -1062,3 +1062,35 @@ Verified live: both cards render the new figures correctly, tooltip text confirm
 inspection (`document.getElementById('d127v4-k-stu-s').title`), zero console errors, original
 AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched (`git diff --stat`
 empty). Only file touched: `js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump).
+
+### AP127 Detail V4 — Pace Monitor: Day/Week/Month bars + Plan End countdown (2026-08-02, p128)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Eighth round of same-day feedback:
+
+1. **Plan End card** — added a "Xd remaining" subline: days from today to the curriculum's final
+   `planned_date` (27 Nov 2026), reusing the already-computed `daysRem`.
+2. **Removed the Cohort ETC card** — a single all-time-average-pace ETC date felt redundant once
+   the per-period Day/Week/Month bars below it show the same gap information more precisely.
+3. **Pace bars split into Day / Week / Month** — previously each metric (Hours, Lessons) got one
+   "per week" bar with a text-only "≈ X/day · Y/month" footnote underneath. Now there are three
+   fully independent bar pairs per section — Per Day, Per Week, Per Month — each computed via a
+   new `toPeriods(weeklyValue)` helper (`day = wk/7`, `week = wk`, `month = wk*4.345`) applied to
+   both the actual and target weekly figures already computed upstream. Each bar's label now shows
+   an explicit gap: `actual / target X (±Y gap)`, colored red/green to match the bar fill — instead
+   of requiring the reader to subtract two numbers by eye. Applies to both the "1 SP" and "28 SP ·
+   Batch Total" sections (12 bars total, up from 4).
+
+Cleanup: the Cohort ETC card's supporting calc (`avgHrsDone`, `avgRemHrs`, `allTimeDaySP`,
+`etcDate`/`etcColor`/`etcSub`) is now dead code with the card gone, so it was removed rather than
+left orphaned. `.d127v4-cards` grid dropped from `repeat(4,1fr)` to `repeat(3,1fr)` to match the
+3 remaining cards (Plan End, On Track, At Risk). New `.d127v4-sec-lbl-sub` CSS class for the
+Day/Week/Month sub-headers (smaller/dimmer than the existing `.d127v4-sec-lbl` section headers, so
+the two nesting levels stay visually distinct).
+
+Verified live: both sections render all 6 period-blocks (Per Day/Week/Month × Hours/Lessons)
+correctly, gap figures hand-checked against actual-minus-target, zero console errors, original
+AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched (`git diff --stat`
+empty). Only files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the usual
+`index.html` cache-bust bump).

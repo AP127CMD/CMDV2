@@ -400,12 +400,6 @@ function renderAP127Pace(){
   const gHrWk=nHrWkSP!==null?aHrWkSP-nHrWkSP:null;
   const gLesWk=nLesWkSP!==null?aLesWkSP-nLesWkSP:null;
 
-  const avgHrsDone=totalHrsDone/n;
-  const avgRemHrs=Math.max(currHrs-avgHrsDone,0);
-  const allTimeDaySP=avgHrsDone/daysFromStart;
-  let etcDate=null;
-  if(allTimeDaySP>0&&avgRemHrs>0){etcDate=new Date(new Date(today+"T00:00:00").getTime()+(avgRemHrs/allTimeDaySP)*86400000).toISOString().slice(0,10);}
-  else if(avgRemHrs<=0){etcDate=today;}
   let onTime=0,atRisk=0;const etcDelays=[];
   all.forEach(s=>{
     const sHrs=(s.flown||[]).reduce((a,f)=>a+fHrsOf(f),0);
@@ -421,29 +415,27 @@ function renderAP127Pace(){
   const fH=h=>h===null?"—":h>=100?h.toFixed(0)+"h":h>=10?h.toFixed(1)+"h":h.toFixed(2)+"h";
   const fL=l=>l===null?"—":l>=100?l.toFixed(0)+" les":l>=10?l.toFixed(1)+" les":l.toFixed(2)+" les";
 
-  // actual/need are always WEEKLY figures — the sub-line always shows the same day+month
-  // breakdown underneath both the 1-SP and 28-SP sections, so "per week" never gets confused
-  // with "per month" (previously one section's sub-line said "/day", the other said "/month").
+  // Each bar is scoped to ONE period (day/week/month — the caller picks via periodBlock()) and
+  // shows actual, target, and the gap between them explicitly, instead of a single weekly bar
+  // with a text-only day/month footnote (previously ambiguous about which period was "current").
   const bullet=(label,actual,need,fmt)=>{
     const has=need!==null&&need!==undefined;
     const max=Math.max(actual,has?need:0,0.0001)*1.18;
     const actPct=Math.min(100,(actual/max)*100);
     const needPct=has?Math.min(100,(need/max)*100):0;
-    const ahead=has&&actual>=need;
+    const gap=has?actual-need:null;
+    const ahead=has&&gap>=0;
     const color=!has?"var(--tx3)":ahead?"var(--done)":"#ef4444";
-    const sub=`≈ ${fmt(actual/7)} / day · ${fmt(actual*4.345)} / month`;
+    const gapTxt=has?`${gap>=0?"+":"-"}${fmt(Math.abs(gap))} gap`:"";
     return `<div class="d127v4-bullet-row">
-      <div class="d127v4-bullet-lbl"><span>${label}</span><span><b>${fmt(actual)}</b> <span style="color:var(--tx3)">/ target ${has?fmt(need):"—"}</span></span></div>
+      <div class="d127v4-bullet-lbl"><span>${label}</span><span><b>${fmt(actual)}</b> <span style="color:var(--tx3)">/ target ${has?fmt(need):"—"}</span>${has?` <span style="color:${color}">(${gapTxt})</span>`:""}</span></div>
       <div class="d127v4-bullet-track">
         <div class="d127v4-bullet-fill" style="width:${actPct}%;background:${color}"></div>
         ${has?`<div class="d127v4-bullet-target" style="left:${needPct}%" title="Target: ${fmt(need)}"></div>`:""}
       </div>
-      <div style="font-size:9px;color:var(--tx3);margin-top:3px;font-family:'JetBrains Mono',monospace">${sub}</div>
     </div>`;
   };
 
-  const etcColor=(etcDate&&planEndDate&&etcDate>planEndDate)?"#ef4444":"var(--done)";
-  const etcSub=etcDate&&planEndDate&&etcDate>planEndDate?`+${ap127DateDiff(etcDate,planEndDate)}d past plan`:etcDate&&planEndDate?"on/before plan":"—";
   const riskColor=atRisk>0?"#ef4444":"var(--done)";
   const actionMsg=gHrWk!==null&&gHrWk<0
     ?`Batch needs <b style="color:#ef4444">${fH(Math.abs(gHrWk))} / ${fL(Math.abs(gLesWk||0))} more per SP per week</b> to finish by plan date.`
@@ -451,23 +443,32 @@ function renderAP127Pace(){
     :"Plan end date unavailable — required pace can't be computed.";
 
   const cardsHtml=`<div class="d127v4-cards">
-    <div class="d127v4-card"><div class="d127-kl">Plan End</div><div class="d127-kv" style="color:var(--tx3)">${planEndDate?ap127ShortDate(planEndDate):"TBC"}</div></div>
-    <div class="d127v4-card"><div class="d127-kl">Cohort ETC</div><div class="d127-kv" style="color:${etcColor}">${etcDate?ap127ShortDate(etcDate):"—"}</div><div class="d127-ks">${etcSub}</div></div>
+    <div class="d127v4-card"><div class="d127-kl">Plan End</div><div class="d127-kv" style="color:var(--tx3)">${planEndDate?ap127ShortDate(planEndDate):"TBC"}</div><div class="d127-ks">${daysRem!==null?daysRem+"d remaining":"—"}</div></div>
     <div class="d127v4-card"><div class="d127-kl">On Track</div><div class="d127-kv" style="color:var(--done)">${onTime}</div><div class="d127-ks">of ${n} SP</div></div>
     <div class="d127v4-card"><div class="d127-kl">At Risk</div><div class="d127-kv" style="color:${riskColor}">${atRisk}</div><div class="d127-ks">${atRisk>0?"avg +"+avgDelay+"d":"none"}</div></div>
   </div>`;
 
+  // Actual/target broken into Day / Week / Month bars (previously a single "per week" bar with a
+  // text-only day/month footnote) — each period is its own bullet pair with an explicit gap readout.
+  const toPeriods=wk=>(wk===null||wk===undefined)?{day:null,week:null,month:null}:{day:wk/7,week:wk,month:wk*4.345};
+  const aHrSP=toPeriods(aHrWkSP),nHrSP=toPeriods(nHrWkSP),aLesSP=toPeriods(aLesWkSP),nLesSP=toPeriods(nLesWkSP);
+  const aHrB=toPeriods(aHrWkB),nHrB=toPeriods(nHrWkB),aLesB=toPeriods(aLesWkB),nLesB=toPeriods(nLesWkB);
+  const periodBlock=(label,aHr,nHr,aLes,nLes)=>`
+    <div class="d127v4-sec-lbl-sub">${label}</div>
+    <div class="d127v4-bullets">
+      ${bullet("Hours",aHr,nHr,fH)}
+      ${bullet("Lessons",aLes,nLes,fL)}
+    </div>`;
+
   const bulletsHtml=`
-    <div class="d127v4-sec-lbl">1 SP · Per Week Pace</div>
-    <div class="d127v4-bullets">
-      ${bullet("Hours / wk",aHrWkSP,nHrWkSP,fH)}
-      ${bullet("Lessons / wk",aLesWkSP,nLesWkSP,fL)}
-    </div>
-    <div class="d127v4-sec-lbl">28 SP · Batch Total Per Week</div>
-    <div class="d127v4-bullets">
-      ${bullet("Hours / wk",aHrWkB,nHrWkB,fH)}
-      ${bullet("Lessons / wk",aLesWkB,nLesWkB,fL)}
-    </div>
+    <div class="d127v4-sec-lbl">1 SP · Pace vs Target</div>
+    ${periodBlock("Per Day",aHrSP.day,nHrSP.day,aLesSP.day,nLesSP.day)}
+    ${periodBlock("Per Week",aHrSP.week,nHrSP.week,aLesSP.week,nLesSP.week)}
+    ${periodBlock("Per Month",aHrSP.month,nHrSP.month,aLesSP.month,nLesSP.month)}
+    <div class="d127v4-sec-lbl">28 SP · Batch Total vs Target</div>
+    ${periodBlock("Per Day",aHrB.day,nHrB.day,aLesB.day,nLesB.day)}
+    ${periodBlock("Per Week",aHrB.week,nHrB.week,aLesB.week,nLesB.week)}
+    ${periodBlock("Per Month",aHrB.month,nHrB.month,aLesB.month,nLesB.month)}
     <div class="d127v4-action-banner">
       <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Required Action</div>
       ${actionMsg}
