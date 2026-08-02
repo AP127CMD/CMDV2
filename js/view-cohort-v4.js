@@ -55,16 +55,6 @@
     <div class="d127-panel d127-pace-panel">
       <div class="d127-h" style="flex-wrap:wrap;gap:6px">
         <span class="d127-t">Pace Monitor · Situation vs Target</span>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <span style="color:var(--tx3);font-size:10px;font-family:'JetBrains Mono',monospace">ACTUAL RANGE:</span>
-          <select id="d127v4-pace-range" class="d127-wsel" onchange="renderAP127PaceV4()">
-            <option value="7">Last 7 days</option>
-            <option value="14">Last 14 days</option>
-            <option value="30" selected>Last 30 days</option>
-            <option value="60">Last 60 days</option>
-            <option value="0">All time</option>
-          </select>
-        </div>
       </div>
       <div class="d127-body" id="d127v4-pace-body"></div>
     </div>
@@ -376,29 +366,31 @@ function renderAP127Pace(){
   const totalHrsDone=all.reduce((a,s)=>a+(s.flown||[]).reduce((b,f)=>b+fHrsOf(f),0),0);
   const totalLesDone=all.reduce((a,s)=>a+(s.done||0),0);
 
-  const rangeEl=document.getElementById("d127v4-pace-range");
-  const rangeVal=rangeEl?parseInt(rangeEl.value||"30"):30;
-  const rangeDays=rangeVal===0?daysFromStart:rangeVal;
-  const rangeStart=rangeVal===0?batchStart:(()=>{const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-rangeVal);return d.toISOString().slice(0,10);})();
-  const rangeLabel=rangeVal===0?`all time · ${ap127ShortDate(batchStart)} → today`:`last ${rangeDays}d · ${ap127ShortDate(rangeStart)} → today`;
-
-  let actHrs=0,actLes=0;
-  all.forEach(s=>{const wf=(s.flown||[]).filter(f=>f.date&&f.date>=rangeStart&&f.date<=today);actLes+=wf.length;actHrs+=wf.reduce((a,f)=>a+fHrsOf(f),0);});
-  const aHrDayB=actHrs/rangeDays;      const aHrWkB=aHrDayB*7;
-  const aHrWkSP=aHrWkB/n;
-  const aLesDayB=actLes/rangeDays;     const aLesWkB=aLesDayB*7;
-  const aLesWkSP=aLesWkB/n;
+  // Actual pace is measured with a period-appropriate rolling window (wider window = steadier
+  // signal for the coarser period), then normalized to a per-period RATE: the trailing-30d total
+  // is used directly as the monthly rate (30d ≈ 1 month), the trailing-14d total is halved to a
+  // weekly rate, and the trailing-7d total is divided by 7 to a daily rate.
+  const actualOverWindow=days=>{
+    const start=(()=>{const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-days);return d.toISOString().slice(0,10);})();
+    let hrs=0,les=0;
+    all.forEach(s=>{const wf=(s.flown||[]).filter(f=>f.date&&f.date>=start&&f.date<=today);les+=wf.length;hrs+=wf.reduce((a,f)=>a+fHrsOf(f),0);});
+    return{hrs,les};
+  };
+  const w7=actualOverWindow(7),w14=actualOverWindow(14),w30=actualOverWindow(30);
+  const actDayHrsB=w7.hrs/7,       actDayLesB=w7.les/7;
+  const actWeekHrsB=w14.hrs/2,     actWeekLesB=w14.les/2;
+  const actMonthHrsB=w30.hrs,      actMonthLesB=w30.les;
 
   const remHrsB=Math.max((currHrs*n)-totalHrsDone,0);
   const remLesB=Math.max((currLes*n)-totalLesDone,0);
   const daysRem=planEndDate?Math.max(ap127DateDiff(planEndDate,today),0):null;
-  let nHrWkB=null,nHrWkSP=null,nLesWkB=null,nLesWkSP=null;
-  if(daysRem!==null&&daysRem>0){
-    const nHrDayB=remHrsB/daysRem; nHrWkB=nHrDayB*7; nHrWkSP=nHrWkB/n;
-    const nLesDayB=remLesB/daysRem; nLesWkB=nLesDayB*7; nLesWkSP=nLesWkB/n;
-  }
-  const gHrWk=nHrWkSP!==null?aHrWkSP-nHrWkSP:null;
-  const gLesWk=nLesWkSP!==null?aLesWkSP-nLesWkSP:null;
+  const hasReq=daysRem!==null&&daysRem>0;
+  const reqDayHrsB=hasReq?remHrsB/daysRem:null,     reqDayLesB=hasReq?remLesB/daysRem:null;
+  const reqWeekHrsB=hasReq?reqDayHrsB*7:null,       reqWeekLesB=hasReq?reqDayLesB*7:null;
+  const reqMonthHrsB=hasReq?reqDayHrsB*30.44:null,  reqMonthLesB=hasReq?reqDayLesB*30.44:null;
+
+  const gHrWk=hasReq?actWeekHrsB/n-reqWeekHrsB/n:null;
+  const gLesWk=hasReq?actWeekLesB/n-reqWeekLesB/n:null;
 
   let onTime=0,atRisk=0;const etcDelays=[];
   all.forEach(s=>{
@@ -415,27 +407,6 @@ function renderAP127Pace(){
   const fH=h=>h===null?"—":h>=100?h.toFixed(0)+"h":h>=10?h.toFixed(1)+"h":h.toFixed(2)+"h";
   const fL=l=>l===null?"—":l>=100?l.toFixed(0)+" les":l>=10?l.toFixed(1)+" les":l.toFixed(2)+" les";
 
-  // Each bar is scoped to ONE period (day/week/month — the caller picks via periodBlock()) and
-  // shows actual, target, and the gap between them explicitly, instead of a single weekly bar
-  // with a text-only day/month footnote (previously ambiguous about which period was "current").
-  const bullet=(label,actual,need,fmt)=>{
-    const has=need!==null&&need!==undefined;
-    const max=Math.max(actual,has?need:0,0.0001)*1.18;
-    const actPct=Math.min(100,(actual/max)*100);
-    const needPct=has?Math.min(100,(need/max)*100):0;
-    const gap=has?actual-need:null;
-    const ahead=has&&gap>=0;
-    const color=!has?"var(--tx3)":ahead?"var(--done)":"#ef4444";
-    const gapTxt=has?`${gap>=0?"+":"-"}${fmt(Math.abs(gap))} gap`:"";
-    return `<div class="d127v4-bullet-row">
-      <div class="d127v4-bullet-lbl"><span>${label}</span><span><b>${fmt(actual)}</b> <span style="color:var(--tx3)">/ target ${has?fmt(need):"—"}</span>${has?` <span style="color:${color}">(${gapTxt})</span>`:""}</span></div>
-      <div class="d127v4-bullet-track">
-        <div class="d127v4-bullet-fill" style="width:${actPct}%;background:${color}"></div>
-        ${has?`<div class="d127v4-bullet-target" style="left:${needPct}%" title="Target: ${fmt(need)}"></div>`:""}
-      </div>
-    </div>`;
-  };
-
   const riskColor=atRisk>0?"#ef4444":"var(--done)";
   const actionMsg=gHrWk!==null&&gHrWk<0
     ?`Batch needs <b style="color:#ef4444">${fH(Math.abs(gHrWk))} / ${fL(Math.abs(gLesWk||0))} more per SP per week</b> to finish by plan date.`
@@ -448,31 +419,44 @@ function renderAP127Pace(){
     <div class="d127v4-card"><div class="d127-kl">At Risk</div><div class="d127-kv" style="color:${riskColor}">${atRisk}</div><div class="d127-ks">${atRisk>0?"avg +"+avgDelay+"d":"none"}</div></div>
   </div>`;
 
-  // Actual/target broken into Day / Week / Month bars (previously a single "per week" bar with a
-  // text-only day/month footnote) — each period is its own bullet pair with an explicit gap readout.
-  const toPeriods=wk=>(wk===null||wk===undefined)?{day:null,week:null,month:null}:{day:wk/7,week:wk,month:wk*4.345};
-  const aHrSP=toPeriods(aHrWkSP),nHrSP=toPeriods(nHrWkSP),aLesSP=toPeriods(aLesWkSP),nLesSP=toPeriods(nLesWkSP);
-  const aHrB=toPeriods(aHrWkB),nHrB=toPeriods(nHrWkB),aLesB=toPeriods(aLesWkB),nLesB=toPeriods(nLesWkB);
-  const periodBlock=(label,aHr,nHr,aLes,nLes)=>`
-    <div class="d127v4-sec-lbl-sub">${label}</div>
-    <div class="d127v4-bullets">
-      ${bullet("Hours",aHr,nHr,fH)}
-      ${bullet("Lessons",aLes,nLes,fL)}
+  // Big-number stat trio (Required / Actual / Gap) per metric — replaces the earlier bullet-bar
+  // design. One stat() call = one metric's three numbers; statGroup() pairs Hours+Lessons under a
+  // period heading that also documents which rolling window fed the "actual" figure.
+  const stat=(label,required,actual,fmt)=>{
+    const has=required!==null&&required!==undefined;
+    const gap=has?actual-required:null;
+    const ahead=has&&gap>=0;
+    const color=!has?"var(--tx3)":ahead?"var(--done)":"#ef4444";
+    const gapTxt=has?`${gap>=0?"+":"-"}${fmt(Math.abs(gap))}`:"—";
+    return `<div class="d127v4-pace-stat">
+      <div class="d127v4-pace-stat-lbl">${label}</div>
+      <div class="d127v4-pace-stat-row">
+        <div class="d127v4-pace-stat-item"><div class="d127v4-pace-stat-n">${has?fmt(required):"—"}</div><div class="d127v4-pace-stat-k">Required</div></div>
+        <div class="d127v4-pace-stat-item"><div class="d127v4-pace-stat-n" style="color:var(--tx)">${fmt(actual)}</div><div class="d127v4-pace-stat-k">Actual</div></div>
+        <div class="d127v4-pace-stat-item"><div class="d127v4-pace-stat-n" style="color:${color}">${gapTxt}</div><div class="d127v4-pace-stat-k">Gap</div></div>
+      </div>
+    </div>`;
+  };
+  const statGroup=(label,windowNote,reqHr,actHr,reqLes,actLes)=>`
+    <div class="d127v4-sec-lbl-sub">${label} <span style="color:var(--tx3);text-transform:none;letter-spacing:0">— ${windowNote}</span></div>
+    <div class="d127v4-pace-stats">
+      ${stat("Hours",reqHr,actHr,fH)}
+      ${stat("Lessons",reqLes,actLes,fL)}
     </div>`;
 
   const bulletsHtml=`
     <div class="d127v4-sec-lbl">1 SP · Pace vs Target</div>
-    ${periodBlock("Per Day",aHrSP.day,nHrSP.day,aLesSP.day,nLesSP.day)}
-    ${periodBlock("Per Week",aHrSP.week,nHrSP.week,aLesSP.week,nLesSP.week)}
-    ${periodBlock("Per Month",aHrSP.month,nHrSP.month,aLesSP.month,nLesSP.month)}
+    ${statGroup("Per Month","actual = rolling last 30 days",hasReq?reqMonthHrsB/n:null,actMonthHrsB/n,hasReq?reqMonthLesB/n:null,actMonthLesB/n)}
+    ${statGroup("Per Week","actual = rolling last 2 weeks, avg/wk",hasReq?reqWeekHrsB/n:null,actWeekHrsB/n,hasReq?reqWeekLesB/n:null,actWeekLesB/n)}
+    ${statGroup("Per Day","actual = rolling last 7 days, avg/day",hasReq?reqDayHrsB/n:null,actDayHrsB/n,hasReq?reqDayLesB/n:null,actDayLesB/n)}
     <div class="d127v4-sec-lbl">28 SP · Batch Total vs Target</div>
-    ${periodBlock("Per Day",aHrB.day,nHrB.day,aLesB.day,nLesB.day)}
-    ${periodBlock("Per Week",aHrB.week,nHrB.week,aLesB.week,nLesB.week)}
-    ${periodBlock("Per Month",aHrB.month,nHrB.month,aLesB.month,nLesB.month)}
+    ${statGroup("Per Month","actual = rolling last 30 days",reqMonthHrsB,actMonthHrsB,reqMonthLesB,actMonthLesB)}
+    ${statGroup("Per Week","actual = rolling last 2 weeks, avg/wk",reqWeekHrsB,actWeekHrsB,reqWeekLesB,actWeekLesB)}
+    ${statGroup("Per Day","actual = rolling last 7 days, avg/day",reqDayHrsB,actDayHrsB,reqDayLesB,actDayLesB)}
     <div class="d127v4-action-banner">
       <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Required Action</div>
       ${actionMsg}
-      <div style="margin-top:4px;color:var(--tx3);font-size:10px">Actual measured over <b style="color:var(--tx2)">${rangeLabel}</b> · remaining ${remHrsB.toFixed(1)}h / ${remLesB} les batch-wide</div>
+      <div style="margin-top:4px;color:var(--tx3);font-size:10px">Remaining ${remHrsB.toFixed(1)}h / ${remLesB} les batch-wide</div>
     </div>`;
 
   const el=document.getElementById("d127v4-pace-body");

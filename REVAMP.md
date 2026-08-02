@@ -1094,3 +1094,36 @@ correctly, gap figures hand-checked against actual-minus-target, zero console er
 AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched (`git diff --stat`
 empty). Only files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the usual
 `index.html` cache-bust bump).
+
+### AP127 Detail V4 — Pace Monitor: big-number Required/Actual/Gap stats (2026-08-02, p129)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Ninth round of same-day feedback — a visual-language change, not a bug fix: "No more the bar
+chart. Just big number." Replaces p128's Day/Week/Month bar-chart redesign with the same 6
+period-blocks (Per Month / Per Week / Per Day × "1 SP" / "28 SP · Batch Total") rendered as
+big-number stat trios instead:
+
+- **Required** — the target pace for that period, computed directly from `remaining ÷ daysRem`
+  (not derived from a single weekly figure and rescaled): daily = `remaining/daysRem`, weekly =
+  `daily*7`, monthly = `daily*30.44` (average Gregorian month length).
+- **Actual** — now sourced from a period-matched rolling window instead of one globally-selected
+  range (the old "ACTUAL RANGE" dropdown, now removed — it's superseded since every period sources
+  its own fixed window): Per Month uses the trailing 30-day total directly (30d ≈ 1 calendar
+  month, close enough not to need rescaling); Per Week uses the trailing 14-day total halved to a
+  weekly rate (a 2-week sample is steadier than a bare 7-day one while still being recent); Per Day
+  uses the trailing 7-day total divided by 7.
+- **Gap** — `actual − required`, colored green/red, shown as a signed number.
+
+Implementation: new `actualOverWindow(days)` helper replaces the old dropdown-driven single-range
+actual calc; `stat()`/`statGroup()` replace `bullet()`/`periodBlock()`. Removed as dead code with
+the bar system gone: the `ACTUAL RANGE` `<select>` in the markup, and the `.d127v4-bullet-*` /
+`.d127v4-bullets` CSS (confirmed unreferenced via grep before deleting). New `.d127v4-pace-stat*`
+CSS classes render the 3-column Required/Actual/Gap grid.
+
+Verified live: all 6 period-blocks show internally consistent numbers — batch-wide Per Month
+required (1016h) ÷ 28 SP matches the 1-SP Per Month required (36.3h); every gap equals
+actual − required by hand-check — zero console errors, original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched (`git diff --stat` empty). Only
+files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust
+bump).

@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p129` (all currently at p128)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p130` (all currently at p129)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,26 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p128` (2026-08-02 — **AP127 Detail V4 — Pace Monitor: Day/Week/Month
+**Last known:** all files `p129` (2026-08-02 — **AP127 Detail V4 — Pace Monitor: bar charts
+replaced with big-number Required/Actual/Gap stats**, ninth round of same-day feedback. The p128
+Day/Week/Month bar-chart redesign was itself replaced (not a bug fix — a straight ask for a
+different visual language): "No more the bar chart. Just big number." Each of the 6 period-blocks
+(Per Month / Per Week / Per Day × 1 SP / 28 SP Batch Total) is now a big-number stat trio —
+Required, Actual, Gap — instead of a progress bar. The "Actual" figure per period now also uses a
+period-matched rolling window instead of reusing one globally-selected range: Per Month = the
+trailing-30-day total used directly (30d ≈ 1 month); Per Week = the trailing-14-day total halved
+to a weekly rate (smoother than a bare 7-day sample); Per Day = the trailing-7-day total divided
+by 7. The now-superseded "ACTUAL RANGE" dropdown (7/14/30/60d/all-time selector) was removed from
+the markup since each period now sources its own fixed window. Required figures are computed
+directly per period from `remaining ÷ daysRem` scaled by 7 (week) / 30.44 (month, average
+Gregorian month length) rather than derived from a single weekly figure. Dead code from the old
+bar-bullet system (`bullet()`, `periodBlock()`, `.d127v4-bullet-*`/`.d127v4-bullets` CSS) removed;
+replaced with `stat()`/`statGroup()` and new `.d127v4-pace-stat*` CSS. Verified live: all 6
+period-blocks show internally consistent numbers (per-SP figures = batch-wide ÷ 28, gap =
+actual − required, batch Per Month required 1016h ÷ 28 = 36.3h matches the 1-SP Per Month
+required), zero console errors, original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progress.css`. Full
+write-up: REVAMP.md's p129 entry.) p128 (2026-08-02 — **AP127 Detail V4 — Pace Monitor: Day/Week/Month
 bars + Plan End countdown**, eighth round of same-day feedback. Removed the "Cohort ETC" card (a
 single-number ETC computed from all-time average pace felt redundant next to the per-period bars
 below it). "Plan End" card now shows a "Xd remaining" subline (days from today to the 27 Nov 2026
