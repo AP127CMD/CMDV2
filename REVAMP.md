@@ -1037,3 +1037,28 @@ to it rather than replacing it).
 Verified live: badge renders correctly above the sticky toolbar at both desktop width and on load,
 zero console errors, original AP127 Detail (`js/view-cohort.js`) confirmed still
 byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progress.css`.
+
+### AP127 Detail V4 — KPI card hours + curriculum-hours disclosure (2026-08-02, p127)
+
+`js/view-cohort-v4.js`
+
+Seventh round of same-day feedback. Two KPI-card requests:
+
+1. **Batch Progress card** — subtext previously showed lessons only (`923 of 2688 lessons flown`).
+   Now shows hours alongside lessons: `923 les / 1,135.3h of 2688 les / 5040h flown`. Both the
+   "done" and "planned" hour totals use the tab's standard effective-hours convention
+   (`ap127Hours()` per student, `ap127CurriculumHours()` for the per-student curriculum total ×
+   student count), so they stay consistent with every other hours figure on the tab.
+
+2. **Students card** — subtext previously showed only the lesson count (`96-lesson curriculum`).
+   Now shows `96 les · 180h curriculum` (180h computed via `ap127CurriculumHours()` — sum of every
+   `planned_mins` across `G.cur127`'s 96 lessons — confirmed live at 180.0h against the raw
+   progress-worker payload) with a `*` and a hover tooltip: "The 96-lesson / 180h AP127 curriculum
+   excludes Advanced UPRT (+5 lessons / +5h), which is tracked separately from the core syllabus."
+   This exclusion is domain knowledge supplied by the user — `G.cur127` itself contains no UPRT
+   entries to derive it from, so it's stated as a static tooltip rather than computed.
+
+Verified live: both cards render the new figures correctly, tooltip text confirmed via DOM
+inspection (`document.getElementById('d127v4-k-stu-s').title`), zero console errors, original
+AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched (`git diff --stat`
+empty). Only file touched: `js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump).

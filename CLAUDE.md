@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p127` (all currently at p126)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p128` (all currently at p127)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,21 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p126` (2026-08-02 — **AP127 Detail V4 — visible hours-convention badge**,
+**Last known:** all files `p127` (2026-08-02 — **AP127 Detail V4 — KPI card hours + curriculum-hours
+disclosure**, seventh round of same-day feedback. Two small KPI-card additions: (1) "Batch Progress"
+card's subtext now shows hours done alongside lessons done — `923 les / 1,135.3h of 2688 les / 5040h
+flown` — instead of lessons-only; (2) "Students" card's subtext now shows the curriculum's total hours
+alongside its lesson count — `96 les · 180h curriculum` (180h = `ap127CurriculumHours()`, the sum of
+every lesson's `planned_mins` in `G.cur127`, confirmed live against the raw progress-worker payload) —
+with a `*` and a hover tooltip clarifying the 96-lesson/180h curriculum excludes Advanced UPRT (+5
+lessons/+5h), which is tracked separately from the core AP127 syllabus (this exclusion is domain
+knowledge from the user, not derived from `cur127` — the live data has no UPRT entries to check against).
+Both figures reuse the existing `ap127Hours()`/`ap127CurriculumHours()` effective-hours convention, so
+they stay consistent with every other hours figure on the tab. Verified live: both cards render
+correctly, tooltip text confirmed via DOM inspection, zero console errors, original AP127 Detail
+(`js/view-cohort.js`) still byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`,
+`index.html` (cache-bust bump only). Full write-up: REVAMP.md's p127 entry.) p126 (2026-08-02 —
+**AP127 Detail V4 — visible hours-convention badge**,
 sixth round of same-day feedback. After the p125 fix standardized "hours done" to the effective-hours
 convention (curriculum standard duration per lesson, not actual logged flight time) everywhere, user
 asked which convention was actually in use, then asked for it to be shown on the page itself rather

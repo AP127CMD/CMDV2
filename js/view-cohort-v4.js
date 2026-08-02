@@ -485,6 +485,7 @@ function renderAP127Detail(){
   const all=ap127AsOfStudents();
   const total=all.length;
   const curriculum=all[0]?.total||0;
+  const curriculumHrs=ap127CurriculumHours();
   const doneAll=all.reduce((a,s)=>a+(s.done||0),0);
   const hrsAll=all.reduce((a,s)=>a+ap127Hours(s),0);
   const avgDone=total?doneAll/total:0;
@@ -496,9 +497,11 @@ function renderAP127Detail(){
   const setT=(id,t)=>{const e=document.getElementById(id);if(e)e.textContent=t;};
   const setH=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h;};
   setT("d127v4-k-stu",total||"-");
-  setT("d127v4-k-stu-s",(curriculum||0)+"-lesson curriculum");
+  setH("d127v4-k-stu-s",`${curriculum||0} les · ${curriculumHrs.toFixed(0)}h curriculum <span style="color:var(--tx3)">*</span>`);
+  const stuSubEl=document.getElementById("d127v4-k-stu-s");
+  if(stuSubEl)stuSubEl.title=`The ${curriculum}-lesson / ${curriculumHrs.toFixed(0)}h AP127 curriculum excludes Advanced UPRT (+5 lessons / +5h), which is tracked separately from the core syllabus.`;
   setT("d127v4-k-prg",prg.toFixed(1)+"%");
-  setT("d127v4-k-prg-s",`${doneAll} of ${total*curriculum} lessons flown`);
+  setT("d127v4-k-prg-s",`${doneAll} les / ${ap127FmtNum(hrsAll,1)}h of ${total*curriculum} les / ${(total*curriculumHrs).toFixed(0)}h flown`);
   const totalPlannedHrsToday=ap127PlannedHoursAsOf(today0)*total;
   const hrsVariance=hrsAll-totalPlannedHrsToday;
   const hrsVarColor=hrsVariance>=0?"var(--done)":"#ef4444";
