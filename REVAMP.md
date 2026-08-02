@@ -1014,3 +1014,26 @@ rendered output** (both from earlier today's rounds, not newly introduced):
 
 Verified live end-to-end: both tabs, zero console errors, original AP127 Detail (`js/view-cohort.js`)
 confirmed still byte-identical/untouched. Only file touched: `js/view-cohort-v4.js`.
+
+### AP127 Detail V4 — visible hours-convention badge (2026-08-02, p126)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Sixth round of same-day feedback, and a short one. After p125 standardized every "hours done" figure
+in the tab to the effective-hours convention (curriculum's standard duration per lesson, falling back
+to the flight's actual logged duration only if the lesson code isn't in the curriculum), the user
+asked which convention was actually in effect — then asked for the answer to live on the page itself,
+not just in chat.
+
+Added `.d127v4-hours-badge`: a persistent pill directly under the page title, always visible (not
+behind a hover) — "● HOURS = EFFECTIVE (standard duration per lesson, not actual logged time)" — with
+a full-detail tooltip on hover listing every panel the convention applies to (KPI card, Pace Monitor,
+Progress Ranking, Combined Progress vs Plan, Batch Lead/Lag History, Individual Lead/Lag vs Plan,
+Actual vs Planned, Daily Output, Roster) and the fallback rule. Also added shorter reinforcing
+tooltips at two of the most-interacted-with spots: the KPI card's "Hrs Done / Plan" label and the
+Progress Ranking table's "HRS DONE" column header (which already had a sort-order tooltip — appended
+to it rather than replacing it).
+
+Verified live: badge renders correctly above the sticky toolbar at both desktop width and on load,
+zero console errors, original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progress.css`.

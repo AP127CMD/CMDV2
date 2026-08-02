@@ -183,4 +183,8 @@ th.d127v4-heat-today-col{background:color-mix(in oklch,var(--c127) 14%,transpare
 .d127v4-fi-row{display:flex;align-items:center;gap:6px;padding:1.5px 8px 1.5px 14px;font-size:9.5px;line-height:1.5;border-bottom:1px solid rgba(255,255,255,.03);}
 .d127v4-fi-row b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
 @media(max-width:700px){.d127v4-fi-grid{grid-template-columns:1fr;}}
+.d127v4-hours-badge{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:4px 10px;background:var(--s2);border:1px solid var(--bd2);border-radius:99px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.4px;color:var(--acc);cursor:help;}
+.d127v4-hours-badge-dot{width:6px;height:6px;border-radius:50%;background:var(--acc);flex-shrink:0;}
+.d127v4-hours-badge-sub{color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:0;}
+@media(max-width:700px){.d127v4-hours-badge-sub{display:none;}}
 /* ##AP127V4CSS_END## */

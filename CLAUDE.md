@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p126` (all currently at p125)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p127` (all currently at p126)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -30,7 +30,18 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p125` (2026-08-02 — **AP127 Detail V4 — cross-chart consistency pass**,
+**Last known:** all files `p126` (2026-08-02 — **AP127 Detail V4 — visible hours-convention badge**,
+sixth round of same-day feedback. After the p125 fix standardized "hours done" to the effective-hours
+convention (curriculum standard duration per lesson, not actual logged flight time) everywhere, user
+asked which convention was actually in use, then asked for it to be shown on the page itself rather
+than only explained in chat. Added a persistent, always-visible pill badge — "● HOURS = EFFECTIVE
+(standard duration per lesson, not actual logged time)" — directly under the page title (not hidden
+behind a hover), with a full-detail tooltip on hover covering every panel it applies to and the
+fallback rule. Also added shorter reinforcing tooltips to the KPI card's "Hrs Done / Plan" label and
+the Progress Ranking table's "HRS DONE" column header. Verified live: badge renders correctly above
+the sticky toolbar, zero console errors, original AP127 Detail (`js/view-cohort.js`) still
+byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progress.css`. Full
+write-up: REVAMP.md's p126 entry.) p125 (2026-08-02 — **AP127 Detail V4 — cross-chart consistency pass**,
 fifth round of same-day feedback, and the most consequential one: found and fixed a real numeric
 discrepancy, not just UX polish. **Root cause: two competing "hours per flight" formulas coexisted
 across the tab.** `ap127Hours()` (used by the KPI card, Progress Ranking table, Pace Monitor —

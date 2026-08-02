@@ -13,6 +13,9 @@
     <div class="d127-title">
       <h1>AP<b>127</b> PROGRESS <span>V4</span></h1>
       <div class="d127-subtitle" id="d127v4-subtitle">Progress retrieved from CATC FTC records and master plan — redesigned view</div>
+      <div class="d127v4-hours-badge" title="Every &quot;hours&quot; figure on this tab (KPI card, Pace Monitor, Progress Ranking, Combined Progress vs Plan, Batch Lead/Lag History, Individual Lead/Lag vs Plan, Actual vs Planned, Daily Output, Roster) uses each lesson's STANDARD/PLANNED duration from the curriculum — not the flight's actual logged clock time. A flight only falls back to its actual logged duration if its lesson code isn't found in the curriculum at all (rare). This keeps &quot;hours done&quot; directly comparable to &quot;hours planned,&quot; since both are built from the same standard durations, at the cost of not reflecting real day-to-day block-time variance (weather holds, extra circuits, etc).">
+        <span class="d127v4-hours-badge-dot"></span>HOURS = EFFECTIVE <span class="d127v4-hours-badge-sub">(standard duration per lesson, not actual logged time)</span>
+      </div>
     </div>
     <div class="d127v4-sticky">
       <div id="tt-banner-v4" style="display:none;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:5px;padding:6px 10px;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#f59e0b">
@@ -46,7 +49,7 @@
     <div class="d127-kpis">
       <div class="d127-kpi"><div class="d127-kl">Batch Progress</div><div class="d127-kv" id="d127v4-k-prg">-</div><div class="d127-ks" id="d127v4-k-prg-s">Done vs Total</div></div>
       <div class="d127-kpi"><div class="d127-kl">Students</div><div class="d127-kv" id="d127v4-k-stu">-</div><div class="d127-ks" id="d127v4-k-stu-s">on the AP127 curriculum</div></div>
-      <div class="d127-kpi"><div class="d127-kl">Hrs Done / Plan</div><div class="d127-kv" id="d127v4-k-hrs">-</div><div class="d127-ks" id="d127v4-k-hrs-s">vs plan today</div></div>
+      <div class="d127-kpi"><div class="d127-kl" title="Effective hours — each lesson's standard curriculum duration, not the flight's actual logged time. See the HOURS = EFFECTIVE badge above.">Hrs Done / Plan</div><div class="d127-kv" id="d127v4-k-hrs">-</div><div class="d127-ks" id="d127v4-k-hrs-s">vs plan today</div></div>
       <div class="d127-kpi"><div class="d127-kl">Lessons Done / Plan</div><div class="d127-kv" id="d127v4-k-les">-</div><div class="d127-ks" id="d127v4-k-les-s">vs plan today</div></div>
     </div>
     <div class="d127-panel d127-pace-panel">
@@ -77,7 +80,7 @@
               <th data-key="se" title="Sort by single-engine type">SE<br>TYPE</th>
               <th data-key="fi" title="Sort by Flight Instructor">FI</th>
               <th data-key="ahead" title="Sort by progress (most ahead first)">Progress</th>
-              <th data-key="hours" title="Sort by hours done (most first)">HRS<br>DONE</th>
+              <th data-key="hours" title="Sort by hours done (most first). Effective hours — standard duration per lesson, not actual logged time.">HRS<br>DONE</th>
               <th data-key="ahead" title="Sort by lessons done (most first)">LESSON<br>DONE</th>
               <th data-key="lastLesson" title="Sort by last lesson code">Last<br>Lesson</th>
               <th data-key="lastFlt" title="Sort by last flight date (newest first)">Last FLT</th>
