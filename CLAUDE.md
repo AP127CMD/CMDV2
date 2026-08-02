@@ -24,6 +24,16 @@ staying, removing them is a separate future cleanup, not bundled into the upstre
 Unified ops + progress SPA. Merges CMD CTR (operations) + DB001 (progress) in one native React app.
 GitHub: `AP127CMD/CMDV2` | Live: https://ap127-ngt2.pages.dev | Local: `/Users/nugui/AP127_V2/`
 
+**⚠️ `js/shared.js` and `js/view-cohort-v4.js` are no longer CMDV2-only (2026-08-02).** DB_Share
+(`ap127-dashboardr1.pages.dev`) live-mirrors the "AP127 Detail V4" tab by proxying these two files
+straight from this site (plus `assets/reconcile.js`, `flight-data.js`, `progress-data.js`,
+`css/theme.css`, `css/progress.css`) through its own Cloudflare Pages Function — no copy, no build
+step, it just fetches these files' current content on every DB_Share page load. A breaking change
+to either file (removed export, renamed `window.*` global, a new dependency on `js/shell.js` or
+another view) breaks DB_Share too. After editing either file, load
+`https://ap127-dashboardr1.pages.dev` and confirm it still renders. Design:
+`docs/superpowers/specs/2026-08-02-mirror-cmdv2-detail-v4-design.md`.
+
 ## Verify actual state — run before starting
 ```bash
 grep -o '?v=p[0-9]*' index.html | sort -u                                   # all tokens (may differ per file)
