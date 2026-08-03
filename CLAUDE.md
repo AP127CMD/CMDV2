@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p130` (all currently at p129)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p131` (all currently at p130)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,20 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p129` (2026-08-02 — **AP127 Detail V4 — Pace Monitor: bar charts
+**Last known:** all files `p130` (2026-08-03 — **School Perf — Scorecard batch-filter bug fix.**
+User-reported "AP126 progress data broken" in Curriculum Prog + School Perf. Curriculum Prog
+checked out fine live (batch dropdown correctly narrows to 28 AP126 students). Real bug was in
+School Perf's "School Pace Scorecard": `renderScorecard()`'s per-batch KPI block hardcoded
+`scKpis('ALL')` + `scKpis('AP127')` regardless of the selected batch-filter dropdown — selecting
+AP126 (or AP124/AP129) updated the filter-note text and Monthly Variance table (already
+batch-aware) but left the headline scorecard tiles + "AP127 Only" label frozen on AP127-only
+figures, so AP126's pace/achievement numbers were never visible through that panel. Fixed by
+computing `focusBatch = batch==='ALL' ? 'AP127' : batch` and rendering `scKpis(focusBatch)` with
+a dynamic label (`#pf-sc-kpis-127-label`, was static "AP127 Only" markup text). Verified live:
+selecting AP126 now shows a distinct, correct "AP126 ONLY" block (93% achievement, ON TRACK);
+reselecting All batches reverts to the original "AP127 ONLY" figures (no regression); zero console
+errors. Only file touched: `js/view-program.js`. Full write-up: REVAMP.md's p130 entry.) p129
+(2026-08-02 — **AP127 Detail V4 — Pace Monitor: bar charts
 replaced with big-number Required/Actual/Gap stats**, ninth round of same-day feedback. The p128
 Day/Week/Month bar-chart redesign was itself replaced (not a bug fix — a straight ask for a
 different visual language): "No more the bar chart. Just big number." Each of the 6 period-blocks

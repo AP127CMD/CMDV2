@@ -1662,8 +1662,11 @@ function renderScorecard(actualAllRec, from, to, batch) {
 
   const kpiAll = document.getElementById('pf-sc-kpis-all');
   const kpi127 = document.getElementById('pf-sc-kpis-127');
+  const kpi127Label = document.getElementById('pf-sc-kpis-127-label');
+  const focusBatch = batch === 'ALL' ? 'AP127' : batch;
   if (kpiAll) kpiAll.innerHTML = scKpis('ALL');
-  if (kpi127) kpi127.innerHTML = scKpis('AP127');
+  if (kpi127) kpi127.innerHTML = scKpis(focusBatch);
+  if (kpi127Label) kpi127Label.textContent = focusBatch + ' Only';
 
   // ── Monthly Variance Table ──
   const scTbl = document.getElementById('pf-sc-table');
@@ -2614,7 +2617,7 @@ const MK_PERF = `
     </div>
     <div id="pf-scorecard-body" class="pf-sc-body">
       <div class="ss" id="pf-sc-kpis-all" style="margin-bottom:8px"></div>
-      <div style="font-size:9px;color:var(--c127);font-family:'JetBrains Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;margin:8px 0 4px">AP127 Only</div>
+      <div id="pf-sc-kpis-127-label" style="font-size:9px;color:var(--c127);font-family:'JetBrains Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;margin:8px 0 4px">AP127 Only</div>
       <div class="ss" id="pf-sc-kpis-127" style="margin-bottom:12px"></div>
       <div id="pf-sc-table" style="overflow-x:auto;margin-bottom:12px"></div>
       <div id="pf-sc-bars"></div>

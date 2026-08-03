@@ -1127,3 +1127,33 @@ actual − required by hand-check — zero console errors, original AP127 Detail
 (`js/view-cohort.js`) confirmed still byte-identical/untouched (`git diff --stat` empty). Only
 files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust
 bump).
+
+### School Perf — Scorecard batch-filter bug fix (2026-08-03, p130)
+
+`js/view-program.js`
+
+User report: "Progress data of AP126 seem to be broken — it can't see in CURRICULUM PROG and
+SCHOOL PERF." Curriculum Prog checked out fine live (batch dropdown correctly narrows to 28 AP126
+students with correct per-student data). **School Perf's "School Pace Scorecard" tiles were the
+real bug**: `renderScorecard(actualAllRec, from, to, batch)` accepted the selected `batch` filter
+as a parameter but never used it for the tile rendering — `scKpis('ALL')` and `scKpis('AP127')`
+were hardcoded, so selecting AP126 (or AP124/AP129) from the batch dropdown updated the filter-note
+text and the Monthly Variance table below (both already correctly batch-aware) while the headline
+scorecard tiles and their "AP127 Only" sub-section silently kept showing all-batch and AP127-only
+numbers — AP126's pace/achievement/shortfall figures were never reachable through this panel
+regardless of filter selection. Root cause confirmed by reading `renderScorecard` (`js/view-
+program.js:1541`) — the `batch` param was accepted but only ever referenced by the surrounding
+`renderPerformance()` caller for the filter-note string and the table, not passed through to the
+per-batch KPI block.
+
+Fix: `kpi127`'s content and label are now driven by the actual selected batch — `const focusBatch =
+batch === 'ALL' ? 'AP127' : batch;` then `scKpis(focusBatch)`, with the "AP127 Only" label
+(previously static markup text) now written by JS into a new `#pf-sc-kpis-127-label` span so it
+reads e.g. "AP126 ONLY" when that filter is active. Selecting "All batches" still shows the
+original AP127-focused second block (no behavior change for the default view).
+
+Verified live (local static server): selecting AP126 now shows a correct "AP126 ONLY" block (93%
+overall achievement, ON TRACK pace status — both distinct from the frozen AP127 numbers seen
+before the fix); reselecting "All batches" reverts to "AP127 ONLY" with the original figures
+(no regression); zero console errors. Only file touched: `js/view-program.js` (plus the usual
+`index.html` cache-bust bump).
