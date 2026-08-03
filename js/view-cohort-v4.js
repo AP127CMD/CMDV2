@@ -58,7 +58,7 @@
       </div>
       <div class="d127-body" id="d127v4-pace-body"></div>
     </div>
-    <div class="d127-grid">
+    <div class="d127v4-split-grid" id="d127v4-split-grid">
       <div class="d127-panel">
         <div class="d127-h"><span class="d127-t">Progress Ranking</span><span style="display:flex;align-items:center;gap:8px"><button class="d127-reset" id="d127v4-reset" title="Reset sort to default" onclick="ap127ResetSortV4()">⟳ Reset</button><span class="d127-s" id="d127v4-asof">As of -</span></span></div>
         <div class="d127-table-wrap">
@@ -82,6 +82,7 @@
           </table>
         </div>
       </div>
+      <div class="d127v4-split-handle" id="d127v4-split-handle" title="Drag to resize"></div>
       <div class="d127-side">
         <div class="d127-panel"><div class="d127-h"><span class="d127-t">Pace Distribution</span><span class="d127-s">count by lessons done</span></div><div class="d127-body"><div style="position:relative;height:190px"><canvas id="d127v4-band-chart"></canvas></div></div></div>
         <div class="d127-panel"><div class="d127-h"><span class="d127-t">Needs Attention</span><span class="d127-s">idle &gt;5d or behind</span></div><div class="d127-body" id="d127v4-watchlist"></div></div>
@@ -389,8 +390,7 @@ function renderAP127Pace(){
   const reqWeekHrsB=hasReq?reqDayHrsB*7:null,       reqWeekLesB=hasReq?reqDayLesB*7:null;
   const reqMonthHrsB=hasReq?reqDayHrsB*30.44:null,  reqMonthLesB=hasReq?reqDayLesB*30.44:null;
 
-  const gHrWk=hasReq?actWeekHrsB/n-reqWeekHrsB/n:null;
-  const gLesWk=hasReq?actWeekLesB/n-reqWeekLesB/n:null;
+  const gHrWkBatch=hasReq?actWeekHrsB-reqWeekHrsB:null;
 
   let onTime=0,atRisk=0;const etcDelays=[];
   all.forEach(s=>{
@@ -408,9 +408,9 @@ function renderAP127Pace(){
   const fL=l=>l===null?"—":l>=100?l.toFixed(0)+" les":l>=10?l.toFixed(1)+" les":l.toFixed(2)+" les";
 
   const riskColor=atRisk>0?"#ef4444":"var(--done)";
-  const actionMsg=gHrWk!==null&&gHrWk<0
-    ?`Batch needs <b style="color:#ef4444">${fH(Math.abs(gHrWk))} / ${fL(Math.abs(gLesWk||0))} more per SP per week</b> to finish by plan date.`
-    :gHrWk!==null?`Batch is <b style="color:var(--done)">${fH(gHrWk)} / ${fL(gLesWk||0)} per SP/wk ahead</b> of required pace — on track.`
+  const actionMsg=gHrWkBatch!==null&&gHrWkBatch<0
+    ?`Batch needs <b style="color:#ef4444">${fH(Math.abs(gHrWkBatch))} more hours per week</b> (all 28 SP combined) to finish by plan date.`
+    :gHrWkBatch!==null?`Batch is <b style="color:var(--done)">${fH(gHrWkBatch)} per week ahead</b> of required pace — on track.`
     :"Plan end date unavailable — required pace can't be computed.";
 
   const cardsHtml=`<div class="d127v4-cards">
@@ -419,40 +419,42 @@ function renderAP127Pace(){
     <div class="d127v4-card"><div class="d127-kl">At Risk</div><div class="d127-kv" style="color:${riskColor}">${atRisk}</div><div class="d127-ks">${atRisk>0?"avg +"+avgDelay+"d":"none"}</div></div>
   </div>`;
 
-  // Big-number stat trio (Required / Actual / Gap) per metric — replaces the earlier bullet-bar
-  // design. One stat() call = one metric's three numbers; statGroup() pairs Hours+Lessons under a
-  // period heading that also documents which rolling window fed the "actual" figure.
-  const stat=(label,required,actual,fmt)=>{
-    const has=required!==null&&required!==undefined;
-    const gap=has?actual-required:null;
-    const ahead=has&&gap>=0;
-    const color=!has?"var(--tx3)":ahead?"var(--done)":"#ef4444";
-    const gapTxt=has?`${gap>=0?"+":"-"}${fmt(Math.abs(gap))}`:"—";
-    return `<div class="d127v4-pace-stat">
-      <div class="d127v4-pace-stat-lbl">${label}</div>
-      <div class="d127v4-pace-stat-row">
-        <div class="d127v4-pace-stat-item"><div class="d127v4-pace-stat-n">${has?fmt(required):"—"}</div><div class="d127v4-pace-stat-k">Required</div></div>
-        <div class="d127v4-pace-stat-item"><div class="d127v4-pace-stat-n" style="color:var(--tx)">${fmt(actual)}</div><div class="d127v4-pace-stat-k">Actual</div></div>
-        <div class="d127v4-pace-stat-item"><div class="d127v4-pace-stat-n" style="color:${color}">${gapTxt}</div><div class="d127v4-pace-stat-k">Gap</div></div>
-      </div>
-    </div>`;
+  // Compact Required/Actual/Gap table — one row per period (Month/Week/Day), Hours + Lessons
+  // side by side, replacing the earlier one-card-per-metric big-number layout.
+  const gapCell=(req,act,fmt)=>{
+    const has=req!==null&&req!==undefined;
+    const gap=has?act-req:null;
+    const color=!has?"var(--tx3)":gap>=0?"var(--done)":"#ef4444";
+    return `<td style="color:${color};font-weight:600">${has?`${gap>=0?"+":"-"}${fmt(Math.abs(gap))}`:"—"}</td>`;
   };
-  const statGroup=(label,windowNote,reqHr,actHr,reqLes,actLes)=>`
-    <div class="d127v4-sec-lbl-sub">${label} <span style="color:var(--tx3);text-transform:none;letter-spacing:0">— ${windowNote}</span></div>
-    <div class="d127v4-pace-stats">
-      ${stat("Hours",reqHr,actHr,fH)}
-      ${stat("Lessons",reqLes,actLes,fL)}
+  const statRow=(period,windowNote,reqHr,actHr,reqLes,actLes)=>`<tr>
+    <td class="d127v4-pace-t-period">${period}<div class="d127v4-pace-t-note">${windowNote}</div></td>
+    <td>${reqHr!==null&&reqHr!==undefined?fH(reqHr):"—"}</td><td style="color:var(--tx)">${fH(actHr)}</td>${gapCell(reqHr,actHr,fH)}
+    <td>${reqLes!==null&&reqLes!==undefined?fL(reqLes):"—"}</td><td style="color:var(--tx)">${fL(actLes)}</td>${gapCell(reqLes,actLes,fL)}
+  </tr>`;
+  const paceTable=(title,rowsHtml)=>`
+    <div class="d127v4-pace-tbl-wrap">
+      <div class="d127v4-sec-lbl">${title}</div>
+      <table class="d127v4-pace-tbl">
+        <thead>
+          <tr><th rowspan="2">Period</th><th colspan="3">Hours</th><th colspan="3">Lessons</th></tr>
+          <tr><th>Req</th><th>Act</th><th>Gap</th><th>Req</th><th>Act</th><th>Gap</th></tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
     </div>`;
 
   const bulletsHtml=`
-    <div class="d127v4-sec-lbl">1 SP · Pace vs Target</div>
-    ${statGroup("Per Month","actual = rolling last 30 days",hasReq?reqMonthHrsB/n:null,actMonthHrsB/n,hasReq?reqMonthLesB/n:null,actMonthLesB/n)}
-    ${statGroup("Per Week","actual = rolling last 2 weeks, avg/wk",hasReq?reqWeekHrsB/n:null,actWeekHrsB/n,hasReq?reqWeekLesB/n:null,actWeekLesB/n)}
-    ${statGroup("Per Day","actual = rolling last 7 days, avg/day",hasReq?reqDayHrsB/n:null,actDayHrsB/n,hasReq?reqDayLesB/n:null,actDayLesB/n)}
-    <div class="d127v4-sec-lbl">28 SP · Batch Total vs Target</div>
-    ${statGroup("Per Month","actual = rolling last 30 days",reqMonthHrsB,actMonthHrsB,reqMonthLesB,actMonthLesB)}
-    ${statGroup("Per Week","actual = rolling last 2 weeks, avg/wk",reqWeekHrsB,actWeekHrsB,reqWeekLesB,actWeekLesB)}
-    ${statGroup("Per Day","actual = rolling last 7 days, avg/day",reqDayHrsB,actDayHrsB,reqDayLesB,actDayLesB)}
+    <div class="d127v4-pace-tbls">
+      ${paceTable("1 SP · Pace vs Target",
+        statRow("Month","actual = 30d",hasReq?reqMonthHrsB/n:null,actMonthHrsB/n,hasReq?reqMonthLesB/n:null,actMonthLesB/n)+
+        statRow("Week","actual = 2wk avg/wk",hasReq?reqWeekHrsB/n:null,actWeekHrsB/n,hasReq?reqWeekLesB/n:null,actWeekLesB/n)+
+        statRow("Day","actual = 7d avg/day",hasReq?reqDayHrsB/n:null,actDayHrsB/n,hasReq?reqDayLesB/n:null,actDayLesB/n))}
+      ${paceTable("28 SP · Batch Total vs Target",
+        statRow("Month","actual = 30d",reqMonthHrsB,actMonthHrsB,reqMonthLesB,actMonthLesB)+
+        statRow("Week","actual = 2wk avg/wk",reqWeekHrsB,actWeekHrsB,reqWeekLesB,actWeekLesB)+
+        statRow("Day","actual = 7d avg/day",reqDayHrsB,actDayHrsB,reqDayLesB,actDayLesB))}
+    </div>
     <div class="d127v4-action-banner">
       <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Required Action</div>
       ${actionMsg}
@@ -1041,8 +1043,18 @@ function buildAP127ConsIdle(all,asOf){
 // Finer syllabus milestones beyond the 4 phase boundaries — found by walking G.cur127 in lesson-
 // number order and matching the same code-letter decoder the phase classifier uses (D=Dual,
 // S=Solo, SP=SPIC, M=Multi-Engine, trailing C=Check). Returns the FIRST lesson number hitting each
-// category, plus every checkride lesson (there are exactly 4 in the curriculum). idx = lessonNum-1,
-// same "lessons completed before this one starts" convention as the phase boundaries.
+// category, plus every checkride lesson (there are exactly 4 in the curriculum, per the authoritative
+// syllabus at ap127-flight-training.pages.dev/data/syllabus.json). idx = lessonNum-1, same
+// "lessons completed before this one starts" convention as the phase boundaries.
+//
+// Checkride detection is `/(?<!X)C$/i` on the number-stripped code, NOT a bare `/C$/i` — a bare
+// trailing-C test also matches Night/VFR/IFR Cross-Country codes (e.g. "CDNXC 48"), which end in
+// "...XC" and are NOT checkrides, only sharing the same last letter. The negative lookbehind for
+// "X" excludes those while still matching every real check code (CSPGLC, CSPXVC, CSPXIC,
+// CMSPXIC — the "C" they end on isn't part of an "XC" cross-country token).
+const AP127_CHECKRIDE_DETAIL={
+  CSPGLC:"GH",CSPXVC:"VFR XC",CSPXIC:"IFR XC",CMSPXIC:"ME IFR XC",
+};
 function ap127KeyPoints(cur){
   const norm=c=>String(c||"").trim();
   const stripNum=c=>norm(c).replace(/\s*\d+\s*$/,"");
@@ -1055,7 +1067,10 @@ function ap127KeyPoints(cur){
   add("Cross-Country",firstMatch(c=>/XV|XI/i.test(c)));
   add("Sim",firstMatch(c=>/\(SIM\)/i.test(c)));
   add("Multi-Engine",firstMatch(c=>/^CM/i.test(c)));
-  byNum.forEach(c=>{const n=ap127LessonNum(c.lesson);if(n!=null&&/C$/i.test(stripNum(c.lesson)))pts.push({idx:n-1,label:"Checkride"});});
+  byNum.forEach(c=>{
+    const n=ap127LessonNum(c.lesson);const base=stripNum(c.lesson);
+    if(n!=null&&/(?<!X)C$/i.test(base))pts.push({idx:n-1,label:`Checkride · ${AP127_CHECKRIDE_DETAIL[base.toUpperCase()]||base}`});
+  });
   return pts;
 }
 // ── Overall Progress Bar View v5 — a "MASTER PLAN" reference row (the full curriculum, always
@@ -1119,10 +1134,16 @@ function buildAP127OverallChart(all,curriculum,maxDate){
         const tier=i%3; // stagger labels of nearby markers onto 3 rows so dense clusters (checkrides
         // 1 lesson apart, or a key point landing right next to a phase boundary) don't overlap
         const nearRightEdge=(x.right-px)<95; // flip alignment so labels near lesson 96 don't run off-canvas
-        ctx.font=isPhase?"700 8.5px JetBrains Mono, monospace":"8px JetBrains Mono, monospace";
-        ctx.fillStyle=isPhase?"#c9d1d9":"#facc15";
+        ctx.font=isPhase?"700 8.5px JetBrains Mono, monospace":"700 8px JetBrains Mono, monospace";
+        ctx.fillStyle=isPhase?"#f0f6fc":"#fde047";
         ctx.textAlign=nearRightEdge?"right":"left";ctx.textBaseline="top";
-        ctx.fillText(m.label,px+(nearRightEdge?-3:3),y.top+2+tier*11);
+        const lx=px+(nearRightEdge?-3:3),ly=y.top+2+tier*11;
+        // Dark halo (stroke-then-fill) so labels stay readable regardless of which phase's fill
+        // color sits directly behind them on the MASTER PLAN row — a flat fillStyle alone (the
+        // prior approach) was unreadable wherever a light phase segment sat behind light text.
+        ctx.lineJoin="round";ctx.lineWidth=3;ctx.strokeStyle="rgba(13,17,23,0.9)";
+        ctx.strokeText(m.label,lx,ly);
+        ctx.fillText(m.label,lx,ly);
       });
       ctx.restore();
     }
@@ -1867,7 +1888,44 @@ function initScrubber(){
   track.addEventListener('pointerup',()=>{drag=false;});
 }
 
-function mountProgress(data){ G = data; initScrubber(); renderAP127Detail(); }
+// Draggable splitter between Progress Ranking and the side column (Pace Distribution etc). Width
+// persists to localStorage so it survives tab switches/reloads; a saved width from a much
+// narrower/wider viewport is clamped back into range rather than trusted blindly.
+function ap127InitSplit(){
+  const grid=document.getElementById('d127v4-split-grid');
+  const handle=document.getElementById('d127v4-split-handle');
+  if(!grid||!handle||handle._init)return;
+  handle._init=true;
+  const MIN=280;
+  const apply=leftPx=>{grid.style.gridTemplateColumns=`${leftPx}px 8px 1fr`;};
+  const saved=parseInt(localStorage.getItem('ap127v4SplitLeftPx')||'',10);
+  if(!isNaN(saved)){
+    // Deferred to the next frame: called right after innerHTML is set, the grid hasn't been
+    // laid out yet, so getBoundingClientRect().width reads 0 here and the clamp collapses the
+    // saved width down to MIN every time. One rAF later, layout has committed and width is real.
+    requestAnimationFrame(()=>{
+      const max=Math.max(MIN,grid.getBoundingClientRect().width-8-MIN);
+      apply(Math.max(MIN,Math.min(max,saved)));
+    });
+  }
+  let dragging=false;
+  const move=e=>{
+    if(!dragging)return;
+    const r=grid.getBoundingClientRect();
+    const max=Math.max(MIN,r.width-8-MIN);
+    const leftPx=Math.max(MIN,Math.min(max,e.clientX-r.left));
+    apply(leftPx);
+  };
+  handle.addEventListener('pointerdown',e=>{dragging=true;handle.classList.add('d127v4-dragging');handle.setPointerCapture(e.pointerId);move(e);});
+  handle.addEventListener('pointermove',move);
+  handle.addEventListener('pointerup',()=>{
+    dragging=false;handle.classList.remove('d127v4-dragging');
+    const w=grid.style.gridTemplateColumns.split(' ')[0];
+    if(w)localStorage.setItem('ap127v4SplitLeftPx',parseInt(w,10));
+  });
+}
+
+function mountProgress(data){ G = data; initScrubber(); ap127InitSplit(); renderAP127Detail(); }
 function destroyProgress(){ try { Object.values(CHARTS).forEach(c => { try { c && c.destroy(); } catch(e){} }); } catch(e){} }
 
 function opsAugment(students, curriculum) {

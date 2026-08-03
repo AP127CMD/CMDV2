@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p131` (all currently at p130)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p133` (all currently at p132)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,49 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p131` (2026-08-04 — **OPS student-name alias normalization — 28
+**Last known:** all files `p132` (2026-08-04 — **AP127 Detail V4 — Pace Monitor compact table +
+batch-focused action banner, resizable Progress-Ranking/side-panel splitter, Overall Progress
+readability + checkride detail.** Tenth round of same-day feedback, three unrelated asks bundled
+into one pass:
+1. **Pace Monitor → compact table.** The p129 big-number stat cards (3 per period × 6 periods)
+   were replaced with two compact tables (1 SP / 28 SP Batch Total), each 3 rows (Month/Week/Day) ×
+   6 data columns (Hrs Req/Act/Gap, Les Req/Act/Gap) — same underlying numbers, far less vertical
+   space. Required Action banner changed from a per-SP hours+lessons message to a single
+   batch-wide hours-per-week figure per explicit request ("focus on batch's hrs need per week"):
+   new `gHrWkBatch = actWeekHrsB - reqWeekHrsB` (no `/n`, no lessons).
+2. **Resizable Progress Ranking / side-panel splitter.** The two-column layout below Progress
+   Ranking used the shared `.d127-grid` class (still used as-is by the original AP127 Detail tab) —
+   left untouched there; V4 now uses its own `.d127v4-split-grid` with a draggable
+   `#d127v4-split-handle` between the two panels. Width persists to `localStorage`
+   (`ap127v4SplitLeftPx`) via `ap127InitSplit()`, restored (clamped to viewport) on every mount.
+   Bug caught in testing: the restore-on-mount clamp ran synchronously right after
+   `innerHTML=MARKUP`, before the browser had laid out the new grid, so
+   `getBoundingClientRect().width` read 0 and every restore collapsed to the 280px minimum
+   regardless of the saved value — fixed by deferring the restore to `requestAnimationFrame`.
+   Verified live: dragged the handle (735px), reloaded, confirmed it restored to 732px (correctly
+   clamped against the real ~1020px grid width, not collapsed to 280px).
+3. **Overall Progress — readable marker labels + checkride detail.** User-reported "Master plan
+   and key point is difficult to read": the phase-boundary/key-point labels (`markerPlugin`) were
+   flat-color canvas text drawn directly over the MASTER PLAN row's colored phase segments, so
+   light text over light segments (or vice versa) was low-contrast. Fixed with a dark stroke-then-
+   fill halo (`ctx.strokeText` in `rgba(13,17,23,0.9)` before `ctx.fillText`) — readable regardless
+   of the segment color behind it. Also added checkride detail per user request ("add detail of
+   each check ride flight"): `ap127KeyPoints()`'s generic `"Checkride"` label is now
+   `"Checkride · <detail>"` via a new `AP127_CHECKRIDE_DETAIL` map (GH / VFR XC / IFR XC /
+   ME IFR XC) keyed by the 4 real checkride codes (CSPGLC/CSPXVC/CSPXIC/CMSPXIC, confirmed against
+   the authoritative syllabus.json). Fixed a real bug found while doing this: the old checkride
+   regex was a bare `/C$/i` on the number-stripped code, which also matched Night/VFR/IFR
+   Cross-Country codes ending "...XC" (e.g. "CDNXC 48" — Night Cross-Country, not a check) —
+   confirmed live via the curriculum data that this produced a 5th, spurious "Checkride" marker.
+   Fixed with a negative lookbehind, `/(?<!X)C$/i`, which still matches every real check code
+   (their trailing C isn't part of an "XC" token) while excluding the false positive. Verified
+   live: exactly 4 checkride markers now render, each with a distinct detail suffix, all legible
+   against every phase color.
+
+Verified live throughout: zero console errors, original AP127 Detail (`js/view-cohort.js`)
+confirmed still byte-identical/untouched (`git diff --stat` empty). Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css`. Full write-up: REVAMP.md's p132 entry.) p131
+(2026-08-04 — **OPS student-name alias normalization — 28
 distinct AP-127 SPs.** User-reported: the same AP-127 SP was showing up under multiple spellings
 in OPS data, fragmenting every OPS-side stat that groups by student (Ops Analytics "STUDENT
 BREAKDOWN", Roster, Board, Slot Finder). Root cause: unplanned/manual bookings sometimes get

@@ -1183,3 +1183,60 @@ overall achievement, ON TRACK pace status — both distinct from the frozen AP12
 before the fix); reselecting "All batches" reverts to "AP127 ONLY" with the original figures
 (no regression); zero console errors. Only file touched: `js/view-program.js` (plus the usual
 `index.html` cache-bust bump).
+
+### AP127 Detail V4 — Pace compact table, resizable splitter, Overall Progress readability (2026-08-04, p132)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Tenth round of same-day feedback, three asks bundled in one pass:
+
+**1. Pace Monitor → compact table.** Replaced p129's big-number Required/Actual/Gap stat cards
+(3 cards × 6 period-blocks) with two compact HTML tables — "1 SP" and "28 SP · Batch Total" — each
+3 rows (Month/Week/Day) × 6 columns (Hrs Req/Act/Gap, Les Req/Act/Gap). Same underlying figures,
+far less vertical space. The Required Action banner was changed from a per-SP hours+lessons
+message to a single batch-wide hours-per-week figure, per explicit feedback ("focus on batch's
+hrs need per week"): `gHrWkBatch = actWeekHrsB - reqWeekHrsB` (batch totals, no `/n`, hours only).
+
+**2. Resizable Progress Ranking / side-panel splitter.** The layout below Progress Ranking used
+the shared `.d127-grid` class — also used unchanged by the original AP127 Detail tab, so it was
+left alone there. V4 now uses its own `.d127v4-split-grid` (3-column grid: panel / 8px handle /
+side) with a draggable `#d127v4-split-handle` (`ap127InitSplit()`, pointer-event based, same
+pattern as the existing date-scrubber's `initScrubber()`). Width persists to
+`localStorage['ap127v4SplitLeftPx']`, restored (clamped to the live viewport) on every mount.
+
+Bug caught in testing (not present until verified live, not just visually): the restore-on-mount
+clamp ran synchronously right after `innerHTML=MARKUP`, before the browser had committed layout for
+the freshly-inserted grid — so `grid.getBoundingClientRect().width` read `0`, and
+`max = Math.max(MIN, 0-8-MIN)` collapsed to `MIN`, silently discarding the saved width on every
+single mount/reload regardless of what was saved. Fixed by deferring the restore-and-clamp to
+`requestAnimationFrame`, which runs after the browser has committed the new layout. Verified live:
+dragged the handle to 735px width, reloaded, confirmed the grid restored to 732px (correctly
+clamped against the real ~1020px grid width) — before the fix it always came back at 280px (`MIN`)
+on reload no matter what had been saved.
+
+**3. Overall Progress — readable marker labels + checkride detail.** User-reported: "Master plan
+and key point is difficult to read." Root cause: `markerPlugin`'s phase-boundary/key-point labels
+were flat-color canvas text (`ctx.fillText` only) drawn directly over the MASTER PLAN row's
+colored phase segments — light text over a light segment (or the reverse) was low-contrast.
+Fixed with a dark halo: `ctx.strokeText(...)` in `rgba(13,17,23,0.9)` with `lineWidth:3` drawn
+immediately before `ctx.fillText(...)`, so the label stays legible regardless of which phase
+color sits behind it.
+
+Also added checkride detail per explicit request ("Add detail of each check ride flight"):
+`ap127KeyPoints()`'s generic `"Checkride"` label is now `"Checkride · <detail>"` — GH / VFR XC /
+IFR XC / ME IFR XC — via a new `AP127_CHECKRIDE_DETAIL` map keyed by the 4 real checkride codes
+(CSPGLC, CSPXVC, CSPXIC, CMSPXIC), cross-checked against the authoritative
+`ap127-flight-training.pages.dev/data/syllabus.json` lesson titles.
+
+While building the detail map, found and fixed a real (pre-existing, unreported) bug: the old
+checkride-detection regex was a bare `/C$/i` tested against the number-stripped lesson code, which
+also matches Night/VFR/IFR Cross-Country codes ending in "...XC" (e.g. `"CDNXC 48"` — Night
+Cross-Country, not a checkride — the code's comment even claimed "exactly 4 in the curriculum" but
+the regex actually produced 5 matches). Fixed with a negative lookbehind, `/(?<!X)C$/i`, which
+still matches every real check code (their trailing "C" isn't part of an "XC" token) while
+excluding the false positive. Verified against the raw `cur127` curriculum data directly (not just
+visually): exactly 4 checkride markers now match, matching the syllabus source of truth.
+
+Verified live throughout: zero console errors; original AP127 Detail (`js/view-cohort.js`)
+confirmed still byte-identical/untouched (`git diff --stat` empty). Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust bump).
