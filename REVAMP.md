@@ -1240,3 +1240,53 @@ visually): exactly 4 checkride markers now match, matching the syllabus source o
 Verified live throughout: zero console errors; original AP127 Detail (`js/view-cohort.js`)
 confirmed still byte-identical/untouched (`git diff --stat` empty). Only files touched:
 `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust bump).
+
+### AP127 Detail V4 — Overall Progress: SYLLABUS strip replaces the "MASTER PLAN" chart row (2026-08-04, p133)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Eleventh round of same-day feedback: "Make the master plan bigger so we can fit all info inside
+the bar," "Add more detail from the syllabus to the master plan... add some creativity," "Change
+the MASTER PLAN to be SYLLABUS."
+
+The p128/p129-era design folded a "MASTER PLAN" reference bar into the Chart.js stacked horizontal
+bar chart as row 0 — same fixed height as every SP's own row, holding at most one line of canvas
+text per phase segment. That ceiling made it impossible to fit phase name + description + hour/
+lesson counts + milestone detail into the bar, and canvas `fillText` has no hover-tooltip
+mechanism, so there was nowhere to put "why does this phase matter" text.
+
+Pulled the syllabus reference out of the chart entirely and rebuilt it as a standalone, much
+taller HTML/CSS component:
+
+- New `ap127SyllabusStrip(cur, totalLessons)` renders into a new `#d127v4-syllabus-strip` div
+  placed directly above the `<canvas id="d127v4-overall">`, sharing the same 100px left gutter as
+  the chart's y-axis label column so the two read as one continuous lesson-number timeline.
+- 4 phase blocks, sized by `flex`/`%`-width proportional to each phase's lesson count, each 56px
+  tall (vs. a per-SP row's ~20px) — room for phase number, title, lesson range, and hour count all
+  inside the segment, white text with a drop-shadow for contrast against every phase color, plus a
+  `title` tooltip carrying a one-line phase blurb ("Provide the trainee with fundamental flight
+  skills..." → shortened per-phase `blurb` field on `AP127_SYLLABUS_PHASES`).
+- Verified `hrs` field added per phase (14/25/45/96h) — summed each phase's own lesson durations
+  directly from the authoritative `ap127-flight-training.pages.dev/data/syllabus.json` and
+  confirmed they add to exactly 180h, rather than guessing/dividing the total evenly.
+- Above the phase row, every key point and checkride from `ap127KeyPoints()` renders as an
+  emoji-flagged pin — 🛫 Initial Solo, 📟 Instrument, 🧭 Cross-Country, 🖥️ Sim, ✈️ Multi-Engine,
+  🏁 Checkride (new `ap127KeyPointIcon()` helper) — connected by a thin tick line down into its
+  phase segment, hover-scales for a bit of interactivity. Positioned by the same
+  `lesson/totalLessons` percentage math the chart below uses for its x-axis, so milestone pins line
+  up with the same lesson number in both the strip and the per-SP bars underneath.
+- `buildAP127OverallChart()` no longer prepends a row-0 "MASTER PLAN" entry to any dataset or the
+  `labels` array — every dataset's `data`/`remainingData` and the `labels` array now start directly
+  at the first real SP. `currentLabelPlugin`'s per-bar lookup (`meta.data[i+1]`) dropped its `+1`
+  index offset to match. The y-axis tick-color scriptable callback's `ctx.index===0` special case
+  (used to highlight the old MASTER PLAN row's label) was removed as dead code.
+- All "MASTER PLAN" strings renamed to "SYLLABUS": removed entirely from the chart (no longer a
+  row), the panel's description text rewritten to describe the new strip, and the surrounding code
+  comments updated.
+
+Verified live: zero console errors; the SYLLABUS strip's 9 milestone tooltips checked against the
+syllabus source data one-by-one and match exactly (Initial Solo L14, Instrument L15, Cross-Country
+L29, Sim L56, Multi-Engine L91, checkrides L54/L55/L90/L96); original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched (`git diff --stat` empty). Only
+files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust
+bump).

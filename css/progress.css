@@ -164,6 +164,28 @@
 .d127v4-split-handle:hover::after,.d127v4-split-handle.d127v4-dragging::after{background:var(--acc);width:3px;}
 @media(max-width:900px){.d127v4-cards{grid-template-columns:repeat(2,1fr);}.d127v4-pace-tbls{flex-direction:column;}.d127v4-split-grid{grid-template-columns:1fr;}.d127v4-split-handle{display:none;}}
 
+/* SYLLABUS strip — a rich standalone timeline above the Overall Progress chart (not a chart row).
+   padding-left/margin-left:100px lines it up with the chart's y-axis label column below it. */
+.d127v4-syllabus{margin:2px 0 14px;}
+.d127v4-syllabus-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding-left:100px;margin-bottom:6px;}
+.d127v4-syllabus-lbl{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:800;letter-spacing:1.5px;color:var(--c127);}
+.d127v4-syllabus-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);}
+.d127v4-syllabus-track{position:relative;margin-left:100px;padding-top:22px;}
+.d127v4-syl-phases{display:flex;height:56px;border-radius:7px;overflow:hidden;box-shadow:0 0 0 1px var(--bd2);}
+.d127v4-syl-phase{position:relative;display:flex;flex-direction:column;justify-content:center;padding:5px 9px;overflow:hidden;border-right:1px solid rgba(13,17,23,.35);cursor:default;transition:filter .15s;}
+.d127v4-syl-phase:last-child{border-right:none;}
+.d127v4-syl-phase:hover{filter:brightness(1.12);}
+.d127v4-syl-phase-n{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);letter-spacing:.4px;}
+.d127v4-syl-phase-t{font-family:'Rajdhani',sans-serif;font-size:12px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.d127v4-syl-phase-m{font-family:'JetBrains Mono',monospace;font-size:8.5px;color:rgba(255,255,255,.88);text-shadow:0 1px 2px rgba(0,0,0,.55);margin-top:2px;}
+.d127v4-syl-kps{position:absolute;top:0;left:0;right:0;height:100%;pointer-events:none;}
+.d127v4-syl-kp{position:absolute;top:0;bottom:0;transform:translateX(-50%);pointer-events:auto;}
+.d127v4-syl-kp-tick{position:absolute;top:22px;bottom:0;left:50%;width:1px;background:rgba(253,224,71,.55);transform:translateX(-50%);}
+.d127v4-syl-kp-cr .d127v4-syl-kp-tick{background:rgba(250,204,21,.8);width:1.5px;}
+.d127v4-syl-kp-ic{position:absolute;top:0;left:50%;transform:translate(-50%,0);font-size:12.5px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.75));transition:transform .15s;}
+.d127v4-syl-kp:hover .d127v4-syl-kp-ic{transform:translate(-50%,0) scale(1.4);}
+@media(max-width:900px){.d127v4-syllabus-hd,.d127v4-syllabus-track{margin-left:0;padding-left:0;}}
+
 .d127v4-watchlist{display:flex;flex-direction:column;gap:6px;}
 .d127v4-watch-item{display:flex;align-items:center;gap:9px;background:var(--s2);border:1px solid var(--bd2);border-left:3px solid var(--tx3);border-radius:6px;padding:6px 9px;cursor:pointer;}
 .d127v4-watch-item:hover{border-color:var(--c127);}

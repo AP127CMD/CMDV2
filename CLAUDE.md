@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p133` (all currently at p132)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p134` (all currently at p133)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,32 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p132` (2026-08-04 — **AP127 Detail V4 — Pace Monitor compact table +
+**Last known:** all files `p133` (2026-08-04 — **AP127 Detail V4 — Overall Progress: SYLLABUS
+strip replaces the "MASTER PLAN" chart row.** Eleventh round of same-day feedback: "Make the
+master plan bigger so we can fit all info inside the bar," "Add more detail from the syllabus...
+add some creativity," "Change the MASTER PLAN to be SYLLABUS." The v5 design folded a "MASTER PLAN"
+reference bar into the Chart.js stacked-bar dataset as row 0 (same height as every SP's own row,
+one line of canvas text) — too cramped for phase name + description + hour/lesson counts +
+milestone detail all at once, and canvas text can't do hover tooltips. Pulled it out of the chart
+entirely: new `ap127SyllabusStrip(cur,totalLessons)` renders a standalone, much taller (56px vs a
+per-SP row's ~20px) HTML/CSS timeline into a new `#d127v4-syllabus-strip` div directly above the
+canvas — 4 phase blocks sized proportionally by lesson count, each showing phase number + title +
+lesson range + hours, with a `title` tooltip carrying a one-line phase blurb (new `blurb` field on
+`AP127_SYLLABUS_PHASES`, plus a verified `hrs` field per phase — summed each phase's own lesson
+durations from the authoritative syllabus.json and confirmed 14+25+45+96=180h). Above the phase
+row, every key point and checkride renders as an emoji-flagged pin (🛫 Solo, 📟 Instrument, 🧭
+Cross-Country, 🖥️ Sim, ✈️ Multi-Engine, 🏁 Checkride) connected by a thin tick line down into its
+phase segment, positioned by the same `lesson/totalLessons` percentage math as the chart's x-axis
+below it so the two stay visually aligned (shared 100px left gutter matching the chart's y-axis
+label column). `buildAP127OverallChart()` no longer prepends a row-0 entry to any dataset/label
+array; the per-SP chart's `currentLabelPlugin` bar-index lookup dropped its `+1` offset
+accordingly. All "MASTER PLAN" strings renamed to "SYLLABUS" (chart label removed since it's no
+longer a chart row; panel description text; code comments). Verified live: zero console errors,
+SYLLABUS strip's 9 milestone tooltips match the syllabus source data exactly (Initial Solo L14,
+Instrument L15, Cross-Country L29, Sim L56, Multi-Engine L91, checkrides L54/55/90/96), original
+AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css`. Full write-up: REVAMP.md's p133 entry.) p132
+(2026-08-04 — **AP127 Detail V4 — Pace Monitor compact table +
 batch-focused action banner, resizable Progress-Ranking/side-panel splitter, Overall Progress
 readability + checkride detail.** Tenth round of same-day feedback, three unrelated asks bundled
 into one pass:
