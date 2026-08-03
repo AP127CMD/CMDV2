@@ -1152,6 +1152,32 @@ batch === 'ALL' ? 'AP127' : batch;` then `scKpis(focusBatch)`, with the "AP127 O
 reads e.g. "AP126 ONLY" when that filter is active. Selecting "All batches" still shows the
 original AP127-focused second block (no behavior change for the default view).
 
+### OPS student-name alias normalization — 28 distinct AP-127 SPs (2026-08-04, p131)
+
+`js/shared.js`
+
+User-reported: the same AP-127 SP appears under multiple spellings in OPS data (`FLIGHTS[].student`),
+fragmenting every OPS-side stat that groups by student (Ops Analytics "STUDENT BREAKDOWN", Roster,
+Board, Slot Finder). This is the same root cause the `p96` Cross-Check fix (line 402 above) partially
+patched — unplanned/manually-created bookings sometimes get logged with the full legal name, the
+progress-feed nickname, or a differently-cased short form instead of the standard scheduling-system
+"FIRST L." spelling — but `p96`'s `opsStudentKey()` only fixed matching *inside* `reconcile.js`'s
+Cross-Check view; every other OPS view still grouped on the raw, unnormalized `f.student` string.
+Confirmed live via `flight-data.js`: 12 AP-127 SPs each had a second (sometimes third) spelling —
+`MAETHAPHAN RUENGPRAPAIKIJSEREE` / `WATCHARAPONG CHUAIDU` / `AKARAVIT KHWANNGAM` / `SAETASIT P.` /
+`WATCHARAPHOL` / `WATCHARAPHOL VONGNOI` / `P-KORN` / `PICHAKORN JIRAPINYO` / `T-WAJ` /
+`JIRAYU AMORNSATITPAN` / `W-POL` / `VASAPHON SINSAB` — all only ever seen on `(Unplanned)` rows,
+alongside the correctly-spelled majority form.
+
+Fix: new `AP127_STUDENT_ALIASES` map in `shared.js`, applied in the same load-time IIFE that already
+strips the `" (Unplanned)"` suffix (`p106`) — keyed upper-cased/trimmed, rewrites each known variant
+to its canonical "FIRST L." spelling before `FLIGHTS` is assigned, so every downstream view (OPS and
+progress alike) sees one consistent name per person with no per-view changes needed. Verified live:
+`new Set(FLIGHTS.filter(f=>f.batch==='AP-127').map(f=>f.student))` now returns exactly 28 real SP
+names + the pre-existing legitimate `"All Students"` group-briefing entry (Long Brief / classroom
+bookings, not a person) — was 29+ fragmented names before the fix. Zero console errors on Ops
+Analytics. Only file touched: `js/shared.js` (plus the usual `index.html` cache-bust bump).
+
 Verified live (local static server): selecting AP126 now shows a correct "AP126 ONLY" block (93%
 overall achievement, ON TRACK pace status — both distinct from the frozen AP127 numbers seen
 before the fix); reselecting "All batches" reverts to "AP127 ONLY" with the original figures

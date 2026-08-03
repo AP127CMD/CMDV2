@@ -119,6 +119,32 @@ window.FLIGHT_DATA.flights.forEach(f => {
   if (f.student)    f.student    = f.student.replace(/\s*\(Unplanned\)\s*$/i, '').trim();
   if (f.instructor) f.instructor = f.instructor.replace(/\s*\(Unplanned\)\s*$/i, '').trim();
 });
+// Collapse AP-127 student-name variants onto one canonical "First L." spelling so
+// OPS-side stats (Ops Analytics, Roster, Board, …) stop splitting one real SP into
+// several rows. Unplanned/manual bookings sometimes get logged as the full legal
+// name, the progress-feed nickname, or a differently-cased short form instead of
+// the standard scheduling-system spelling — same person, different string. There
+// should be exactly 28 distinct AP-127 SPs; this map is the fix for the 12 confirmed
+// live 2026-08-04. Keyed upper-cased/trimmed so matching is case-insensitive.
+const AP127_STUDENT_ALIASES = {
+  'MAETHAPHAN RUENGPRAPAIKIJSEREE': 'MAETHAPHAN R.',
+  'WATCHARAPONG CHUAIDU':           'WATCHARAPONG C.',
+  'AKARAVIT KHWANNGAM':             'AKARAVIT K.',
+  'SAETASIT P.':                    'SETASIT P.',
+  'WATCHARAPHOL':                   'WATCHARAPHOL V.',
+  'WATCHARAPHOL VONGNOI':           'WATCHARAPHOL V.',
+  'P-KORN':                         'PICHAKORN J.',
+  'PICHAKORN JIRAPINYO':            'PICHAKORN J.',
+  'T-WAJ':                          'TEERAWAJ C.',
+  'JIRAYU AMORNSATITPAN':           'JIRAYU A.',
+  'W-POL':                          'WATCHARAPOL A.',
+  'VASAPHON SINSAB':                'VASAPHON S.',
+};
+window.FLIGHT_DATA.flights.forEach(f => {
+  if (!f.student) return;
+  const canon = AP127_STUDENT_ALIASES[f.student.trim().toUpperCase()];
+  if (canon) f.student = canon;
+});
 const FLIGHTS     = window.FLIGHT_DATA.flights;
 const INSTRUCTORS = window.FLIGHT_DATA.instructors;
 const RESOURCES   = window.FLIGHT_DATA.resources;

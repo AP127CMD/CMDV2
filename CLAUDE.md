@@ -40,7 +40,26 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p130` (2026-08-03 — **School Perf — Scorecard batch-filter bug fix.**
+**Last known:** all files `p131` (2026-08-04 — **OPS student-name alias normalization — 28
+distinct AP-127 SPs.** User-reported: the same AP-127 SP was showing up under multiple spellings
+in OPS data, fragmenting every OPS-side stat that groups by student (Ops Analytics "STUDENT
+BREAKDOWN", Roster, Board, Slot Finder). Root cause: unplanned/manual bookings sometimes get
+logged as the full legal name, the progress-feed nickname, or a differently-cased short form
+instead of the standard "FIRST L." spelling — the same class of issue the `p96` Cross-Check fix
+partially patched (see `REVAMP.md` line ~402), but that fix only normalized names *inside*
+`reconcile.js`'s Cross-Check view, not the raw `FLIGHTS[].student` every other OPS view reads.
+Confirmed live: 12 AP-127 SPs each had a second spelling — `MAETHAPHAN RUENGPRAPAIKIJSEREE` →
+`MAETHAPHAN R.`, `WATCHARAPONG CHUAIDU` → `WATCHARAPONG C.`, `AKARAVIT KHWANNGAM` → `AKARAVIT K.`,
+`SAETASIT P.` → `SETASIT P.`, `WATCHARAPHOL`/`WATCHARAPHOL VONGNOI` → `WATCHARAPHOL V.`,
+`P-KORN`/`PICHAKORN JIRAPINYO` → `PICHAKORN J.`, `T-WAJ` → `TEERAWAJ C.`,
+`JIRAYU AMORNSATITPAN` → `JIRAYU A.`, `W-POL` → `WATCHARAPOL A.`, `VASAPHON SINSAB` →
+`VASAPHON S.` — all only ever seen on `(Unplanned)` rows. Fixed with a new `AP127_STUDENT_ALIASES`
+map in `js/shared.js`, applied in the same load-time IIFE that already strips `" (Unplanned)"`
+(`p106`), so every downstream view sees one canonical name per SP with no per-view changes needed.
+Verified live: `FLIGHTS` now yields exactly 28 real AP-127 SP names + the pre-existing legitimate
+`"All Students"` group-briefing entry (Long Brief/classroom, not a person) — was fragmented before.
+Zero console errors. Only file touched: `js/shared.js`. Full write-up: `REVAMP.md`'s p131 entry.)
+p130 (2026-08-03 — **School Perf — Scorecard batch-filter bug fix.**
 User-reported "AP126 progress data broken" in Curriculum Prog + School Perf. Curriculum Prog
 checked out fine live (batch dropdown correctly narrows to 28 AP126 students). Real bug was in
 School Perf's "School Pace Scorecard": `renderScorecard()`'s per-batch KPI block hardcoded
