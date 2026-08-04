@@ -679,7 +679,7 @@ function buildAP127Timeline(all,curriculum,maxDate){
   const legend=document.getElementById("d127v4-phase-legend");
   if(legend){
     const items=AP127_SYLLABUS_PHASES.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("");
-    legend.innerHTML=items+`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#fca5a5;border-radius:2px;width:14px;height:3px"></span>gap &gt; 7 days</span><span class="d127-pc"><span class="d127-pdot" style="background:#e6edf3;border-radius:2px;width:14px;height:3px"></span>idle 1-2d</span><span class="d127-pc"><span class="d127-pdot" style="background:#fbbf24;border-radius:2px;width:14px;height:3px"></span>idle 3-5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#ff6b6b;border-radius:2px;width:14px;height:3px"></span>idle &gt;5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#f59e0b;width:2px;height:10px;border-radius:0"></span>today</span>`;
+    legend.innerHTML=items+`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#fca5a5;border-radius:2px;width:14px;height:3px"></span>gap &gt; 7 days</span><span class="d127-pc"><span class="d127-pdot" style="background:#e6edf3;border-radius:2px;width:14px;height:3px"></span>idle 1-2d</span><span class="d127-pc"><span class="d127-pdot" style="background:#fbbf24;border-radius:2px;width:14px;height:3px"></span>idle 3-5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#ff6b6b;border-radius:2px;width:14px;height:3px"></span>idle &gt;5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#f59e0b;width:2px;height:10px;border-radius:0"></span>today</span><span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>AP127 target date</span>`;
   }
   const phaseColor=code=>ap127SyllabusPhase(code).c;
   const datasets=[];
@@ -828,6 +828,30 @@ function buildAP127Timeline(all,curriculum,maxDate){
       ctx.restore();
     }
   };
+  // AP127 Targets overlay — one thin dashed rose line per batch-wide checkpoint date
+  // (js/ap127-targets-data.js, edited via the System-tab "AP127 Targets" page), labeled with its
+  // target lesson number, so the calendar cadence the batch is meant to keep is visible directly
+  // against actual flight activity below.
+  const targetLinesPlugin={
+    id:"d127v4TimelineTargets",
+    afterDatasetsDraw(chart){
+      const targets=window.ap127GetMilestoneTargets?window.ap127GetMilestoneTargets():[];
+      if(!targets.length)return;
+      const{ctx,scales:{x,y}}=chart;
+      ctx.save();
+      targets.forEach(t=>{
+        const dayNum=toDayNum(t.date);
+        if(dayNum<x.min||dayNum>x.max)return;
+        const px=x.getPixelForValue(dayNum);
+        ctx.strokeStyle="rgba(244,63,94,0.5)";ctx.lineWidth=1;ctx.setLineDash([3,3]);
+        ctx.beginPath();ctx.moveTo(px,y.top);ctx.lineTo(px,y.bottom);ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font="700 7.5px JetBrains Mono, monospace";ctx.fillStyle="#f43f5e";ctx.textAlign="center";ctx.textBaseline="bottom";
+        ctx.fillText(`L${t.lesson}`,px,y.top-1);
+      });
+      ctx.restore();
+    }
+  };
   CHARTS.ap127timeline=mkC("d127v4-timeline",{
     type:"line",
     data:{datasets},
@@ -885,7 +909,7 @@ function buildAP127Timeline(all,curriculum,maxDate){
         }
       }
     },
-    plugins:[countPlugin,gapPlugin,idlePlugin,labelPlugin]
+    plugins:[countPlugin,gapPlugin,idlePlugin,labelPlugin,targetLinesPlugin]
   });
   const lead=sorted[0],lag=sorted.at(-1);
   document.getElementById("d127v4-tl-meta").textContent=lead&&lag?`Leader ${ap127ShortName(lead.name)} (${lead.done||0}/${curriculum}) · Lag ${ap127ShortName(lag.name)} (${lag.done||0}/${curriculum})`:"-";
@@ -1214,6 +1238,17 @@ function ap127SyllabusStrip(cur,totalLessons,viewMin,viewMax){
   const subLabel=zoomed
     ?`showing lessons ${Math.round(viewMin)}–${Math.round(viewMax)} of ${totalLessons} (zoomed with chart)`
     :`${totalLessons} lessons · ${totalHrs}h · CATC CPL/IR Integrated Course`;
+  // AP127 Targets overlay — where the whole batch is expected to be TODAY (or the As-Of date, if
+  // scrubbed) per the batch-wide milestone schedule (js/ap127-targets-data.js, edited via the
+  // System-tab "AP127 Targets" page). Drawn as a single distinct rose/red marker, deliberately not
+  // styled like the phase-boundary/milestone visuals so it doesn't read as "part of the syllabus"
+  // — it's an external pacing target, not curriculum structure.
+  const todayLesson=window.ap127TargetLessonForDate?window.ap127TargetLessonForDate(ap127AsOf()):null;
+  let targetHtml="";
+  if(todayLesson!=null&&todayLesson>=viewMin&&todayLesson<=viewMax){
+    const tPct=Math.max(0,Math.min(100,(todayLesson-viewMin)/rangeSpan*100));
+    targetHtml=`<div class="d127v4-syl-target" style="left:${tPct}%" title="AP127 Target: every SP at Lesson ${Math.round(todayLesson)} by ${ap127FmtDate(ap127AsOf())}"><span class="d127v4-syl-target-lbl">TARGET · L${Math.round(todayLesson)}</span></div>`;
+  }
   return `<div class="d127v4-syllabus">
     <div class="d127v4-syllabus-hd">
       <span class="d127v4-syllabus-lbl">✦ SYLLABUS</span>
@@ -1222,6 +1257,7 @@ function ap127SyllabusStrip(cur,totalLessons,viewMin,viewMax){
     <div class="d127v4-syllabus-track">
       <div class="d127v4-syl-kps">${kpHtml}</div>
       <div class="d127v4-syl-phases">${segHtml}</div>
+      ${targetHtml}
     </div>
   </div>`;
 }
@@ -1315,25 +1351,51 @@ function buildAP127OverallChart(all,curriculum,maxDate){
   const stripEl=document.getElementById("d127v4-syllabus-strip");
   if(stripEl)stripEl.innerHTML=ap127SyllabusStrip(cur,totalLessons,0,totalLessons);
 
+  // AP127 Targets: today's (or the As-Of date's) interpolated target lesson — every SP is expected
+  // to have reached at least this lesson. Used to color each SP's current/next-lesson label
+  // (green = at/ahead of target, rose = behind) and to draw one single reference line on the chart
+  // (targetLinePlugin) — kept deliberately minimal (one line, not per-row) per the earlier
+  // decluttering pass; only currentLabelPlugin's existing per-row text gets a color, no new lines
+  // added per row.
+  const todayTargetLesson=window.ap127TargetLessonForDate?window.ap127TargetLessonForDate(ap127AsOf()):null;
   const currentLabelPlugin={
     id:"d127v4CurrentLabel",
     afterDatasetsDraw(chart){
       const{ctx}=chart;
-      ctx.save();ctx.font="9px JetBrains Mono, monospace";ctx.fillStyle="#8b949e";ctx.textAlign="left";ctx.textBaseline="middle";
+      ctx.save();ctx.font="9px JetBrains Mono, monospace";ctx.textAlign="left";ctx.textBaseline="middle";
       const meta=chart.getDatasetMeta(AP127_BAR_SEGMENTS.length-1); // end of the last real segment = done position
       sorted.forEach((s,i)=>{
         const bar=meta.data[i];if(!bar)return;
         const last=(s.flown||[]).at(-1);
         const txt=(s.next_lesson==="COMPLETE"?"✓ COMPLETE":(s.next_lesson||last?.lesson||"-"));
+        const hit=todayTargetLesson==null?null:(s.done||0)>=todayTargetLesson;
+        ctx.fillStyle=hit==null?"#8b949e":hit?"#4ade80":"#f43f5e";
         ctx.fillText(txt,bar.x+4,bar.y);
       });
+      ctx.restore();
+    }
+  };
+  const targetLinePlugin={
+    id:"d127v4TargetLine",
+    afterDatasetsDraw(chart){
+      if(todayTargetLesson==null)return;
+      const{ctx,scales:{x,y}}=chart;
+      if(todayTargetLesson<x.min||todayTargetLesson>x.max)return;
+      const px=x.getPixelForValue(todayTargetLesson);
+      ctx.save();
+      ctx.strokeStyle="#f43f5e";ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+      ctx.beginPath();ctx.moveTo(px,y.top);ctx.lineTo(px,y.bottom);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font="700 8px JetBrains Mono, monospace";ctx.fillStyle="#f43f5e";ctx.textAlign="center";ctx.textBaseline="bottom";
+      ctx.fillText(`TARGET · L${Math.round(todayTargetLesson)}`,px,y.top-2);
       ctx.restore();
     }
   };
   const legend=document.getElementById("d127v4-overall-legend");
   if(legend){
     legend.innerHTML=AP127_BAR_SEGMENTS.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("")
-      +`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#ec4899;border-radius:2px;width:14px;height:3px"></span>SE→ME changeover</span>`;
+      +`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#ec4899;border-radius:2px;width:14px;height:3px"></span>SE→ME changeover</span>`
+      +`<span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>AP127 target</span>`;
   }
   CHARTS.ap127overall=mkC("d127v4-overall",{
     type:"bar",
@@ -1363,7 +1425,7 @@ function buildAP127OverallChart(all,curriculum,maxDate){
         y:{stacked:true,afterFit:scale=>{scale.width=100;},ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e",autoSkip:false},grid:{color:"#21262d"}}
       }
     },
-    plugins:[currentLabelPlugin]
+    plugins:[currentLabelPlugin,targetLinePlugin]
   });
 }
 
@@ -1473,24 +1535,44 @@ function buildAP127CombinedChart(){
   const totalSeries=[{x:firstDate,y:+totalPlan.toFixed(2)},{x:endDate,y:+totalPlan.toFixed(2)}];
   const todaySeries=[{x:today,y:0},{x:today,y:totalPlan*1.08}];
 
+  // AP127 Targets overlay — a batch-wide milestone schedule (date -> the lesson number every SP is
+  // expected to have reached by then; window.ap127TargetLessonForDate/ap127GetMilestoneTargets,
+  // js/ap127-targets-data.js), independent of the curriculum's own planned_date schedule (Plan
+  // above). Converted to this chart's batch-aggregate units: lessons mode = target lesson x n
+  // students; hours mode = cumulative planned hours through that lesson x n students (each
+  // lesson's own standard duration, summed — same "hours" convention as everywhere else in this tab).
+  const targetsRaw=(window.ap127GetMilestoneTargets?window.ap127GetMilestoneTargets():[]).slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  const curByLessonNum=[...curriculum].filter(c=>ap127LessonNum(c.lesson)!=null).sort((a,b)=>ap127LessonNum(a.lesson)-ap127LessonNum(b.lesson));
+  const cumPlannedMinsToLesson=lessonNum=>{let mins=0;for(const c of curByLessonNum){if(ap127LessonNum(c.lesson)>lessonNum)break;mins+=c.planned_mins||0;}return mins;};
+  const targetBatchValue=lessonNum=>isHrs?cumPlannedMinsToLesson(lessonNum)*n/60:lessonNum*n;
+  const targetSeries=targetsRaw.map(t=>({x:t.date,y:+targetBatchValue(t.lesson).toFixed(2)}));
+  const todayTargetLesson=window.ap127TargetLessonForDate?window.ap127TargetLessonForDate(today,targetsRaw):null;
+  const targetVariance=todayTargetLesson!=null?totalDone-targetBatchValue(todayTargetLesson):null;
+
   const fmt=v=>isHrs?v.toFixed(1):String(Math.round(v));
   const pct=(totalDone/totalPlan*100).toFixed(1);
   const varDays=Math.round(Math.abs(variance)/pace30);
   const varStr=variance>=0?`+${varDays}d ahead`:`${varDays}d behind`;
   const varC=variance>=0?'var(--done)':'#ef4444';
-  const kpiEl=document.getElementById('cpv-kpis-v4');
-  if(kpiEl)kpiEl.innerHTML=[
+  const kpis=[
     {l:'Done / Total',v:`${fmt(totalDone)} / ${fmt(totalPlan)}`,s:`${pct}% complete`,c:'var(--c127)'},
     {l:'Proj 30d Finish',v:ap127FmtDate(projEndDate30),s:`${(pace30*7).toFixed(1)} ${unit}/wk`,c:'#38bdf8'},
     {l:'Proj 15d Finish',v:ap127FmtDate(projEndDate15),s:`${(pace15*7).toFixed(1)} ${unit}/wk`,c:'#fb923c'},
     {l:'Plan Finish',v:ap127FmtDate(planEnd),s:'per curriculum',c:'#8b949e'},
     {l:'vs Plan Today',v:`${variance>=0?'+':''}${isHrs?variance.toFixed(1):Math.round(variance)} ${unit}`,s:varStr,c:varC},
-  ].map(k=>`<div class="cpv-kpi"><div class="cpv-kl">${k.l}</div><div class="cpv-kv" style="color:${k.c}">${k.v}</div><div class="cpv-ks">${k.s}</div></div>`).join('');
+  ];
+  if(todayTargetLesson!=null){
+    const tvC=targetVariance>=0?'var(--done)':'#f43f5e';
+    kpis.push({l:'vs Target Today',v:`${targetVariance>=0?'+':''}${isHrs?targetVariance.toFixed(1):Math.round(targetVariance)} ${unit}`,s:`target = every SP at L${Math.round(todayTargetLesson)}`,c:tvC});
+  }
+  const kpiEl=document.getElementById('cpv-kpis-v4');
+  if(kpiEl)kpiEl.innerHTML=kpis.map(k=>`<div class="cpv-kpi"><div class="cpv-kl">${k.l}</div><div class="cpv-kv" style="color:${k.c}">${k.v}</div><div class="cpv-ks">${k.s}</div></div>`).join('');
 
   CHARTS.ap127combined=mkC('d127v4-combined',{
     type:'line',
     data:{datasets:[
       {label:'Plan',    data:planSeries,  borderColor:'#cbd5e1',borderDash:[6,4],borderWidth:1.5,pointRadius:0,tension:0,order:3},
+      {label:'Target',  data:targetSeries,borderColor:'#f43f5e',borderDash:[5,2],borderWidth:2,pointRadius:2.5,pointBackgroundColor:'#f43f5e',pointBorderWidth:0,tension:0,order:1.5},
       {label:'Actual',  data:actSeries,   borderColor:'#e88aff',borderWidth:2.5, pointRadius:0,tension:0,order:1},
       {label:'Proj 30d',data:projSeries30,borderColor:'#38bdf8',borderDash:[3,3],borderWidth:1.5,pointRadius:0,tension:0,order:2},
       {label:'Proj 15d',data:projSeries15,borderColor:'#fb923c',borderDash:[3,3],borderWidth:1.5,pointRadius:0,tension:0,order:2},

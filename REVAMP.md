@@ -1509,3 +1509,81 @@ milestone icon and confirmed the modal opened with the correct title ("Initial S
 throughout. Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched.
 Only files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html`
 cache-bust bump).
+
+### AP127 Targets — new batch-wide milestone schedule feature (2026-08-04, p140)
+
+New: `js/ap127-targets-data.js`, `js/view-ap127-targets.js`
+Modified: `js/shell.js`, `js/view-cohort-v4.js`, `index.html`
+
+User supplied a 17-checkpoint date→lesson-number schedule the whole AP127 batch is expected to
+keep pace with (9 Aug 2026 → Lesson 30, through 29 Nov 2026 → Lesson 96), and asked for two things:
+an editable admin page with a revision record for future changes, and the schedule visible on
+every chart/timeline in AP127 Detail V4 so hit/miss is directly readable.
+
+**Data model.** New `js/ap127-targets-data.js`, loaded before `shell.js` so every consumer can
+reach it: `window.AP127_MILESTONE_TARGETS_DEFAULT` (the 17-entry array — the code default and,
+per the note below, the durable revision record), `ap127GetMilestoneTargets()` (reads a
+`localStorage` override if present, else the default — the single function every reader goes
+through), `ap127TargetLessonForDate(dateStr)` (linear interpolation between the two schedule
+entries bracketing a date; 0 before the first checkpoint, the last lesson after the final one).
+
+**On "history record for revision":** this app has no writable backend — it's a static Cloudflare
+Pages deploy off committed data files, the same architecture as every other AP127 project in this
+ecosystem. There is nowhere to durably persist a *shared, multi-user* edit history server-side
+without standing up new infrastructure (a Worker + KV namespace), which was out of scope for what
+was asked. Built honestly within that constraint rather than faking a database: the System-tab
+editor persists edits to this browser's `localStorage` (`ap127MilestoneTargetsOverride`) plus a
+local revision log (`ap127MilestoneTargetsLog`) displayed on the page — but this is explicitly
+labeled "this browser only" everywhere it appears in the UI. The actual durable, shared revision
+record is git history on `js/ap127-targets-data.js` — exactly how every other change in this
+codebase is tracked (see this file). The editor's "Export for commit" panel closes the loop:
+it pretty-prints the current table as a ready-to-paste `AP127_MILESTONE_TARGETS_DEFAULT` array
+with a Copy-to-clipboard button and explicit instructions to paste it into the data file and
+commit — that commit is what makes an edit permanent and visible to everyone, not the localStorage
+save.
+
+**Admin page** (`js/view-ap127-targets.js`, new nav entry "AP127 Targets" under System, icon `⌖`,
+registered in `shell.js`'s `GROUPS`/`registry()`). Plain `React.createElement` (no JSX), matching
+the other System-tab views' convention (`view-watchdog.js`, `view-cf-usage.js`) — loaded as a
+plain `<script>` so it skips Babel. Features: a sortable table of all checkpoints with inline
+edit/delete per row and an add-row form; a banner showing whether you're viewing the CODE DEFAULT
+or a LOCAL OVERRIDE; the Export-for-commit panel; the revision history log; a Reset-to-defaults
+action. Every mutation (add/edit/delete/reset) atomically updates state, persists to
+`localStorage`, and appends a log entry in one handler (`commit()`) so the displayed table and the
+log can never drift out of sync.
+
+**Chart/timeline overlays** — all three read the same `ap127GetMilestoneTargets()`/
+`ap127TargetLessonForDate()` so they can never disagree with each other or with the editor:
+
+1. **Combined Progress vs Plan** (`buildAP127CombinedChart`): new "Target" line dataset (rose
+   `#f43f5e`, dashed, point markers) — the 17 checkpoints converted to this chart's batch-aggregate
+   units so they're directly comparable to the existing Actual/Plan lines on the same axis: lessons
+   mode = `target lesson × 28 SP`; hours mode = cumulative planned hours through that lesson number
+   (summed from the curriculum's own per-lesson `planned_mins`, the same "hours" convention used
+   everywhere else in this tab) `× 28 SP`. New "vs Target Today" KPI card alongside the existing
+   "vs Plan Today" one, showing the batch's variance against today's interpolated target.
+2. **Overall Progress Bar View** (`buildAP127OverallChart`/`ap127SyllabusStrip`): a single rose
+   dashed reference line + "TARGET · L{n}" label at today's (or the As-Of date's) interpolated
+   target — drawn once in the SYLLABUS strip (zooms with the chart like everything else there) and
+   once on the chart itself (`targetLinePlugin`). Deliberately kept to ONE line rather than
+   per-row, consistent with the p139 decluttering pass that had just removed per-row marker
+   clutter. Instead, each SP's existing current/next-lesson label (`currentLabelPlugin`, unchanged
+   otherwise) is color-coded green (that SP's `done` count is at/ahead of today's target) or rose
+   (behind) — hit/miss is visible per SP without adding new line clutter back.
+3. **Flight Timeline vs Progress** (`buildAP127Timeline`): one thin dashed rose vertical line per
+   checkpoint date (`targetLinesPlugin`, styled like the existing idle/gap-label plugins), each
+   labeled with its target lesson number, drawn against the same calendar x-axis as the per-SP
+   flight dots — so the calendar cadence the batch is meant to keep is visible directly against
+   actual activity.
+
+Verified live: admin page renders all 17 checkpoints correctly with correct per-row deltas;
+editing a row (L30→L32) confirmed writing to `localStorage` and logging
+`"Changed 09 Aug 2026 · L30 → 09 Aug 2026 · L32"`; Reset-to-defaults confirmed clearing the
+override; Combined Progress vs Plan's Target line and "vs Target Today" KPI render correctly
+(interpolated to L0 since "today" in the snapshot data is 4 Aug, before the schedule starts 9
+Aug — correct per the interpolation rule); time-traveled the Overall Progress view to 2026-09-01
+and confirmed the target line correctly interpolated to L43 (between the Aug30/L42 and Sep6/L46
+checkpoints) with every SP's label correctly turning rose (all were behind L43 in that snapshot);
+Flight Timeline's first target line (Aug 9) confirmed visible within the chart's date range. Zero
+console errors throughout. Original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched.

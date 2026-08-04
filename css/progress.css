@@ -188,6 +188,11 @@
 .d127v4-syl-kp-cr .d127v4-syl-kp-ic{color:#facc15;}
 .d127v4-syl-kp:hover .d127v4-syl-kp-ic{transform:translate(-50%,0) scale(1.4);color:#fff;}
 .d127v4-syl-kp-cr:hover .d127v4-syl-kp-ic{color:#fde047;}
+/* AP127 Targets overlay — a single external pacing marker, deliberately NOT styled like the
+   phase/milestone visuals above (different color family, solid not dashed-amber) so it reads as
+   "target from outside the syllabus" rather than curriculum structure. */
+.d127v4-syl-target{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed #f43f5e;z-index:4;pointer-events:none;}
+.d127v4-syl-target-lbl{position:absolute;top:-17px;left:3px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:800;color:#f43f5e;white-space:nowrap;background:var(--s1);padding:1px 4px;border-radius:3px;border:1px solid #f43f5e;}
 /* NOTE: the 100px left offset on .d127v4-syllabus-hd/-track is intentionally NOT zeroed at any
    viewport width — the chart's y-axis label column below (afterFit: scale.width=100 in
    buildAP127OverallChart) is a fixed 100px at every screen size, so a narrower offset here would

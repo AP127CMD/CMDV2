@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p140` (all currently at p139)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p141` (all currently at p140)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,53 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p139` (2026-08-04 — **AP127 Detail V4 — Overall Progress: SYLLABUS
+**Last known:** all files `p140` (2026-08-04 — **AP127 Targets — new batch-wide milestone
+schedule feature.** User supplied a 17-checkpoint date→lesson-number schedule (9 Aug 2026 L30
+through 29 Nov 2026 L96) that the whole AP127 batch is expected to keep pace with, and asked for
+(1) an editable admin page under System with a revision record, (2) the schedule overlaid on every
+AP127 Detail V4 chart/timeline so hit/miss is visible.
+
+**Data model** (`js/ap127-targets-data.js`, new, loaded early — before `shell.js`):
+`window.AP127_MILESTONE_TARGETS_DEFAULT` (the 17-entry array, the code default),
+`ap127GetMilestoneTargets()` (returns a `localStorage` override if present, else the default),
+`ap127TargetLessonForDate(dateStr)` (linear interpolation between the two bounding schedule
+entries — before the first date returns 0, after the last returns that last lesson).
+
+**No writable backend exists for this app** (static Cloudflare Pages deploy off committed data
+files) — there is nowhere to persist a *shared* edit history server-side. Resolved honestly rather
+than faked: the System-tab editor (`js/view-ap127-targets.js`, new nav entry `AP127 Targets`,
+icon `⌖`) persists edits to `localStorage` (`ap127MilestoneTargetsOverride`) plus a local
+`ap127MilestoneTargetsLog` revision log shown in the page — but this is **browser-local only**.
+The durable, shared revision record is git history on `js/ap127-targets-data.js`, same as
+everything else in this codebase — the editor's "Export for commit" panel pretty-prints the
+current table as a ready-to-paste `AP127_MILESTONE_TARGETS_DEFAULT` array with a Copy button and
+explicit instructions to commit it. Verified live: edited a row (L30→L32), confirmed it wrote to
+`localStorage` and logged `"Changed 09 Aug 2026 · L30 → 09 Aug 2026 · L32"`; Reset-to-defaults
+confirmed clearing the override.
+
+**Chart/timeline overlays**, all reading the SAME `ap127GetMilestoneTargets()`/
+`ap127TargetLessonForDate()` so they can never disagree with each other or the editor:
+1. **Combined Progress vs Plan** — new "Target" line series (rose `#f43f5e`), the 17 checkpoints
+   converted to this chart's batch-aggregate units (lessons mode: `target lesson × 28 SP`; hours
+   mode: cumulative planned hours through that lesson, from the curriculum's own per-lesson
+   durations, `× 28 SP`) so it's directly comparable to Actual/Plan on the same axis. New "vs
+   Target Today" KPI card alongside the existing "vs Plan Today" one.
+2. **Overall Progress Bar View** — a single rose dashed reference line + "TARGET · L{n}" label at
+   today's (or the As-Of date's) interpolated target, drawn once in the SYLLABUS strip and once on
+   the chart (`targetLinePlugin`) — deliberately ONE line, not per-row, consistent with the p139
+   decluttering pass. Each SP's existing current/next-lesson text (`currentLabelPlugin`) is
+   color-coded green (at/ahead of target) or rose (behind) instead of adding new line clutter.
+   Verified live by time-traveling to 2026-09-01: target correctly interpolated to L43 (between
+   the Aug30/L42 and Sep6/L46 checkpoints) and every SP's label correctly turned rose (all were
+   behind L43 in that snapshot).
+3. **Flight Timeline vs Progress** — one thin dashed rose vertical line per checkpoint date
+   (`targetLinesPlugin`), labeled with its target lesson number, drawn against the same calendar
+   x-axis as the per-SP flight dots.
+Verified live throughout: zero console errors; original AP127 Detail (`js/view-cohort.js`)
+confirmed still byte-identical/untouched. Files touched: new `js/ap127-targets-data.js`,
+`js/view-ap127-targets.js`; modified `js/shell.js` (nav+registry), `js/view-cohort-v4.js`
+(3 chart integrations), `index.html` (2 new script tags). Full write-up: REVAMP.md's p140 entry.)
+p139 (2026-08-04 — **AP127 Detail V4 — Overall Progress: SYLLABUS
 zooms with chart, clutter removed from SP rows, clickable milestone explanations, SVG icons.**
 Thirteenth round of same-day feedback, four items:
 1. **SYLLABUS zooms together with chart.** `ap127SyllabusStrip(cur,totalLessons,viewMin,viewMax)`

@@ -35,6 +35,7 @@
     ] },
     { label: 'System', items: [
       { id: 'crosscheck', label: 'Cross-Check', icon: '⇄' },
+      { id: 'ap127-targets', label: 'AP127 Targets', icon: '⌖' },
       { id: 'tutorial', label: 'User Guide', icon: '?' },
       { id: 'watchdog', label: 'Watchdog', icon: '◉' },
       { id: 'cfusage', label: 'CF Usage', icon: '☁' },
@@ -531,6 +532,7 @@
       sim2: window.Simulation2View,
       sim3: window.Simulation3View,
       crosscheck: window.CrossCheckView,
+      'ap127-targets': window.AP127TargetsView,
       tutorial: window.TutorialView,
       watchdog: window.WatchdogView,
       cfusage: window.CfUsageView,
