@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p142` (all currently at p141)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p143` (all currently at p142)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,35 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p141` (2026-08-04 — **AP127 Detail V4 — new Lesson Completion
+**Last known:** all files `p142` (2026-08-05 — **AP127 Detail V4 — performance fix: search box
+no longer rebuilds the whole tab.** User-reported the tab "feel laggy." Root cause found by
+reading the render wiring, not guessing: the search `<input>`'s `oninput` called
+`renderAP127DetailV4()` directly — the FULL render orchestrator — on every single keystroke, with
+zero debounce. That function unconditionally rebuilds 12+ Chart.js instances (each a destroy +
+recreate) AND fully regenerates both heatmap-style tables (Roster, and the new p141 Lesson
+Completion Matrix — together several thousand DOM nodes) on every call, even though NONE of that
+depends on the search query — only the Progress Ranking table's row filter does. Fixed by
+extracting a new `renderAP127Rows()` containing exactly the search/sort-dependent Progress Ranking
+table logic (row filter, `AP127_VIEW_ROWS` assignment, total-row stats, tbody render, sort-arrow
+indicators) out of `renderAP127Detail()`; the search input, sort dropdown, header-click sort, and
+Reset Sort now all call this lightweight function instead of the full one — `renderAP127Detail()`
+itself is unchanged and still does the full rebuild for genuine data-changing triggers (initial
+mount, As-Of date scrubbing). Search input also gained a 120ms debounce
+(`ap127RowsDebounced`/`_ap127RowsDebounce`) on top of that. Second fix: `mkC()` (the one shared
+chart-creation helper every `build*Chart()` in this file goes through) now defaults
+`animation:false` unless a caller opts in — with 12+ charts potentially rebuilding together on a
+real data refresh, each animating its own ~1s entrance independently was a second, compounding
+source of visible jank; one central default fixes it everywhere without touching each chart's own
+config. Verified live: captured the Overall Progress chart's object reference and the Lesson
+Matrix's innerHTML before typing "kraisee" in search — both were byte-identical afterward
+(confirmed via `Chart.getChart('d127v4-overall') === capturedRef` and innerHTML string equality),
+while the Progress Ranking table correctly filtered to the 1 matching row; same identity check for
+the sort dropdown and Reset Sort (chart untouched in both cases); confirmed the full-render path
+(As-Of date scrubbing) still correctly rebuilds the chart (`chartRebuilt: true`) and now reports
+`animation: false` on the resulting instance. Zero console errors throughout. Original AP127
+Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file touched:
+`js/view-cohort-v4.js`. Full write-up: REVAMP.md's p142 entry.) p141
+(2026-08-04 — **AP127 Detail V4 — new Lesson Completion
 Matrix chart.** User asked for a Roster-style heatmap but with LESSON NUMBER (1-96) as the
 columns instead of calendar date, showing who's completed what, with AP127 Target checkpoints
 marked and each SP's lead/lag against the closest one. New `buildAP127LessonMatrix()`, new panel

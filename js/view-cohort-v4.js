@@ -34,8 +34,8 @@
         <button onclick="setCohortAsOfV4(null)" id="tt-live-btn-v4" style="background:#1a2f1a;border:1px solid #4ade80;color:#4ade80;border-radius:3px;padding:2px 7px;font-size:9px;font-family:'JetBrains Mono',monospace;cursor:pointer;flex-shrink:0">LIVE ●</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input id="d127v4-q" placeholder="Search name..." oninput="renderAP127DetailV4()" style="background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:6px 9px;font-size:12px;outline:none;flex:1;min-width:180px">
-        <select id="d127v4-sort" onchange="renderAP127DetailV4()" style="background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:6px 9px;font-size:11px">
+        <input id="d127v4-q" placeholder="Search name..." oninput="ap127RowsDebounced()" style="background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:6px 9px;font-size:12px;outline:none;flex:1;min-width:180px">
+        <select id="d127v4-sort" onchange="renderAP127RowsV4()" style="background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:6px 9px;font-size:11px">
           <option value="behind">Sort: Most behind first</option>
           <option value="ahead">Sort: Most ahead first</option>
           <option value="hours">Sort: Most hours first</option>
@@ -279,7 +279,11 @@ function escHtml(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt
 function toast(msg,type="ok"){const el=document.getElementById("toast-v4");if(!el)return;el.textContent=msg;el.className="toast "+type+" show";clearTimeout(tmr);tmr=setTimeout(()=>el.classList.remove("show"),4000);}
 function fd(ds){if(!ds||ds==="COMPLETE"||ds==="N/A")return ds;try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"2-digit"});}catch{return ds;}}
 function hm(m){if(!m)return"";return Math.floor(m/60)+"h"+(m%60?String(m%60).padStart(2,"0")+"m":"");}
-function mkC(id,cfg){const ctx=document.getElementById(id);if(!ctx)return null;const ex=Chart.getChart(ctx);if(ex)ex.destroy();return new Chart(ctx,cfg);}
+// Animations default OFF for every chart on this tab (unless a caller explicitly opts in) — with
+// 10+ Chart.js instances rebuilt together on any real data refresh, letting each animate its
+// entrance independently is a visible, unnecessary source of jank; a single central default here
+// covers every mkC() call site instead of needing per-chart edits.
+function mkC(id,cfg){const ctx=document.getElementById(id);if(!ctx)return null;const ex=Chart.getChart(ctx);if(ex)ex.destroy();cfg.options=cfg.options||{};if(cfg.options.animation===undefined)cfg.options.animation=false;return new Chart(ctx,cfg);}
 
 function ap127TodayBKK(){const now=new Date();const bkk=new Date(now.getTime()+(now.getTimezoneOffset()+420)*60000);return bkk.toISOString().slice(0,10);}
 function ap127AsOf(){return COHORT_AS_OF||ap127TodayBKK();}
@@ -403,14 +407,21 @@ function ap127ResetSort(){
   const sel=document.getElementById("d127v4-sort");
   if(sel){[...sel.querySelectorAll("option[data-dyn='1']")].forEach(o=>o.remove());sel.value="behind";}
   const q=document.getElementById("d127v4-q");if(q)q.value="";
-  renderAP127Detail();
+  renderAP127Rows();
 }
 function ap127HeaderClick(key){
   const sel=document.getElementById("d127v4-sort");
   if(!sel||!key)return;
   if(![...sel.options].some(o=>o.value===key)){const o=document.createElement("option");o.value=key;o.textContent="Sort: "+key;o.dataset.dyn="1";sel.appendChild(o);}
   sel.value=key;
-  renderAP127Detail();
+  renderAP127Rows();
+}
+// Debounced search — renderAP127Rows() is cheap on its own (no charts/heatmaps touched), but
+// still no reason to re-render on every single keystroke while someone is mid-word.
+let _ap127RowsDebounce=null;
+function ap127RowsDebounced(){
+  clearTimeout(_ap127RowsDebounce);
+  _ap127RowsDebounce=setTimeout(renderAP127Rows,120);
 }
 function ap127RankClass(rank,total){if(rank<=3)return"bad";if(rank<=Math.ceil(total*.4))return"mid";return"ok";}
 
@@ -565,13 +576,46 @@ function renderAP127Detail(){
   setH("d127v4-k-les-s",`<span style="color:${lesVarColor}">${lesVariance>=0?"ahead":"behind"} plan</span> <span style="color:var(--tx3)">(${doneAll} / ${totalExpectedLessons})</span>`);
   setT("d127v4-meta",`${doneAll} lessons done · Avg ${avgDone.toFixed(1)} · ${onTrack}/${total} on track`);
 
-  const today=today0;
+  renderAP127Rows();
+
+  const recent=[...all].map(s=>({s,last:(s.flown||[]).at(-1)||{}})).filter(x=>x.last.date).sort((a,b)=>(b.last.date||"").localeCompare(a.last.date||"")||(b.s.done||0)-(a.s.done||0)).slice(0,8);
+  document.getElementById("d127v4-activity").innerHTML=recent.map(x=>`<div class="d127-ai"><div class="d127-an">${ap127ShortName(x.s.name)} · ${x.last.lesson||"-"}</div><div class="d127-ad">${ap127ShortDate(x.last.date)} · ${ap127Hours(x.s).toFixed(2)} hrs · ${x.s.done||0}/${curriculum}</div></div>`).join("")||`<div class="d127-ad">No activity yet.</div>`;
+
+  buildAP127CombinedChart();
+  buildAP127Timeline(all,curriculum,maxDate);
+  buildAP127RaceChart(all,curriculum,maxDate);
+  buildAP127ConsIdle(all,today0);
+  buildAP127OverallChart(all,curriculum,maxDate);
+  buildAP127LessonMatrix();
+  buildAP127HistBatch();
+  buildAP127HistSolo();
+  buildAP127PaceBand(all,today0);
+  buildAP127LessonBar();
+  buildAP127Funnel(all,today0);
+  buildAP127Watchlist(all,today0);
+  buildAP127Roster();
+  updateScrubber();
+  renderAP127Pace();
+}
+// Progress Ranking table only — pulled out of renderAP127Detail() because the search box, sort
+// dropdown, header-click sort, and Reset Sort ALL only affect row filtering/ordering here, never
+// any chart or heatmap (every one of those reads the unfiltered student list, not this function's
+// search-filtered `rows`). Before this split, typing in the search box fired a full rebuild of
+// 12+ Chart.js instances plus the Roster and Lesson Completion Matrix heatmaps (thousands of DOM
+// nodes) on every single keystroke — the main cause of the tab feeling laggy. Search/sort/reset
+// now call this directly instead of the full renderAP127Detail().
+function renderAP127Rows(){
+  if(!G||!G.ap127)return;
+  const today=ap127AsOf();
+  const all=ap127AsOfStudents();
+  const curriculum=all[0]?.total||0;
+  const planMap={};(G.cur127||[]).forEach(c=>{if(c.lesson&&c.planned_date)planMap[c.lesson]=c.planned_date;});
   const q=(document.getElementById("d127v4-q")?.value||"").toLowerCase().trim();
   let rows=ap127SortRows(all,today,planMap,today);
   if(q)rows=rows.filter(s=>s.name.toLowerCase().includes(q)||(s.nick||"").toLowerCase().includes(q)||(s.fi||"").toLowerCase().includes(q));
   AP127_VIEW_ROWS=rows;
   const updTxt=G._updated?new Date(G._updated).toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
-  document.getElementById("d127v4-asof").textContent=`Updated ${updTxt}`;
+  const asofEl=document.getElementById("d127v4-asof");if(asofEl)asofEl.textContent=`Updated ${updTxt}`;
 
   const paced=ap127PaceSort(all,today);
   const leaderDone=paced[0]?.done||0,lagDone=paced.at(-1)?.done||0;
@@ -579,6 +623,7 @@ function renderAP127Detail(){
   const aheadLo=leaderDone-step+1,midLo=leaderDone-step*2+1;
   const getBandColor=(done)=>{if(done>=aheadLo)return"#7be9b8";if(done>=midLo)return"#ffd67a";return"#ffa0a0";};
   const tbody=document.getElementById("d127v4-rows");
+  if(!tbody)return;
   const plannedHrsToday=ap127PlannedHoursAsOf(today);
   const sortedByDone=[...all].sort((a,b)=>(a.done||0)-(b.done||0));
   const avgPctAll=curriculum?rows.reduce((a,s)=>a+(s.done||0),0)/rows.length/curriculum*100:0;
@@ -619,25 +664,6 @@ function renderAP127Detail(){
     const existing=th.querySelector(".d127-sarr");if(existing)existing.remove();
     if(th.getAttribute("data-key")===curSort){const s=document.createElement("span");s.className="d127-sarr";s.textContent="▼";th.appendChild(s);}
   });
-
-  const recent=[...all].map(s=>({s,last:(s.flown||[]).at(-1)||{}})).filter(x=>x.last.date).sort((a,b)=>(b.last.date||"").localeCompare(a.last.date||"")||(b.s.done||0)-(a.s.done||0)).slice(0,8);
-  document.getElementById("d127v4-activity").innerHTML=recent.map(x=>`<div class="d127-ai"><div class="d127-an">${ap127ShortName(x.s.name)} · ${x.last.lesson||"-"}</div><div class="d127-ad">${ap127ShortDate(x.last.date)} · ${ap127Hours(x.s).toFixed(2)} hrs · ${x.s.done||0}/${curriculum}</div></div>`).join("")||`<div class="d127-ad">No activity yet.</div>`;
-
-  buildAP127CombinedChart();
-  buildAP127Timeline(all,curriculum,maxDate);
-  buildAP127RaceChart(all,curriculum,maxDate);
-  buildAP127ConsIdle(all,today0);
-  buildAP127OverallChart(all,curriculum,maxDate);
-  buildAP127LessonMatrix();
-  buildAP127HistBatch();
-  buildAP127HistSolo();
-  buildAP127PaceBand(all,today0);
-  buildAP127LessonBar();
-  buildAP127Funnel(all,today0);
-  buildAP127Watchlist(all,today0);
-  buildAP127Roster();
-  updateScrubber();
-  renderAP127Pace();
 }
 function openAP127Drawer(idx){
   const s=AP127_VIEW_ROWS[idx];if(!s)return;
@@ -2378,6 +2404,8 @@ function opsAugment(students, curriculum) {
 
   Object.assign(window, {
     renderAP127DetailV4: renderAP127Detail,
+    renderAP127RowsV4: renderAP127Rows,
+    ap127RowsDebounced,
     renderAP127PaceV4: renderAP127Pace,
     ap127ResetSortV4: ap127ResetSort,
     ap127HeaderClickV4: ap127HeaderClick,

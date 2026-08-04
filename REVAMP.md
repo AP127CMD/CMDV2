@@ -1637,3 +1637,61 @@ ME Sim/Real bands and their target-flagged columns L74/78/82/86/90/94/96 at the 
 "vs L30" column shows the correct ascending sort (most-behind at top); clicking a completed cell
 opens the student drawer with the correct lesson/date/duration in its title tooltip; zero console
 errors. Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched.
+
+### AP127 Detail V4 — performance fix: search box no longer rebuilds the whole tab (2026-08-05, p142)
+
+`js/view-cohort-v4.js`
+
+User-reported: "the V4 tab feel laggy, pls improve it performance."
+
+**Root cause**, found by reading the actual render wiring rather than guessing: the Progress
+Ranking panel's search `<input id="d127v4-q">` had `oninput="renderAP127DetailV4()"` — calling
+the FULL render orchestrator on every single keystroke, with no debounce. `renderAP127Detail()`
+unconditionally:
+- destroys and recreates all 12+ Chart.js instances on the tab (Combined Progress, Flight
+  Timeline, Race, Consecutive/Idle, Overall Progress, Batch/Solo history, Pace Band, Lesson Bar,
+  Funnel — each a full `Chart.destroy()` + `new Chart()` with its own dataset/plugin setup), and
+  - fully regenerates both heatmap-style tables via `innerHTML` (Roster's day-by-day grid, and the
+  p141 Lesson Completion Matrix's 96-lesson-column grid — together several thousand DOM nodes)
+— even though **none of that depends on the search query**. Only the Progress Ranking table's row
+filter (`rows.filter(s=>s.name...includes(q)...)`) actually needs to change when the user types.
+Every one of the 12+ charts and both heatmaps read from the *unfiltered* student list
+(`ap127AsOfStudents()`), confirmed by checking each `build*()` function's signature — none of them
+take or reference `q`/`rows`.
+
+**Fix — split the render into two paths:**
+
+1. New `renderAP127Rows()`, containing exactly the search/sort-dependent slice of what
+   `renderAP127Detail()` used to do inline: computing `q`, filtering `rows`, setting
+   `AP127_VIEW_ROWS`, the total-row aggregate stats, the `tbody` HTML, and the sort-arrow
+   indicators on the table headers. `renderAP127Detail()` now calls this instead of inlining that
+   logic — behaviorally identical for the full-render path, just factored out so it can also be
+   called on its own.
+2. Rewired every search/sort-only trigger to call the light function instead of the full one: the
+   search input (via a new debounced wrapper, see below), the sort `<select>`'s `onchange`,
+   `ap127HeaderClick()` (clicking a sortable column header), and `ap127ResetSort()`. None of these
+   change the underlying student data — only row order/filtering — so none of them need to touch a
+   single chart or heatmap anymore.
+3. Search input also gained a 120ms debounce (`ap127RowsDebounced()` / `_ap127RowsDebounce`) on
+   top of the above — belt-and-suspenders smoothness for fast typing, on top of the now much
+   cheaper operation it triggers.
+
+**Second, independent fix — chart entrance animations.** `mkC(id,cfg)` is the single shared
+helper every `build*Chart()` in this file goes through to create/replace a Chart.js instance. It
+now defaults `cfg.options.animation=false` unless a caller's config already specifies an
+`animation` option. Previously every chart used Chart.js's default ~1s animated entrance;
+rebuilding 12+ of them together (on a real data refresh — As-Of date scrubbing, initial load) had
+each animate independently, a second, compounding source of visible jank. One central default in
+`mkC()` fixes this for every chart on the tab without needing to touch each one's own config
+block.
+
+Verified live: captured the Overall Progress chart's JS object reference and the Lesson
+Completion Matrix's `innerHTML` string before typing "kraisee" into the search box — both were
+confirmed byte-identical afterward (`Chart.getChart('d127v4-overall') === capturedRef`; innerHTML
+string equality), while the Progress Ranking table correctly filtered down to the 1 matching row
+("Kraisee L."). Repeated the same before/after identity check for the sort dropdown and Reset
+Sort — chart untouched in both cases, table correctly re-sorted/reset. Confirmed the *full* render
+path still works correctly: scrubbing the As-Of date produces a genuinely new chart object
+(`chartRebuilt: true`) which now reports `animation: false`. Zero console errors throughout.
+Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file
+touched: `js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump).
