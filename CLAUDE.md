@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p139` (all currently at p138)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p140` (all currently at p139)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,39 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p138` (2026-08-04 — **AP127 Detail V4 — Overall Progress: zoom UX
+**Last known:** all files `p139` (2026-08-04 — **AP127 Detail V4 — Overall Progress: SYLLABUS
+zooms with chart, clutter removed from SP rows, clickable milestone explanations, SVG icons.**
+Thirteenth round of same-day feedback, four items:
+1. **SYLLABUS zooms together with chart.** `ap127SyllabusStrip(cur,totalLessons,viewMin,viewMax)`
+   now takes a visible-range window and clips/rescales phase segments + milestone icons to it
+   instead of always showing the full 0..totalLessons range. New `ap127SyncSyllabusStrip()`
+   re-renders it from `CHARTS.ap127overall.scales.x.min/max` — wired into the zoom-plugin's
+   `onZoomComplete`/`onPanComplete` (wheel/pinch/drag-pan) AND called explicitly from
+   `ap127OverallZoomV4`/`ap127OverallResetZoomV4` (the +/-/Reset buttons), since relying solely on
+   plugin callbacks firing for programmatic `.zoom()`/`.resetZoom()` isn't guaranteed. Verified
+   live: zooming to 1.6x showed "showing lessons 29–67 of 96 (zoomed with chart)" with Phase I
+   correctly dropped (fully outside the window) and Phase III/IFR Sim correctly clipped.
+2. **All phase/milestone display moved into the SYLLABUS strip only.** The chart's `markerPlugin`
+   (vertical guide lines + text labels drawn over every SP row) is deleted entirely — it was
+   literally duplicating the same phase name already shown in the strip once above, while
+   cluttering the SP rows with overlapping text. Per-SP bars are now just clean phase-colored
+   segments + the current/next-lesson label (genuinely per-SP data, kept). Legend trimmed to just
+   the segment colors + the SE→ME changeover marker (the strip's own visuals, not removed ones).
+3. **Milestone icons click-to-expand.** New `openAP127MilestoneModalV4(i)` reuses the same generic
+   drawer as the phase-detail modal, showing a written explanation of what each milestone TYPE
+   means (Solo/Instrument/Cross-Country/Sim/Multi-Engine/Checkride — new `AP127_MILESTONE_TYPES`
+   lookup with one paragraph each), keyed by index into the last-rendered milestone list
+   (`AP127_OVERALL_KPS`) so it stays valid across re-renders from zoom.
+4. **Professional icon set.** Replaced the emoji icons (a second round of feedback after the
+   pager→compass swap) with small stroke-based inline SVGs (14x14 viewBox, `currentColor`,
+   ~1.2 stroke-width) matching the app's existing `ViewIcon()` convention in `js/shared.js` — an
+   aircraft silhouette (Solo), gauge+needle (Instrument), dashed route+waypoint (Cross-Country),
+   monitor (Sim), twin propeller discs (Multi-Engine), shield+check (Checkride). New
+   `ap127KeyPointIconSvg(label,size)` used everywhere the old emoji function was.
+Verified live throughout: zero console errors, original AP127 Detail (`js/view-cohort.js`)
+confirmed still byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`,
+`css/progress.css`. Full write-up: REVAMP.md's p139 entry.) p138
+(2026-08-04 — **AP127 Detail V4 — Overall Progress: zoom UX
 overhaul.** User-reported the p137 wheel-zoom was "all over the place... very sensitive" —
 plain mouse-wheel zoom on a chart embedded in a normally-scrolling page fires on every incidental
 scroll-past the chart, not just deliberate zoom intent, and there was no way to zoom in a

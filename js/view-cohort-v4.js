@@ -197,7 +197,7 @@
         </span>
       </div>
       <div class="d127-body">
-        <div class="d127-note">The SYLLABUS strip above the chart is the full 96-lesson curriculum — click a segment for full detail, hover a milestone icon for a quick note. Every SP bar below it is split into segments per official curriculum phase (same colors as Flight Timeline and the Roster), lined up against the same lesson-number axis. White dashed lines mark where each phase starts; a bold solid line marks the single→multi-engine changeover; amber dotted lines mark finer syllabus key points. Text at bar end = current/next lesson. Use the +/− buttons (or pinch, or Ctrl/⌘+scroll) to zoom, drag to pan, drag the bottom-right corner to resize.</div>
+        <div class="d127-note">The SYLLABUS strip above the chart is the full 96-lesson curriculum and zooms together with the chart — click a segment for full phase detail, click a milestone icon to see what it means. Every SP bar below is split into segments per official curriculum phase (same colors as Flight Timeline and the Roster), lined up against the same lesson-number axis; text at bar end = current/next lesson. Use the +/− buttons (or pinch, or Ctrl/⌘+scroll) to zoom, drag to pan, drag the bottom-right corner to resize.</div>
         <div class="d127-phase-legend" id="d127v4-overall-legend"></div>
         <div id="d127v4-syllabus-strip"></div>
         <div class="d127v4-overall-wrap" id="d127v4-overall-wrap"><canvas id="d127v4-overall"></canvas></div>
@@ -1129,56 +1129,113 @@ function ap127KeyPoints(cur){
   });
   return pts;
 }
-// Icon for a key-point/checkride label, used by both the SYLLABUS strip (ap127SyllabusStrip) and
-// anywhere else a compact visual tag for a milestone type is useful. Picked for aviation relevance
-// over generic emoji (the previous set included a pager icon for "Instrument", which reads as
-// office equipment, not navigation) — 🧭 compass, 🗺️ chart, 🎖️ qualification-earned.
-function ap127KeyPointIcon(label){
-  if(label.startsWith("Checkride"))return"🎖️";
-  if(label.startsWith("Initial Solo"))return"🛫";
-  if(label.startsWith("Instrument"))return"🧭";
-  if(label.startsWith("Cross-Country"))return"🗺️";
-  if(label.startsWith("Sim"))return"🖥️";
-  if(label.startsWith("Multi-Engine"))return"🌀";
-  return"◆";
+// Milestone type lookup — one place mapping a ap127KeyPoints() label to its type key, used by both
+// the icon renderer (ap127KeyPointIconSvg) and the click-to-expand explanation modal
+// (openAP127MilestoneModalV4) so the two never drift out of sync with each other.
+const AP127_MILESTONE_TYPES=[
+  {test:l=>l.startsWith("Checkride"),key:"checkride",
+   explain:"An official in-flight test — a Skill Check — assessing the trainee against a defined proficiency standard. Passing is a formal requirement to progress to the next phase or complete the course; failing means additional training before a re-test."},
+  {test:l=>l.startsWith("Initial Solo"),key:"solo",
+   explain:"The trainee's first flight without an instructor on board. A foundational milestone: it requires demonstrated competence in basic aircraft handling, normal procedures, and emergency operations, per Phase I's completion standard."},
+  {test:l=>l.startsWith("Instrument"),key:"instrument",
+   explain:"First exposure to flying by reference to instruments alone — attitude, heading, altitude — rather than outside visual cues. The foundation of IFR (Instrument Flight Rules) competence, developed further through Phase II and Phase IV."},
+  {test:l=>l.startsWith("Cross-Country"),key:"xc",
+   explain:"A flight to a landing point a defined distance from the departure aerodrome, developing navigation, flight planning, and diversion skills. Flown dual first, then solo/SPIC as proficiency builds through Phase II and III."},
+  {test:l=>l.startsWith("Sim"),key:"sim",
+   explain:"Training conducted in a Flight Navigation Procedures Trainer (FNPT II) rather than the actual aircraft — a cost-effective, repeatable way to practice IFR procedures and abnormal/emergency scenarios before flying them for real."},
+  {test:l=>l.startsWith("Multi-Engine"),key:"me",
+   explain:"The first lesson on a twin-engine aircraft — introduces asymmetric-thrust handling, engine-out procedures, and the added systems complexity of a multi-engine type, building toward the Multi-Engine Piston (MEP) rating."},
+];
+function ap127MilestoneMeta(label){return AP127_MILESTONE_TYPES.find(t=>t.test(label))||{key:"other",explain:""};}
+// Small stroke-based inline SVG icons (14x14 viewBox, single-color via currentColor) — matches the
+// minimal geometric convention already established by ViewIcon() in js/shared.js, replacing the
+// earlier full-color emoji set (a user-reported ask for something "more professional"): a plain
+// aircraft silhouette (Solo), a gauge/needle (Instrument), a dashed route to a waypoint diamond
+// (Cross-Country), a monitor (Sim), two propeller discs (Multi-Engine), a shield+check (Checkride).
+function ap127KeyPointIconSvg(label,size){
+  size=size||13;
+  const key=ap127MilestoneMeta(label).key;
+  const s=`width="${size}" height="${size}" viewBox="0 0 14 14"`;
+  if(key==="checkride")return`<svg ${s} fill="none" stroke="currentColor" stroke-width="1.2"><path d="M7 1.3 L12 3 L12 7.2 C12 10 9.8 12 7 12.8 C4.2 12 2 10 2 7.2 L2 3 Z"/><path d="M4.6 7.1 L6.2 8.7 L9.4 5.3" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  if(key==="solo")return`<svg ${s} fill="currentColor"><path d="M7 1 L8.2 4.6 L12.6 6.9 L12.6 8.1 L8.2 7.1 L8.6 10.9 L10.3 12.1 L10.3 12.9 L7 12.1 L3.7 12.9 L3.7 12.1 L5.4 10.9 L5.8 7.1 L1.4 8.1 L1.4 6.9 L5.8 4.6 Z"/></svg>`;
+  if(key==="instrument")return`<svg ${s} fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="7" cy="7" r="5.5"/><line x1="7" y1="7" x2="7" y2="2.4" stroke-width="1.3" stroke-linecap="round"/><line x1="7" y1="7" x2="9.8" y2="8.6" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="7" r="0.9" fill="currentColor" stroke="none"/></svg>`;
+  if(key==="xc")return`<svg ${s} fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.5 11 Q5 3 12.3 3" stroke-dasharray="2 1.6"/><circle cx="1.5" cy="11" r="1.3" fill="currentColor" stroke="none"/><path d="M12.3 1.3 L13.5 3 L12.3 4.7 L11.1 3 Z" fill="currentColor" stroke="none"/></svg>`;
+  if(key==="sim")return`<svg ${s} fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.5" y="2.5" width="11" height="7.5" rx="1"/><line x1="4.5" y1="12.3" x2="9.5" y2="12.3" stroke-linecap="round"/><line x1="7" y1="10" x2="7" y2="12.3"/></svg>`;
+  if(key==="me")return`<svg ${s} fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="4" cy="7" r="3"/><circle cx="4" cy="7" r="0.8" fill="currentColor" stroke="none"/><circle cx="10" cy="7" r="3"/><circle cx="10" cy="7" r="0.8" fill="currentColor" stroke="none"/></svg>`;
+  return`<svg ${s} fill="currentColor"><circle cx="7" cy="7" r="2.5"/></svg>`;
 }
+// kps from the most recent ap127SyllabusStrip() render — openAP127MilestoneModal(i) looks a
+// clicked icon back up by its index into this (unfiltered) list. AP127_OVERALL_TOTAL is the
+// current build's total lesson count, needed by ap127SyncSyllabusStrip() outside buildAP127OverallChart's closure.
+let AP127_OVERALL_KPS=[];
+let AP127_OVERALL_TOTAL=96;
 // ── SYLLABUS strip — a rich, standalone HTML timeline (not a Chart.js row) rendered directly above
 // the Overall Progress chart, sized and positioned to read as one continuous lesson-number axis
-// with the per-SP bars beneath it (same 100px left gutter as the chart's y-axis label column, same
-// implicit 0..totalLessons scale via %-width phase segments). Moved out of the chart entirely
-// (v5 drew it as a same-height "MASTER PLAN" bar-chart row) because a stacked-bar row can only hold
-// a single line of canvas text — not enough room for phase name + description + hour/lesson counts
-// + milestone icons all at once, and canvas text can't do hover tooltips for the "why" behind each
-// phase. Renders once per data refresh from buildAP127OverallChart.
-function ap127SyllabusStrip(cur,totalLessons){
+// with the per-SP bars beneath it (same 100px left gutter as the chart's y-axis label column).
+// Moved out of the chart entirely (v5 drew it as a same-height "MASTER PLAN" bar-chart row)
+// because a stacked-bar row can only hold a single line of canvas text — not enough room for phase
+// name + description + hour/lesson counts + milestone icons all at once, and canvas text can't do
+// hover tooltips or clicks for the "why" behind each phase. It is now ALSO the only place
+// phase/milestone detail is displayed at all — the chart itself no longer draws any marker lines
+// or labels over the SP rows (see buildAP127OverallChart's comment for why that was removed).
+//
+// viewMin/viewMax (in the same 0..totalLessons "lesson count" units as the chart's x-axis) let the
+// strip zoom together with the chart: ap127SyncSyllabusStrip() re-renders this with the chart's
+// current visible x-range on every zoom/pan, so segments/icons outside that range are dropped and
+// the visible ones are rescaled to fill the width — the exact same window the chart is showing.
+function ap127SyllabusStrip(cur,totalLessons,viewMin,viewMax){
+  if(viewMin==null)viewMin=0;
+  if(viewMax==null)viewMax=totalLessons;
+  viewMin=Math.max(0,viewMin);viewMax=Math.min(totalLessons,viewMax);
+  const rangeSpan=Math.max(viewMax-viewMin,0.0001);
+  const zoomed=viewMin>0.5||viewMax<totalLessons-0.5;
   const kps=ap127KeyPoints(cur);
+  AP127_OVERALL_KPS=kps;
   const totalHrs=AP127_SYLLABUS_PHASES.reduce((a,p)=>a+p.hrs,0);
   const segHtml=AP127_BAR_SEGMENTS.map(seg=>{
-    const wPct=(seg.hi-seg.lo+1)/totalLessons*100;
+    const vlo=Math.max(seg.lo-1,viewMin),vhi=Math.min(seg.hi,viewMax);
+    if(vhi<=vlo)return"";
+    const wPct=(vhi-vlo)/rangeSpan*100;
     return `<div class="d127v4-syl-phase${seg.meIntro?" d127v4-syl-phase-me-div":""}" style="width:${wPct}%;background:${seg.c}" title="${escHtml(seg.title)} · Lessons ${seg.lo}–${seg.hi} · ${seg.hrs}h — click for full phase detail" onclick="openAP127SyllabusModalV4(${seg.phaseIdx})">
       <div class="d127v4-syl-phase-n">${seg.label}</div>
       <div class="d127v4-syl-phase-m">L${seg.lo}–${seg.hi} · ${seg.hrs}h</div>
     </div>`;
-  }).join("");
-  const kpHtml=kps.map(k=>{
+  }).filter(Boolean).join("");
+  const kpHtml=kps.map((k,i)=>{
     const lesson=k.idx+1;
-    const leftPct=Math.max(1,Math.min(99,lesson/totalLessons*100));
+    if(lesson<viewMin||lesson>viewMax)return"";
+    const leftPct=Math.max(1,Math.min(99,(lesson-viewMin)/rangeSpan*100));
     const isCR=k.label.startsWith("Checkride");
-    return `<div class="d127v4-syl-kp${isCR?" d127v4-syl-kp-cr":""}" style="left:${leftPct}%" title="${escHtml(k.label)} · Lesson ${lesson}">
+    return `<div class="d127v4-syl-kp${isCR?" d127v4-syl-kp-cr":""}" style="left:${leftPct}%" title="${escHtml(k.label)} · Lesson ${lesson} — click to expand" onclick="openAP127MilestoneModalV4(${i})">
       <span class="d127v4-syl-kp-tick"></span>
-      <span class="d127v4-syl-kp-ic">${ap127KeyPointIcon(k.label)}</span>
+      <span class="d127v4-syl-kp-ic">${ap127KeyPointIconSvg(k.label,13)}</span>
     </div>`;
-  }).join("");
+  }).filter(Boolean).join("");
+  const subLabel=zoomed
+    ?`showing lessons ${Math.round(viewMin)}–${Math.round(viewMax)} of ${totalLessons} (zoomed with chart)`
+    :`${totalLessons} lessons · ${totalHrs}h · CATC CPL/IR Integrated Course`;
   return `<div class="d127v4-syllabus">
     <div class="d127v4-syllabus-hd">
       <span class="d127v4-syllabus-lbl">✦ SYLLABUS</span>
-      <span class="d127v4-syllabus-sub">${totalLessons} lessons · ${totalHrs}h · CATC CPL/IR Integrated Course — click a segment for full detail, hover a milestone icon for a quick note</span>
+      <span class="d127v4-syllabus-sub">${subLabel} — click a segment or icon for full detail</span>
     </div>
     <div class="d127v4-syllabus-track">
       <div class="d127v4-syl-kps">${kpHtml}</div>
       <div class="d127v4-syl-phases">${segHtml}</div>
     </div>
   </div>`;
+}
+// Re-renders the SYLLABUS strip from the Overall Progress chart's CURRENT visible x-range —
+// called after every zoom/pan/reset (wheel, pinch, drag-pan via the zoom-plugin callbacks; the
+// +/-/Reset buttons via explicit calls in ap127OverallZoom/ap127OverallResetZoom, since relying
+// solely on plugin callbacks firing for programmatic .zoom()/.resetZoom() calls isn't guaranteed
+// across versions) so the strip always matches what the chart is actually showing.
+function ap127SyncSyllabusStrip(){
+  const chart=CHARTS.ap127overall;
+  const stripEl=document.getElementById("d127v4-syllabus-strip");
+  if(!chart||!stripEl||!G)return;
+  const xs=chart.scales.x;if(!xs)return;
+  stripEl.innerHTML=ap127SyllabusStrip(G.cur127||[],AP127_OVERALL_TOTAL,xs.min,xs.max);
 }
 // Click-to-detail modal for a SYLLABUS phase block. Shared across all AP127_BAR_SEGMENTS entries —
 // Phase IV's 4 sub-segments (IFR/ME × Sim/Real) all point at the same phaseIdx (3) and open one
@@ -1201,7 +1258,7 @@ function openAP127SyllabusModal(phaseIdx){
   }
   if(kps.length){
     html+=`<div class="d127v4-syl-modal-sec"><div class="d127v4-syl-modal-h">Milestones in this phase</div>`+
-      kps.map(k=>`<div class="d127v4-syl-modal-kp"><span>${ap127KeyPointIcon(k.label)}</span> ${escHtml(k.label)} <span style="color:var(--tx3)">· Lesson ${k.idx+1}</span></div>`).join("")+
+      kps.map(k=>`<div class="d127v4-syl-modal-kp"><span class="d127v4-syl-modal-kp-ic">${ap127KeyPointIconSvg(k.label,14)}</span> ${escHtml(k.label)} <span style="color:var(--tx3)">· Lesson ${k.idx+1}</span></div>`).join("")+
       `</div>`;
   }
   const body=document.getElementById("d127v4-syl-modal-body");
@@ -1210,16 +1267,40 @@ function openAP127SyllabusModal(phaseIdx){
   if(ov)ov.classList.add("show");
 }
 function closeAP127SyllabusModal(){const el=document.getElementById("d127v4-syl-modal-ov");if(el)el.classList.remove("show");}
+// Click-to-expand explanation for a single milestone icon (Solo/Instrument/Cross-Country/Sim/
+// Multi-Engine/Checkride) — shares the same modal DOM as openAP127SyllabusModal (a phase-block
+// click and a milestone-icon click are just two ways of populating one generic detail drawer).
+// `i` indexes AP127_OVERALL_KPS, the unfiltered list captured by the most recent
+// ap127SyllabusStrip() render, so it stays valid regardless of which milestones are currently
+// hidden by the zoomed view.
+function openAP127MilestoneModal(i){
+  const k=AP127_OVERALL_KPS[i];if(!k)return;
+  const lesson=k.idx+1;
+  const seg=AP127_BAR_SEGMENTS.find(s=>lesson>=s.lo&&lesson<=s.hi);
+  const meta=ap127MilestoneMeta(k.label);
+  const titleEl=document.getElementById("d127v4-syl-modal-title");
+  if(titleEl)titleEl.innerHTML=`<span class="d127v4-syl-modal-title-ic">${ap127KeyPointIconSvg(k.label,18)}</span>${escHtml(k.label)}`;
+  const subEl=document.getElementById("d127v4-syl-modal-sub");
+  if(subEl)subEl.textContent=`Lesson ${lesson}${seg?` · ${seg.title}`:""}`;
+  const body=document.getElementById("d127v4-syl-modal-body");
+  if(body)body.innerHTML=`<div class="d127v4-syl-modal-sec"><div class="d127v4-syl-modal-h">What this milestone means</div><p>${escHtml(meta.explain)}</p></div>`;
+  const ov=document.getElementById("d127v4-syl-modal-ov");
+  if(ov)ov.classList.add("show");
+}
 // ── Overall Progress Bar View v6 — every SP's own stacked-by-phase bar reads directly against the
 // SYLLABUS strip rendered above the chart (ap127SyllabusStrip; no longer a same-height chart row —
-// see that function's comment for why). Phase-boundary lines (bold) and finer syllabus key points
-// (Initial Solo/Instrument/Cross-Country/Sim/Multi-Engine/Checkride, thinner) both draw as vertical
-// guides spanning the whole chart; a marker that lands on the same lesson as a phase boundary
-// merges into that boundary's label instead of drawing a second overlapping line. ──
+// see that function's comment for why). Phase boundaries, key points, and checkrides are now shown
+// ONLY in the SYLLABUS strip (as segment blocks / clickable icons) — earlier versions ALSO drew
+// them as vertical guide lines with text labels over the SP rows via a markerPlugin, but that
+// duplicated the same phase name in two places on screen and cluttered the SP rows themselves
+// (user-reported). The per-SP chart now shows just the plain phase-colored stacked bars plus each
+// SP's current/next-lesson text (currentLabelPlugin) — genuinely per-SP data, not a repeat of
+// syllabus-wide information the strip already covers. ──
 function buildAP127OverallChart(all,curriculum,maxDate){
   const sorted=ap127PaceSort(all,ap127AsOf());
   const cur=G.cur127||[];
   const totalLessons=cur.length||curriculum||96;
+  AP127_OVERALL_TOTAL=totalLessons;
   const inSeg=(code,seg)=>{const n=ap127LessonNum(code);return n!=null&&n>=seg.lo&&n<=seg.hi;};
   const datasets=AP127_BAR_SEGMENTS.map(seg=>({
     label:seg.label,
@@ -1232,20 +1313,7 @@ function buildAP127OverallChart(all,curriculum,maxDate){
   const labels=sorted.map(s=>ap127ShortName(s.name));
 
   const stripEl=document.getElementById("d127v4-syllabus-strip");
-  if(stripEl)stripEl.innerHTML=ap127SyllabusStrip(cur,totalLessons);
-
-  // Boundary line per segment start (except lesson 1) — includes the 4 top-level phase starts
-  // AND the 3 sub-boundaries inside Phase IV (Sim/Real, SE/ME) from AP127_BAR_SEGMENTS. The
-  // SE→ME changeover (meIntro) draws as a bold solid line instead of the usual dashed one, since
-  // it's a bigger transition (different aircraft type) than an ordinary phase boundary.
-  const boundaries=AP127_BAR_SEGMENTS.slice(1).map(seg=>({idx:seg.lo-1,label:seg.label,kind:seg.meIntro?"strong":"phase"}));
-  const markers=[...boundaries];
-  ap127KeyPoints(cur).forEach(kp=>{
-    const existing=markers.find(m=>m.idx===kp.idx);
-    if(existing)existing.label+=" · "+kp.label;
-    else markers.push({idx:kp.idx,label:kp.label,kind:"key"});
-  });
-  markers.sort((a,b)=>a.idx-b.idx);
+  if(stripEl)stripEl.innerHTML=ap127SyllabusStrip(cur,totalLessons,0,totalLessons);
 
   const currentLabelPlugin={
     id:"d127v4CurrentLabel",
@@ -1262,43 +1330,10 @@ function buildAP127OverallChart(all,curriculum,maxDate){
       ctx.restore();
     }
   };
-  const markerPlugin={
-    id:"d127v4Markers",
-    afterDatasetsDraw(chart){
-      const{ctx,scales:{x,y}}=chart;
-      ctx.save();
-      markers.forEach((m,i)=>{
-        const px=x.getPixelForValue(m.idx);
-        const isPhase=m.kind==="phase"||m.kind==="strong";
-        const isStrong=m.kind==="strong";
-        ctx.strokeStyle=isStrong?"rgba(255,255,255,0.85)":isPhase?"rgba(255,255,255,0.32)":"rgba(250,204,21,0.5)";
-        ctx.lineWidth=isStrong?2.2:isPhase?1.2:1;
-        ctx.setLineDash(isStrong?[]:isPhase?[4,3]:[2,3]);
-        ctx.beginPath();ctx.moveTo(px,y.top);ctx.lineTo(px,y.bottom);ctx.stroke();
-        ctx.setLineDash([]);
-        const tier=i%3; // stagger labels of nearby markers onto 3 rows so dense clusters (checkrides
-        // 1 lesson apart, or a key point landing right next to a phase boundary) don't overlap
-        const nearRightEdge=(x.right-px)<95; // flip alignment so labels near lesson 96 don't run off-canvas
-        ctx.font=isPhase?"700 8.5px JetBrains Mono, monospace":"700 8px JetBrains Mono, monospace";
-        ctx.fillStyle=isStrong?"#ec4899":isPhase?"#f0f6fc":"#fde047";
-        ctx.textAlign=nearRightEdge?"right":"left";ctx.textBaseline="top";
-        const lx=px+(nearRightEdge?-3:3),ly=y.top+2+tier*11;
-        // Dark halo (stroke-then-fill) so labels stay readable regardless of which phase's fill
-        // color sits directly behind them — a flat fillStyle alone (the prior approach) was
-        // unreadable wherever a light phase segment sat behind light text.
-        ctx.lineJoin="round";ctx.lineWidth=3;ctx.strokeStyle="rgba(13,17,23,0.9)";
-        ctx.strokeText(m.label,lx,ly);
-        ctx.fillText(m.label,lx,ly);
-      });
-      ctx.restore();
-    }
-  };
   const legend=document.getElementById("d127v4-overall-legend");
   if(legend){
     legend.innerHTML=AP127_BAR_SEGMENTS.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("")
-      +`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:rgba(255,255,255,0.32);border-radius:2px;width:14px;height:3px"></span>phase boundary</span>`
-      +`<span class="d127-pc"><span class="d127-pdot" style="background:#ec4899;border-radius:2px;width:14px;height:3px"></span>SE→ME changeover</span>`
-      +`<span class="d127-pc"><span class="d127-pdot" style="background:#facc15;border-radius:2px;width:14px;height:3px"></span>key point</span>`;
+      +`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#ec4899;border-radius:2px;width:14px;height:3px"></span>SE→ME changeover</span>`;
   }
   CHARTS.ap127overall=mkC("d127v4-overall",{
     type:"bar",
@@ -1319,8 +1354,8 @@ function buildAP127OverallChart(all,curriculum,maxDate){
         // +/− buttons (ap127OverallZoomV4) are the primary, predictable, discoverable zoom control.
         // Pinch stays unconditional since a two-finger touch gesture is inherently deliberate.
         zoom:{
-          zoom:{wheel:{enabled:true,modifierKey:"ctrl",speed:0.06},pinch:{enabled:true},mode:"xy"},
-          pan:{enabled:true,mode:"xy"},
+          zoom:{wheel:{enabled:true,modifierKey:"ctrl",speed:0.06},pinch:{enabled:true},mode:"xy",onZoomComplete:()=>ap127SyncSyllabusStrip()},
+          pan:{enabled:true,mode:"xy",onPanComplete:()=>ap127SyncSyllabusStrip()},
         }
       },
       scales:{
@@ -1328,13 +1363,14 @@ function buildAP127OverallChart(all,curriculum,maxDate){
         y:{stacked:true,afterFit:scale=>{scale.width=100;},ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e",autoSkip:false},grid:{color:"#21262d"}}
       }
     },
-    plugins:[currentLabelPlugin,markerPlugin]
+    plugins:[currentLabelPlugin]
   });
 }
 
 function ap127OverallResetZoom(){
   const chart=CHARTS.ap127overall;
   if(chart&&chart.resetZoom)chart.resetZoom();
+  ap127SyncSyllabusStrip();
 }
 // Explicit +/− zoom buttons — the primary zoom control (see the zoom-plugin comment in
 // buildAP127OverallChart for why bare wheel-zoom was removed). A fixed 1.25x/0.8x step per click
@@ -1343,6 +1379,7 @@ function ap127OverallResetZoom(){
 function ap127OverallZoom(factor){
   const chart=CHARTS.ap127overall;
   if(chart&&chart.zoom)chart.zoom(factor);
+  ap127SyncSyllabusStrip();
 }
 let CPV_FILTER='proj';
 let CPV_MODE='hours';
@@ -2161,6 +2198,7 @@ function opsAugment(students, curriculum) {
     closeAP127DrawerV4: closeAP127Drawer,
     openAP127SyllabusModalV4: openAP127SyllabusModal,
     closeAP127SyllabusModalV4: closeAP127SyllabusModal,
+    openAP127MilestoneModalV4: openAP127MilestoneModal,
     setAP127RaceModeV4: setAP127RaceMode,
     setHistBatchModeV4: setHistBatchMode,
     buildAP127HistBatchV4: buildAP127HistBatch,

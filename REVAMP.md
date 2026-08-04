@@ -1455,3 +1455,57 @@ happened (scale stayed 0-96); the same event with `ctrlKey:true` confirmed a gen
 happen; "⟳ Reset View" confirmed restoring 0-96 after each test. Zero console errors. Original
 AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only files touched:
 `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust bump).
+
+### AP127 Detail V4 — Overall Progress: SYLLABUS zooms with chart, decluttered SP rows, clickable milestones, SVG icons (2026-08-04, p139)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Thirteenth round of same-day feedback: "Make the syllabus zoom together with the chart. Move all
+key event to inside the syllabus, not on the SP line. Remove the duplicated phase name. Make the
+icon click to expand explanation detail. More professional icon."
+
+1. **SYLLABUS zooms together with the chart.** `ap127SyllabusStrip()` gained `viewMin`/`viewMax`
+   parameters (same 0..totalLessons units as the chart's x-axis); phase segments and milestone
+   icons outside that window are dropped, and the visible portion is rescaled to fill the width —
+   the strip now shows exactly what the chart is showing at any zoom level. New
+   `ap127SyncSyllabusStrip()` reads `CHARTS.ap127overall.scales.x.min/max` and re-renders; wired
+   into the zoom-plugin's `onZoomComplete`/`onPanComplete` for wheel/pinch/drag-pan, and called
+   explicitly at the end of `ap127OverallZoom()`/`ap127OverallResetZoom()` for the button path
+   (not relying on plugin callbacks firing identically for programmatic zoom calls). When zoomed,
+   the strip's subtitle changes to `"showing lessons X–Y of 96 (zoomed with chart)"`.
+2. **Chart decluttered — all phase/milestone display now lives only in the strip.** Deleted
+   `markerPlugin` (the vertical dashed/solid guide lines + `strokeText`/`fillText` labels drawn
+   over every SP row) entirely, along with the `boundaries`/`markers` construction that fed it.
+   This was the literal "duplicated phase name" — the same phase label was rendered once in the
+   SYLLABUS strip's block and a second time as canvas text over the SP rows, and with 28 rows and
+   up to 9 markers the SP-row labels frequently overlapped each other illegibly. Per-SP bars are
+   now plain phase-colored segments plus the `currentLabelPlugin` "current/next lesson" text (kept
+   — that's genuinely per-SP data, not a repeat of syllabus-wide info). Legend trimmed from 4
+   entries (segments, phase boundary, SE→ME changeover, key point) to 2 (segments, SE→ME
+   changeover) since the removed dashed/dotted line styles no longer appear anywhere.
+3. **Milestone icons are click-to-expand.** New `openAP127MilestoneModalV4(i)` populates the same
+   generic drawer `openAP127SyllabusModalV4` uses, with a written explanation of the milestone
+   TYPE (not the specific lesson instance) from a new `AP127_MILESTONE_TYPES` lookup — one
+   paragraph each for Solo, Instrument, Cross-Country, Sim, Multi-Engine, Checkride, covering what
+   the milestone represents and why it matters in the training progression. `i` indexes
+   `AP127_OVERALL_KPS`, the full (unfiltered) milestone list captured by the most recent strip
+   render, so the index stays valid even though the zoomed view may be hiding some milestones.
+4. **Professional SVG icon set.** Replaced the emoji icons (🛫🧭🗺️🖥️🌀🎖️, themselves a prior
+   round's fix for an even worse pager emoji) with small stroke-based inline SVGs — 14x14 viewBox,
+   `currentColor`, ~1.2 stroke-width — matching the minimal geometric convention already
+   established by `ViewIcon()` in `js/shared.js` (used for the app's other custom icons) rather
+   than full-color emoji, which read as less "professional" in a data dashboard. New
+   `ap127KeyPointIconSvg(label,size)` (replacing `ap127KeyPointIcon`) returns: an aircraft
+   silhouette (Solo), a gauge with a needle (Instrument), a dashed route to a diamond waypoint
+   (Cross-Country), a monitor (Sim), two propeller discs (Multi-Engine), a shield with a checkmark
+   (Checkride). Used in the SYLLABUS strip's icon row, the phase-detail modal's milestone list, and
+   the new milestone-detail modal's title.
+
+Verified live: zoomed to 1.6x and confirmed the strip showed "showing lessons 29–67 of 96 (zoomed
+with chart)" with Phase I correctly dropped and Phase III/IFR Sim correctly clipped at the
+boundaries; Reset restored the full 0-96 view in both the chart and the strip; clicked the first
+milestone icon and confirmed the modal opened with the correct title ("Initial Solo"), subtitle
+("Lesson 14 · Consolidation & IFR Introduction"), and explanation text; zero console errors
+throughout. Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched.
+Only files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html`
+cache-bust bump).
