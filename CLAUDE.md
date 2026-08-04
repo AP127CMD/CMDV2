@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p137` (all currently at p136)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p138` (all currently at p137)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,38 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p136` (2026-08-04 — **Cross-Check — new "Monthly OPS ⇄ PROG"
+**Last known:** all files `p137` (2026-08-04 — **AP127 Detail V4 — Overall Progress: mobile
+alignment fix, clickable SYLLABUS phases, Phase IV SIM/REAL + SE/ME split, aviation icons,
+zoom/pan/resize.** Twelfth round of same-day feedback, five items in one pass:
+1. **Mobile alignment fix.** A prior mobile media-query zeroed out the SYLLABUS strip's 100px left
+   offset, but the chart's y-axis label column below it stays a fixed 100px at every viewport width
+   — so the override actively broke alignment instead of fixing it. Removed; verified at 375px
+   width that phase-color transitions in the strip now line up with the per-SP bars beneath.
+2. **Clickable phase detail.** New modal (`openAP127SyllabusModalV4`/`closeAP127SyllabusModalV4`,
+   markup reuses the existing `.d127-draw`/`.d127-dh` drawer styling) opens on any SYLLABUS segment
+   click — shows the phase's objective and completion standard (trimmed verbatim from
+   syllabus.json, new fields on `AP127_SYLLABUS_PHASES`), an hours/lesson breakdown when the phase
+   has sub-segments, and every milestone that falls within it.
+3. **Phase IV split.** New `AP127_BAR_SEGMENTS` (Overall Progress Bar View only — Flight Timeline/
+   Roster/Phase Funnel still use the flat 4-phase `AP127_SYLLABUS_PHASES`) breaks Phase IV into 4
+   contiguous, syllabus-verified sub-ranges: IFR Sim (L56-67, 28h), IFR Real (L68-90, 59h), ME Sim
+   (L91-92, 2h), ME Real (L93-96, 7h) — distinct colors (blue/purple = SE, pink/magenta = ME;
+   lighter = sim, saturated = real), each clickable into the same Phase IV modal. The SE→ME
+   changeover (lesson 91) draws as a bold solid divider in both the SYLLABUS strip and the per-SP
+   chart, vs. the usual dashed phase-boundary line.
+4. **Aviation-appropriate icons.** `ap127KeyPointIcon()`'s previous set included a pager emoji for
+   "Instrument" — replaced the full set: 🛫 Solo, 🧭 Instrument, 🗺️ Cross-Country, 🖥️ Sim,
+   🌀 Multi-Engine, 🎖️ Checkride.
+5. **Resizable + zoom/pan interactive.** Added chartjs-plugin-zoom (already loaded globally, same
+   plugin the Combined Progress vs Plan chart uses) with wheel/pinch zoom + drag pan in 'xy' mode,
+   plus a "⟳ Reset View" button (`ap127OverallResetZoomV4`). The canvas's container div is now
+   CSS `resize:vertical` so the chart height is user-adjustable by dragging its corner.
+Verified live: zero console errors throughout; phase-block clicks open the correct modal content
+(including the no-breakdown path for single-segment phases); zoom/reset confirmed via direct chart
+API calls (0-96 → 24-72 after 1.5x zoom, back to 0-96 on reset); original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched. Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css`. Full write-up: REVAMP.md's p137 entry.) p136
+(2026-08-04 — **Cross-Check — new "Monthly OPS ⇄ PROG"
 reconciliation view.** User asked why AP-126/AP-127 monthly effective-hours totals differ between
 "Ops Analytics" and the School side (named "School Analysis" but, per research, that tab has no
 monthly-hours table at all — the real analog is "School Perf."'s Scorecard engine), for

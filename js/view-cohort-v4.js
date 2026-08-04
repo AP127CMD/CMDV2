@@ -185,12 +185,18 @@
       </div>
     </div>
     <div class="d127-panel">
-      <div class="d127-h"><span class="d127-t">Overall Progress Bar View</span><span class="d127-s">x-axis = lesson number · stacked by syllabus phase</span></div>
+      <div class="d127-h">
+        <span class="d127-t">Overall Progress Bar View</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <span class="d127-s">x-axis = lesson number · stacked by syllabus phase</span>
+          <button class="d127-reset" title="Reset zoom/pan" onclick="ap127OverallResetZoomV4()">⟳ Reset View</button>
+        </span>
+      </div>
       <div class="d127-body">
-        <div class="d127-note">The SYLLABUS strip above the chart is the full 96-lesson curriculum — hover a phase or milestone for detail. Every SP bar below it is split into segments per official curriculum phase (same colors as Flight Timeline and the Roster), lined up against the same lesson-number axis. White dashed lines mark where each phase starts; amber dotted lines mark finer syllabus key points (Initial Solo, Instrument, Cross-Country, Sim, Multi-Engine, Checkride). Text at bar end = current/next lesson.</div>
+        <div class="d127-note">The SYLLABUS strip above the chart is the full 96-lesson curriculum — click a segment for full detail, hover a milestone icon for a quick note. Every SP bar below it is split into segments per official curriculum phase (same colors as Flight Timeline and the Roster), lined up against the same lesson-number axis. White dashed lines mark where each phase starts; a bold solid line marks the single→multi-engine changeover; amber dotted lines mark finer syllabus key points. Text at bar end = current/next lesson. Scroll/pinch to zoom, drag to pan, drag the bottom-right corner to resize.</div>
         <div class="d127-phase-legend" id="d127v4-overall-legend"></div>
         <div id="d127v4-syllabus-strip"></div>
-        <div style="position:relative;height:600px;width:100%"><canvas id="d127v4-overall"></canvas></div>
+        <div class="d127v4-overall-wrap" id="d127v4-overall-wrap"><canvas id="d127v4-overall"></canvas></div>
       </div>
     </div>
     <div class="d127-panel">
@@ -232,6 +238,15 @@
       <div class="d127-list" style="overflow-y:auto;max-height:45vh"><div class="d127-lh">Completed Flights</div><div id="d127v4-d-flown"></div></div>
       <div class="d127-list" style="overflow-y:auto;max-height:45vh"><div class="d127-lh">Planned Flights</div><div id="d127v4-d-plan"></div></div>
     </div>
+  </div>
+</div>
+<div class="d127-draw-ov" id="d127v4-syl-modal-ov" onclick="closeAP127SyllabusModalV4()">
+  <div class="d127-draw d127v4-syl-modal" onclick="event.stopPropagation()">
+    <div class="d127-dh">
+      <div><div class="d127-dn" id="d127v4-syl-modal-title">-</div><div class="d127-dm" id="d127v4-syl-modal-sub">-</div></div>
+      <button class="d127-close" onclick="closeAP127SyllabusModalV4()">Close</button>
+    </div>
+    <div class="d127v4-syl-modal-body" id="d127v4-syl-modal-body"></div>
   </div>
 </div>
 `;
@@ -285,15 +300,44 @@ let _scrDebounce=null;
 // Hour totals (hrs) are each phase's own sum of standard lesson durations from the authoritative
 // syllabus (ap127-flight-training.pages.dev/data/syllabus.json), not a share of the 180h total —
 // verified they add up to exactly 180h (14+25+45+96).
+// objective/standard text is trimmed verbatim from the authoritative syllabus.json's per-phase
+// "objective" and "completionStandard" fields — used by the SYLLABUS strip's click-to-detail modal.
 const AP127_SYLLABUS_PHASES=[
   {n:1,label:"Phase I",  title:"Basic Flight Training",           lo:1, hi:13,c:"#38bdf8",hrs:14,
-   blurb:"First air experience through first solo — basic handling, circuits, emergency procedures."},
+   blurb:"First air experience through first solo — basic handling, circuits, emergency procedures.",
+   objective:"Provide the trainee with the fundamental flight skills and essential airmanship required to safely conduct a first solo flight. Training focuses on basic aircraft handling, traffic pattern operations, and emergency procedures under the supervision of a flight instructor.",
+   standard:"The trainee shall demonstrate sufficient competence in basic aircraft handling, normal procedures, and emergency operations to be recommended for the first solo flight."},
   {n:2,label:"Phase II", title:"Consolidation & IFR Introduction", lo:14,hi:32,c:"#4ade80",hrs:25,
-   blurb:"Solo consolidation, navigation, and first instrument-flying exposure."},
+   blurb:"Solo consolidation, navigation, and first instrument-flying exposure.",
+   objective:"Consolidate basic flight skills and introduce instrument flying. The trainee will progress from first solo to solo cross-country, while developing IFR navigation skills using radio navigation aids.",
+   standard:"The trainee shall demonstrate competence in solo general handling, basic instrument flight, radio navigation aid use, and VFR cross-country navigation, and must be qualified for solo cross-country flight."},
   {n:3,label:"Phase III",title:"Advanced VFR & Night Flying",      lo:33,hi:55,c:"#f59e0b",hrs:45,
-   blurb:"SPIC cross-country, radio nav aids, night qualification, Phase III skill checks."},
+   blurb:"SPIC cross-country, radio nav aids, night qualification, Phase III skill checks.",
+   objective:"Develop advanced VFR cross-country and PIC (SPIC) skills, complete night flight qualification, and pass Phase III skill checks. The trainee will act as student PIC on all cross-country flights.",
+   standard:"The trainee shall complete the solo long cross-country, achieve night qualification, and pass both the general handling check and VFR cross-country check as student PIC."},
   {n:4,label:"Phase IV", title:"IFR & Multi-Engine Training",      lo:56,hi:96,c:"#a78bfa",hrs:96,
-   blurb:"Full IFR competence, simulator training, multi-engine conversion, final checkrides."},
+   blurb:"Full IFR competence, simulator training, multi-engine conversion, final checkrides.",
+   objective:"Develop full IFR competence on single-engine and multi-engine aircraft, including simulator training, IFR cross-country operations as student PIC, and multi-engine conversion. Culminates in completion of all course requirements for the CPL/IR licence.",
+   standard:"The trainee shall complete all IFR training, pass the IFR cross-country check, complete multi-engine training, and pass the final MEP IFR cross-country check."},
+];
+// Overall Progress Bar View ONLY — Phase IV split into 4 contiguous sub-segments so SIM vs REAL
+// and single- vs multi-engine training are visually distinguishable, per explicit request. Ranges
+// and hour totals verified against syllabus.json (each lesson's own duration, summed): every
+// Phase IV lesson (56-96) falls in exactly one sub-range, and 28+59+2+7=96h matches Phase IV's
+// total. Deliberately NOT folded into AP127_SYLLABUS_PHASES/ap127SyllabusPhase() — those stay a
+// flat 4-phase scheme because Flight Timeline, Roster, and Phase Progress Funnel all key off them
+// for a consistent "same phase = same color" convention that isn't part of this request.
+// phaseIdx points back at the AP127_SYLLABUS_PHASES index the detail modal should open for a
+// click on that segment; meIntro marks the one segment whose LEFT boundary is the SE→ME aircraft
+// changeover, drawn as a bold solid divider instead of the usual dashed phase-boundary line.
+const AP127_BAR_SEGMENTS=[
+  {label:"Phase I",  title:"Basic Flight Training",             lo:1, hi:13,c:"#38bdf8",hrs:14,phaseIdx:0},
+  {label:"Phase II", title:"Consolidation & IFR Introduction",   lo:14,hi:32,c:"#4ade80",hrs:25,phaseIdx:1},
+  {label:"Phase III",title:"Advanced VFR & Night Flying",        lo:33,hi:55,c:"#f59e0b",hrs:45,phaseIdx:2},
+  {label:"IFR Sim",  title:"Phase IV · IFR Simulator (FNPT II)", lo:56,hi:67,c:"#93c5fd",hrs:28,phaseIdx:3},
+  {label:"IFR Real", title:"Phase IV · IFR Aircraft (SE)",       lo:68,hi:90,c:"#a78bfa",hrs:59,phaseIdx:3},
+  {label:"ME Sim",   title:"Phase IV · Multi-Engine Simulator",  lo:91,hi:92,c:"#f9a8d4",hrs:2, phaseIdx:3,meIntro:true},
+  {label:"ME Real",  title:"Phase IV · Multi-Engine Aircraft",   lo:93,hi:96,c:"#ec4899",hrs:7, phaseIdx:3},
 ];
 const AP127_PHASE_OTHER={label:"Other",title:"Unrecognized lesson code",c:"#6b7280"};
 function ap127LessonNum(code){const m=String(code||"").match(/(\d+)\s*$/);return m?parseInt(m[1],10):null;}
@@ -609,7 +653,7 @@ function openAP127Drawer(idx){
   document.getElementById("d127v4-draw-ov").classList.add("show");
 }
 function closeAP127Drawer(){const el=document.getElementById("d127v4-draw-ov");if(el)el.classList.remove("show");}
-document.addEventListener("keydown",e=>{if(e.key==="Escape")closeAP127Drawer();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeAP127Drawer();closeAP127SyllabusModal();}});
 
 function buildAP127Timeline(all,curriculum,maxDate){
   const sorted=ap127PaceSort(all,ap127AsOf());
@@ -1082,14 +1126,16 @@ function ap127KeyPoints(cur){
   return pts;
 }
 // Icon for a key-point/checkride label, used by both the SYLLABUS strip (ap127SyllabusStrip) and
-// anywhere else a compact visual tag for a milestone type is useful.
+// anywhere else a compact visual tag for a milestone type is useful. Picked for aviation relevance
+// over generic emoji (the previous set included a pager icon for "Instrument", which reads as
+// office equipment, not navigation) — 🧭 compass, 🗺️ chart, 🎖️ qualification-earned.
 function ap127KeyPointIcon(label){
-  if(label.startsWith("Checkride"))return"🏁";
+  if(label.startsWith("Checkride"))return"🎖️";
   if(label.startsWith("Initial Solo"))return"🛫";
-  if(label.startsWith("Instrument"))return"📟";
-  if(label.startsWith("Cross-Country"))return"🧭";
+  if(label.startsWith("Instrument"))return"🧭";
+  if(label.startsWith("Cross-Country"))return"🗺️";
   if(label.startsWith("Sim"))return"🖥️";
-  if(label.startsWith("Multi-Engine"))return"✈️";
+  if(label.startsWith("Multi-Engine"))return"🌀";
   return"◆";
 }
 // ── SYLLABUS strip — a rich, standalone HTML timeline (not a Chart.js row) rendered directly above
@@ -1103,12 +1149,11 @@ function ap127KeyPointIcon(label){
 function ap127SyllabusStrip(cur,totalLessons){
   const kps=ap127KeyPoints(cur);
   const totalHrs=AP127_SYLLABUS_PHASES.reduce((a,p)=>a+p.hrs,0);
-  const phaseHtml=AP127_SYLLABUS_PHASES.map(p=>{
-    const wPct=(p.hi-p.lo+1)/totalLessons*100;
-    return `<div class="d127v4-syl-phase" style="width:${wPct}%;background:${p.c}" title="${escHtml(p.title)} — ${escHtml(p.blurb)} · Lessons ${p.lo}–${p.hi} · ${p.hrs}h">
-      <div class="d127v4-syl-phase-n">${p.label}</div>
-      <div class="d127v4-syl-phase-t">${escHtml(p.title)}</div>
-      <div class="d127v4-syl-phase-m">L${p.lo}–${p.hi} · ${p.hrs}h</div>
+  const segHtml=AP127_BAR_SEGMENTS.map(seg=>{
+    const wPct=(seg.hi-seg.lo+1)/totalLessons*100;
+    return `<div class="d127v4-syl-phase${seg.meIntro?" d127v4-syl-phase-me-div":""}" style="width:${wPct}%;background:${seg.c}" title="${escHtml(seg.title)} · Lessons ${seg.lo}–${seg.hi} · ${seg.hrs}h — click for full phase detail" onclick="openAP127SyllabusModalV4(${seg.phaseIdx})">
+      <div class="d127v4-syl-phase-n">${seg.label}</div>
+      <div class="d127v4-syl-phase-m">L${seg.lo}–${seg.hi} · ${seg.hrs}h</div>
     </div>`;
   }).join("");
   const kpHtml=kps.map(k=>{
@@ -1123,14 +1168,44 @@ function ap127SyllabusStrip(cur,totalLessons){
   return `<div class="d127v4-syllabus">
     <div class="d127v4-syllabus-hd">
       <span class="d127v4-syllabus-lbl">✦ SYLLABUS</span>
-      <span class="d127v4-syllabus-sub">${totalLessons} lessons · ${totalHrs}h · CATC CPL/IR Integrated Course — hover any segment or icon for detail</span>
+      <span class="d127v4-syllabus-sub">${totalLessons} lessons · ${totalHrs}h · CATC CPL/IR Integrated Course — click a segment for full detail, hover a milestone icon for a quick note</span>
     </div>
     <div class="d127v4-syllabus-track">
       <div class="d127v4-syl-kps">${kpHtml}</div>
-      <div class="d127v4-syl-phases">${phaseHtml}</div>
+      <div class="d127v4-syl-phases">${segHtml}</div>
     </div>
   </div>`;
 }
+// Click-to-detail modal for a SYLLABUS phase block. Shared across all AP127_BAR_SEGMENTS entries —
+// Phase IV's 4 sub-segments (IFR/ME × Sim/Real) all point at the same phaseIdx (3) and open one
+// modal showing the combined phase objective/standard plus a breakdown of its sub-segments.
+function openAP127SyllabusModal(phaseIdx){
+  const p=AP127_SYLLABUS_PHASES[phaseIdx];if(!p)return;
+  const cur=(G&&G.cur127)||[];
+  const kps=ap127KeyPoints(cur).filter(k=>{const n=k.idx+1;return n>=p.lo&&n<=p.hi;});
+  const subs=AP127_BAR_SEGMENTS.filter(s=>s.phaseIdx===phaseIdx);
+  const hasSubs=subs.length>1;
+  const setT=(id,t)=>{const e=document.getElementById(id);if(e)e.textContent=t;};
+  setT("d127v4-syl-modal-title",`${p.label} — ${p.title}`);
+  setT("d127v4-syl-modal-sub",`Lessons ${p.lo}–${p.hi} · ${p.hrs}h of ${AP127_SYLLABUS_PHASES.reduce((a,x)=>a+x.hrs,0)}h total curriculum`);
+  let html=`<div class="d127v4-syl-modal-sec"><div class="d127v4-syl-modal-h">Objective</div><p>${escHtml(p.objective)}</p></div>`;
+  html+=`<div class="d127v4-syl-modal-sec"><div class="d127v4-syl-modal-h">Completion Standard</div><p>${escHtml(p.standard)}</p></div>`;
+  if(hasSubs){
+    html+=`<div class="d127v4-syl-modal-sec"><div class="d127v4-syl-modal-h">Breakdown</div>`+
+      subs.map(s=>`<div class="d127v4-syl-modal-subrow"><span class="d127v4-syl-modal-subdot" style="background:${s.c}"></span><b>${escHtml(s.label)}</b> <span style="color:var(--tx3)">Lessons ${s.lo}–${s.hi} · ${s.hrs}h</span></div>`).join("")+
+      `</div>`;
+  }
+  if(kps.length){
+    html+=`<div class="d127v4-syl-modal-sec"><div class="d127v4-syl-modal-h">Milestones in this phase</div>`+
+      kps.map(k=>`<div class="d127v4-syl-modal-kp"><span>${ap127KeyPointIcon(k.label)}</span> ${escHtml(k.label)} <span style="color:var(--tx3)">· Lesson ${k.idx+1}</span></div>`).join("")+
+      `</div>`;
+  }
+  const body=document.getElementById("d127v4-syl-modal-body");
+  if(body)body.innerHTML=html;
+  const ov=document.getElementById("d127v4-syl-modal-ov");
+  if(ov)ov.classList.add("show");
+}
+function closeAP127SyllabusModal(){const el=document.getElementById("d127v4-syl-modal-ov");if(el)el.classList.remove("show");}
 // ── Overall Progress Bar View v6 — every SP's own stacked-by-phase bar reads directly against the
 // SYLLABUS strip rendered above the chart (ap127SyllabusStrip; no longer a same-height chart row —
 // see that function's comment for why). Phase-boundary lines (bold) and finer syllabus key points
@@ -1141,11 +1216,11 @@ function buildAP127OverallChart(all,curriculum,maxDate){
   const sorted=ap127PaceSort(all,ap127AsOf());
   const cur=G.cur127||[];
   const totalLessons=cur.length||curriculum||96;
-  const inPhase=(code,p)=>{const n=ap127LessonNum(code);return n!=null&&n>=p.lo&&n<=p.hi;};
-  const datasets=AP127_SYLLABUS_PHASES.map(p=>({
-    label:p.label,
-    data:sorted.map(s=>(s.flown||[]).filter(f=>inPhase(f.lesson,p)).length),
-    backgroundColor:p.c,
+  const inSeg=(code,seg)=>{const n=ap127LessonNum(code);return n!=null&&n>=seg.lo&&n<=seg.hi;};
+  const datasets=AP127_BAR_SEGMENTS.map(seg=>({
+    label:seg.label,
+    data:sorted.map(s=>(s.flown||[]).filter(f=>inSeg(f.lesson,seg)).length),
+    backgroundColor:seg.c,
     stack:"prog",
   }));
   const remainingData=sorted.map(s=>Math.max(0,totalLessons-(s.done||0)));
@@ -1155,7 +1230,11 @@ function buildAP127OverallChart(all,curriculum,maxDate){
   const stripEl=document.getElementById("d127v4-syllabus-strip");
   if(stripEl)stripEl.innerHTML=ap127SyllabusStrip(cur,totalLessons);
 
-  const boundaries=AP127_SYLLABUS_PHASES.slice(1).map(p=>({idx:p.lo-1,label:p.label,kind:"phase"})); // Phase I starts at 0, no line needed
+  // Boundary line per segment start (except lesson 1) — includes the 4 top-level phase starts
+  // AND the 3 sub-boundaries inside Phase IV (Sim/Real, SE/ME) from AP127_BAR_SEGMENTS. The
+  // SE→ME changeover (meIntro) draws as a bold solid line instead of the usual dashed one, since
+  // it's a bigger transition (different aircraft type) than an ordinary phase boundary.
+  const boundaries=AP127_BAR_SEGMENTS.slice(1).map(seg=>({idx:seg.lo-1,label:seg.label,kind:seg.meIntro?"strong":"phase"}));
   const markers=[...boundaries];
   ap127KeyPoints(cur).forEach(kp=>{
     const existing=markers.find(m=>m.idx===kp.idx);
@@ -1169,7 +1248,7 @@ function buildAP127OverallChart(all,curriculum,maxDate){
     afterDatasetsDraw(chart){
       const{ctx}=chart;
       ctx.save();ctx.font="9px JetBrains Mono, monospace";ctx.fillStyle="#8b949e";ctx.textAlign="left";ctx.textBaseline="middle";
-      const meta=chart.getDatasetMeta(AP127_SYLLABUS_PHASES.length-1); // end of the last real phase segment = done position
+      const meta=chart.getDatasetMeta(AP127_BAR_SEGMENTS.length-1); // end of the last real segment = done position
       sorted.forEach((s,i)=>{
         const bar=meta.data[i];if(!bar)return;
         const last=(s.flown||[]).at(-1);
@@ -1186,17 +1265,18 @@ function buildAP127OverallChart(all,curriculum,maxDate){
       ctx.save();
       markers.forEach((m,i)=>{
         const px=x.getPixelForValue(m.idx);
-        const isPhase=m.kind==="phase";
-        ctx.strokeStyle=isPhase?"rgba(255,255,255,0.32)":"rgba(250,204,21,0.5)";
-        ctx.lineWidth=isPhase?1.2:1;
-        ctx.setLineDash(isPhase?[4,3]:[2,3]);
+        const isPhase=m.kind==="phase"||m.kind==="strong";
+        const isStrong=m.kind==="strong";
+        ctx.strokeStyle=isStrong?"rgba(255,255,255,0.85)":isPhase?"rgba(255,255,255,0.32)":"rgba(250,204,21,0.5)";
+        ctx.lineWidth=isStrong?2.2:isPhase?1.2:1;
+        ctx.setLineDash(isStrong?[]:isPhase?[4,3]:[2,3]);
         ctx.beginPath();ctx.moveTo(px,y.top);ctx.lineTo(px,y.bottom);ctx.stroke();
         ctx.setLineDash([]);
         const tier=i%3; // stagger labels of nearby markers onto 3 rows so dense clusters (checkrides
         // 1 lesson apart, or a key point landing right next to a phase boundary) don't overlap
         const nearRightEdge=(x.right-px)<95; // flip alignment so labels near lesson 96 don't run off-canvas
         ctx.font=isPhase?"700 8.5px JetBrains Mono, monospace":"700 8px JetBrains Mono, monospace";
-        ctx.fillStyle=isPhase?"#f0f6fc":"#fde047";
+        ctx.fillStyle=isStrong?"#ec4899":isPhase?"#f0f6fc":"#fde047";
         ctx.textAlign=nearRightEdge?"right":"left";ctx.textBaseline="top";
         const lx=px+(nearRightEdge?-3:3),ly=y.top+2+tier*11;
         // Dark halo (stroke-then-fill) so labels stay readable regardless of which phase's fill
@@ -1211,8 +1291,9 @@ function buildAP127OverallChart(all,curriculum,maxDate){
   };
   const legend=document.getElementById("d127v4-overall-legend");
   if(legend){
-    legend.innerHTML=AP127_SYLLABUS_PHASES.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("")
+    legend.innerHTML=AP127_BAR_SEGMENTS.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("")
       +`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:rgba(255,255,255,0.32);border-radius:2px;width:14px;height:3px"></span>phase boundary</span>`
+      +`<span class="d127-pc"><span class="d127-pdot" style="background:#ec4899;border-radius:2px;width:14px;height:3px"></span>SE→ME changeover</span>`
       +`<span class="d127-pc"><span class="d127-pdot" style="background:#facc15;border-radius:2px;width:14px;height:3px"></span>key point</span>`;
   }
   CHARTS.ap127overall=mkC("d127v4-overall",{
@@ -1223,7 +1304,15 @@ function buildAP127OverallChart(all,curriculum,maxDate){
       plugins:{
         datalabels:{display:false},
         legend:{display:false},
-        tooltip:{filter:item=>item.dataset.label!=="Remaining",callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x} lessons`}}
+        tooltip:{filter:item=>item.dataset.label!=="Remaining",callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x} lessons`}},
+        // Interactive pan/zoom (chartjs-plugin-zoom, already loaded globally — same plugin the
+        // Combined Progress vs Plan chart uses via cpvResetZoom). 'xy' mode lets a wide batch
+        // scroll/zoom both across lesson number (x) and down through SP rows (y) — wheel/pinch to
+        // zoom, click-drag to pan. Paired with the resizable container below and the Reset button.
+        zoom:{
+          zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:"xy"},
+          pan:{enabled:true,mode:"xy"},
+        }
       },
       scales:{
         x:{stacked:true,min:0,max:totalLessons,ticks:{font:{family:"JetBrains Mono",size:8},color:"#8b949e"},grid:{color:"#21262d"},title:{display:true,text:"Lesson number",color:"#6e7681",font:{family:"JetBrains Mono",size:8}}},
@@ -1234,6 +1323,10 @@ function buildAP127OverallChart(all,curriculum,maxDate){
   });
 }
 
+function ap127OverallResetZoom(){
+  const chart=CHARTS.ap127overall;
+  if(chart&&chart.resetZoom)chart.resetZoom();
+}
 let CPV_FILTER='proj';
 let CPV_MODE='hours';
 let HIST_BATCH_MODE='hours';
@@ -2045,8 +2138,11 @@ function opsAugment(students, curriculum) {
     setCPVFilterV4: setCPVFilter,
     setCPVModeV4: setCPVMode,
     cpvResetZoomV4: cpvResetZoom,
+    ap127OverallResetZoomV4: ap127OverallResetZoom,
     openAP127DrawerV4: openAP127Drawer,
     closeAP127DrawerV4: closeAP127Drawer,
+    openAP127SyllabusModalV4: openAP127SyllabusModal,
+    closeAP127SyllabusModalV4: closeAP127SyllabusModal,
     setAP127RaceModeV4: setAP127RaceMode,
     setHistBatchModeV4: setHistBatchMode,
     buildAP127HistBatchV4: buildAP127HistBatch,

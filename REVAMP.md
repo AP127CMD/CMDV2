@@ -1359,3 +1359,66 @@ per-SP drill-down expand, and all 5 diagnostic panel expansions exercised; mobil
 cleanly); zero console errors throughout; existing per-flight Cross-Check confirmed pixel/behavior
 identical to before this change. Design: `docs/superpowers/specs/2026-08-04-crosscheck-monthly-ops-prog-design.md`;
 plan: `docs/superpowers/plans/2026-08-04-crosscheck-monthly-ops-prog.md`.
+
+### AP127 Detail V4 — Overall Progress: mobile fix, clickable phases, Phase IV split, icons, zoom/resize (2026-08-04, p137)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Twelfth round of same-day feedback, five items bundled in one pass:
+
+**1. Mobile SYLLABUS alignment bug fix.** The p133 build added a `@media(max-width:900px)` rule
+zeroing out the SYLLABUS strip's 100px left offset, on the assumption a narrower viewport needed
+less gutter. That assumption was wrong: the chart's y-axis label column below it
+(`afterFit: scale.width=100` in `buildAP127OverallChart`) stays a fixed 100px at every viewport
+width, so removing the strip's matching offset on mobile broke alignment instead of preserving it
+— exactly the bug the user reported. Fixed by deleting the override; verified at a 375px viewport
+that phase-color transitions in the strip now line up with the corresponding per-SP bar segments.
+
+**2. Clickable phase detail.** Each SYLLABUS segment now opens a detail modal on click
+(`openAP127SyllabusModalV4`/`closeAP127SyllabusModalV4`, markup reuses the existing `.d127-draw`/
+`.d127-dh` drawer styling for visual consistency with the student drawer). Shows: the phase's
+objective and completion standard (new `objective`/`standard` fields on `AP127_SYLLABUS_PHASES`,
+trimmed verbatim from `syllabus.json`), an hours/lesson breakdown table when the phase has
+sub-segments (Phase IV only), and every milestone (`ap127KeyPoints()`) that falls within the
+phase's lesson range. Escape key and clicking the overlay both close it, matching the existing
+student-drawer UX pattern.
+
+**3. Phase IV split into SIM/REAL and SE/ME.** New `AP127_BAR_SEGMENTS` array, scoped to the
+Overall Progress Bar View only (Flight Timeline, Roster, and Phase Progress Funnel still use the
+flat 4-phase `AP127_SYLLABUS_PHASES` for their "same phase = same color" convention, which wasn't
+part of this request) — splits Phase IV into 4 contiguous sub-ranges, each verified against
+syllabus.json's per-lesson durations:
+  - IFR Sim — lessons 56-67, 28h (`#93c5fd`)
+  - IFR Real — lessons 68-90, 59h (`#a78bfa`, same hue as the original Phase IV color)
+  - ME Sim — lessons 91-92, 2h (`#f9a8d4`)
+  - ME Real — lessons 93-96, 7h (`#ec4899`)
+Color scheme is deliberately 2-dimensional: purple family = single-engine, pink family =
+multi-engine; lighter/cooler tone = simulator, saturated tone = real aircraft — satisfies "separate
+color for SIM/REAL" and "separate color for ME/SE" with one coherent palette rather than two
+unrelated ones. `buildAP127OverallChart`'s stacked-bar datasets, boundary markers, and the panel
+legend all now iterate `AP127_BAR_SEGMENTS` (7 entries) instead of `AP127_SYLLABUS_PHASES` (4).
+The SE→ME changeover (lesson 91, `meIntro:true` on the ME Sim segment) draws as a bold 2.2px solid
+white/magenta divider in both the SYLLABUS strip (`.d127v4-syl-phase-me-div`) and the per-SP
+chart's marker plugin, distinguishing it from the thinner dashed lines at ordinary phase
+boundaries — "add a line there to separate" the biggest transition (different aircraft entirely)
+from the smaller Sim/Real ones.
+
+**4. Aviation-appropriate icons.** `ap127KeyPointIcon()`'s previous set included a pager emoji
+(📟) for "Instrument" — reads as office equipment, not navigation. Full set replaced: 🛫 Initial
+Solo, 🧭 Instrument, 🗺️ Cross-Country, 🖥️ Sim, 🌀 Multi-Engine, 🎖️ Checkride.
+
+**5. Resizable + zoom/pan interactive.** Added `chartjs-plugin-zoom` config (wheel/pinch zoom +
+drag pan, mode `'xy'`) to the Overall Progress chart — the same plugin already loaded globally and
+used by the Combined Progress vs Plan chart's `cpvResetZoom` — plus a new "⟳ Reset View" button
+(`ap127OverallResetZoomV4`) in the panel header. The canvas's container div
+(`#d127v4-overall-wrap`) is now CSS `resize:vertical;overflow:hidden`, so a user can drag its
+bottom-right corner to make the chart taller/shorter; Chart.js's own ResizeObserver (attached via
+`responsive:true`) keeps the canvas in sync automatically, no extra JS needed.
+
+Verified live throughout: zero console errors; clicking "IFR Sim" opens the Phase IV modal with
+the correct 4-row breakdown and only the 2 milestones that actually fall in Phase IV (checkrides
+at L90/L96 — L54/L55 correctly excluded as Phase III); clicking "Phase I" opens its modal with no
+breakdown section (single-segment path); `chart.zoom(1.5,'x')` confirmed via direct API call
+(scale 0-96 → 24-72), `ap127OverallResetZoomV4()` confirmed restoring 0-96; original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched. Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust bump).
