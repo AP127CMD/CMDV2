@@ -1290,3 +1290,72 @@ L29, Sim L56, Multi-Engine L91, checkrides L54/L55/L90/L96); original AP127 Deta
 (`js/view-cohort.js`) confirmed still byte-identical/untouched (`git diff --stat` empty). Only
 files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust
 bump).
+
+### Cross-Check — new "Monthly OPS ⇄ PROG" reconciliation view (2026-08-04, p136)
+
+`js/crosscheck-monthly.js` (new), `js/view-crosscheck.js`, `index.html`
+
+User asked the app to explain why AP-126/AP-127 monthly effective-hours totals differ between
+"Ops Analytics" (`js/view-summary.js`, sourced from the scraped Operations Portal feed,
+`window.FLIGHTS`) and the School side, for May/Jun/Jul 2026, with the comparison shown in an
+interactive webpage inside the Cross-Check tab.
+
+Research first corrected the premise: the tab literally named **"School Analysis"**
+(`renderAnalysis`, sidebar id `school-analysis`) has no monthly-hours-by-batch table at all — it's
+a per-student pace/at-risk view. The tab that actually computes monthly hours per batch, with an
+Effective/Actual toggle, is the separate **"School Perf."** tab
+(`renderPerformance`/`renderScorecard`/`buildMonthMap`, `js/view-program.js`). Confirmed with the
+user before building against School Perf.'s engine instead.
+
+New `js/crosscheck-monthly.js` (plain script, no JSX, exposes `window.AP127MonthlyCC`) computes
+both sides live from already-loaded, already-normalized `window.FLIGHTS`/`window.NGT_CACHE`,
+reusing — not reinterpreting — each source tab's own formula: `buildCurMap`/`effMinsFromDur`
+mirror `js/view-summary.js:38-59` (`sBuildCurMap`/`sEffectiveMins`) byte-for-byte in behavior;
+`effMinsFromActual` mirrors `js/view-program.js:1440-1471`
+(`buildCurMap`/`collectEffectiveFlights`). `computeMonthly(hoursMode)` buckets Completed OPS
+flights (exact-string batch match `"AP-126"`/`"AP-127"`) and PROG `flown[]` records (structural
+batch = roster array membership) by calendar month; `computeDiagnostics()` finds multi-leg
+same-lesson OPS bookings, PROG `"(SIM)"`-lesson vs. OPS `isSim` mismatches, date drift, no-match
+entries, and batch-tag mismatches (student-key bridging reuses
+`window.AP127Reconcile.ccKeyFromFull`/`ccNameNorm` from `assets/reconcile.js`).
+
+`js/view-crosscheck.js` gained a toggle between the existing per-flight reconciliation (renamed
+`PerFlightView` internally, behavior/markup unchanged — confirmed via live check against the
+pre-change screenshot) and a new `MonthlyView`: headline batch×month table (OPS hrs/flights vs.
+PROG hrs/lessons, Δ, Δ%, colored by |Δ%|), an expandable per-SP drill-down per row (sorted by
+|Δ hrs| descending), 5 collapsible root-cause diagnostic panels with real matched evidence (not
+just prose), and a written "why they differ, and how to fix it" panel. A `CrossCheckShell`
+wrapper now owns the toggle state and the shared padding/scroll container; `window.CrossCheckView`
+still resolves to this shell so `js/shell.js` needed no changes. Diagnose-only per explicit user
+decision — no changes to `view-summary.js`'s or `view-program.js`'s calculation logic.
+
+**Headline finding:** both systems already use the identical curriculum-standard effective-hours
+formula — not the root cause, contrary to the natural first guess. The real drivers, ranked by
+impact in the May/Jun/Jul AP-126/AP-127 window:
+1. **Multi-leg Ops Portal bookings double-credit hours.** One curriculum lesson flown across 2+
+   separate same-day bookings (no `/2`-suffix convention used) gets the full curriculum-standard
+   duration credited again per booking, while Progress logs the lesson once. Quantified for May
+   AP-126: 38 lesson-instances split across 63 extra Ops rows (227 raw rows → 164 distinct
+   student+lesson+date keys) — the dominant driver of AP-126's May/Jun swings. Example: student
+   NABHADR P., lesson `CSPXV 44`, 2026-05-12, logged as 3 separate bookings (1:00 + 2:40 + 1:30).
+2. **Sim-flight tagging disagrees.** OPS `isSim` (per-booking aircraft/tail-type flag) vs. PROG's
+   literal `"(SIM)"` substring in the curriculum lesson code — same real flights, two independent
+   tags. AP-126 June: 100 PROG sim-lesson completions vs. **0** OPS-flagged; July: 234 vs. 134.
+   Invisible in either headline total (neither splits sim out of its combined total) but a real
+   disagreement for anyone filtering by sim.
+3. Minor date-drift (progress-entry lag near month boundaries) and a handful of Ops-completed
+   flights with no Progress entry yet — normal lag, not a data error. AP-127 stayed close every
+   month in this window (largest Δ 4.9%), consistent with this being ordinary noise rather than a
+   systemic issue for that batch.
+4. Batch-tag mismatches (Ops booking tagged with the wrong cohort vs. the student's PROG roster)
+   — checked directly, **zero** found for AP-126/AP-127 in this window. Ruled out as a cause here;
+   the check stays live in the UI as a standing indicator.
+
+Verified live: headline numbers cross-checked against an independent ad hoc computation run
+against the same live data during design (exact match — AP-126 May 523.2h/227 ops vs. 482.0h/160
+prog, etc.); toggle between Per-Flight/Monthly views, Effective/Actual hours toggle, batch filter,
+per-SP drill-down expand, and all 5 diagnostic panel expansions exercised; mobile 390px checked
+(headline table scrolls within its own container, no page-level horizontal overflow, controls wrap
+cleanly); zero console errors throughout; existing per-flight Cross-Check confirmed pixel/behavior
+identical to before this change. Design: `docs/superpowers/specs/2026-08-04-crosscheck-monthly-ops-prog-design.md`;
+plan: `docs/superpowers/plans/2026-08-04-crosscheck-monthly-ops-prog.md`.

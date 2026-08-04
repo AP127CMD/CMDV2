@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p134` (all currently at p133)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p137` (all currently at p136)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,35 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p133` (2026-08-04 — **AP127 Detail V4 — Overall Progress: SYLLABUS
+**Last known:** all files `p136` (2026-08-04 — **Cross-Check — new "Monthly OPS ⇄ PROG"
+reconciliation view.** User asked why AP-126/AP-127 monthly effective-hours totals differ between
+"Ops Analytics" and the School side (named "School Analysis" but, per research, that tab has no
+monthly-hours table at all — the real analog is "School Perf."'s Scorecard engine), for
+May/Jun/Jul 2026, and wanted the comparison + root causes shown in a webpage, in the Cross-Check
+tab. New `js/crosscheck-monthly.js` (plain script, no JSX) computes both sides live from
+`window.FLIGHTS`/`window.NGT_CACHE`, reusing the exact same effective-hours formula each source
+tab already applies (`sBuildCurMap`/`sEffectiveMins` from `js/view-summary.js:38-59`;
+`buildCurMap`/`collectEffectiveFlights` from `js/view-program.js:1440-1471`) — this feature does
+not reinterpret either system, only reconciles them side by side. `js/view-crosscheck.js` gained a
+toggle between the existing per-flight reconciliation (renamed `PerFlightView` internally, behavior
+unchanged) and a new `MonthlyView`: headline batch×month table (OPS hrs/flights vs PROG
+hrs/lessons, Δ, Δ%), per-SP drill-down sorted by |Δ| descending, 5 root-cause diagnostic panels,
+and a written "why + how to fix" panel. Diagnose-only — no changes to `view-summary.js`/
+`view-program.js` calculation logic. **Headline finding:** both systems already use the identical
+curriculum-standard effective-hours formula (not the root cause, contrary to the natural first
+guess) — the real drivers are (1) **multi-leg Ops Portal bookings double-crediting one curriculum
+lesson's full standard duration per booking** (May AP-126: 38 lesson-instances split across 63
+extra Ops rows — the dominant driver of AP-126's May/Jun swings), (2) **sim-flight tagging
+disagreement** (OPS `isSim` boolean vs. PROG's `"(SIM)"` lesson-code marker — AP-126 June: 100 PROG
+sim-lesson completions vs. 0 OPS-flagged), (3) minor date-drift and progress-entry-lag noise
+(AP-127 close every month, consistent with normal lag). Batch-tag mismatches checked and ruled out
+(zero for AP-126/AP-127 in this window). Verified live: numbers cross-checked against an
+independent ad hoc computation during design (exact match), toggle/diagnostics/per-SP drill-down
+exercised, mobile 390px checked (table scrolls in its own container, no page overflow), zero
+console errors, existing per-flight Cross-Check confirmed unchanged. Design:
+`docs/superpowers/specs/2026-08-04-crosscheck-monthly-ops-prog-design.md`; plan:
+`docs/superpowers/plans/2026-08-04-crosscheck-monthly-ops-prog.md`. Only files touched:
+`js/crosscheck-monthly.js` (new), `js/view-crosscheck.js`, `index.html`.) p133 (2026-08-04 — **AP127 Detail V4 — Overall Progress: SYLLABUS
 strip replaces the "MASTER PLAN" chart row.** Eleventh round of same-day feedback: "Make the
 master plan bigger so we can fit all info inside the bar," "Add more detail from the syllabus...
 add some creativity," "Change the MASTER PLAN to be SYLLABUS." The v5 design folded a "MASTER PLAN"
