@@ -1587,3 +1587,53 @@ checkpoints) with every SP's label correctly turning rose (all were behind L43 i
 Flight Timeline's first target line (Aug 9) confirmed visible within the chart's date range. Zero
 console errors throughout. Original AP127 Detail (`js/view-cohort.js`) confirmed still
 byte-identical/untouched.
+
+### AP127 Detail V4 — new Lesson Completion Matrix chart (2026-08-04, p141)
+
+`js/view-cohort-v4.js`, `js/ap127-targets-data.js`, `css/progress.css`
+
+User request: "a new chart that similar to the roster but the column is lesson number instead of
+date... show how each SP completed their lesson... add the target date mark for the lesson to
+complete with indicating how each SP situation is for the closest target point (lead, lag)...
+clean and data rich interactive chart."
+
+New `buildAP127LessonMatrix()`, rendered into a new panel between Overall Progress Bar View and
+Phase Progress Funnel. Conceptually the Roster's day-by-day heatmap turned 90° — same interaction
+model (colored cells = activity, hover for detail, click to open the student drawer), but the
+columns are curriculum LESSON NUMBER (1..96, fixed) instead of calendar date, so the question it
+answers is "who's done what" rather than "who flew when."
+
+Design choices:
+- **Row order**: sorted by lead/lag vs the closest AP127 Target checkpoint (most-behind-first),
+  not the usual pace sort — this view's whole reason to exist is target performance, so that's
+  what should be immediately scannable, not just overall progress.
+- **Two sticky columns** (Name, "vs L{n}"): with 96 lesson columns needing horizontal scroll, both
+  identifying columns stay pinned. The vs-Target column is colored green (at/ahead) or rose
+  (behind) — a direct answer to "who hit or not hit the target."
+- **Header**: a phase-color band row (reusing `AP127_BAR_SEGMENTS`, the same 7-segment Phase I-IV
+  + Sim/Real/ME split used on Overall Progress) so phase context is visible without repeating
+  phase names down every row, plus a lesson-number tick every 5 lessons. Target-checkpoint columns
+  get a small rose flag dot and the whole column gets a rose inset border running top to bottom,
+  so a target lesson is traceable at a glance even scrolled far from its header.
+- **Cells**: phase-colored when the SP has flown that lesson (click opens the same student drawer
+  Roster uses); an amber inset ring marks each SP's current next-lesson (empty cell, not yet
+  flown, but immediately queued); a small blue dot badge in the corner marks a retaken lesson
+  (flown more than once) — a detail Roster's date-based view can't show as cleanly, since a retake
+  is inherently about the SAME lesson recurring, which only has meaning on a lesson-indexed axis.
+- **Footer "BATCH %" row**: each lesson column shaded by `color-mix(in oklch, var(--c127) N%,
+  transparent)` where N = % of the 28 SPs who've completed it — the same intensity-shading idea a
+  calendar heatmap uses, just applied to the lesson axis. Makes bottleneck lessons (where the whole
+  batch is stuck) visible as a dark band without needing a separate chart.
+- New `ap127ClosestMilestoneTarget(dateStr, targets)` added to `js/ap127-targets-data.js` (nearest
+  schedule checkpoint by absolute day difference, ties toward the earlier one) — a discrete
+  "the target is exactly Lesson N by exactly this date" reading, deliberately distinct from
+  `ap127TargetLessonForDate`'s continuous interpolation used elsewhere (Overall Progress, Combined
+  Progress vs Plan) since a lead/lag number is more actionable when it's phrased against one
+  specific named checkpoint than an interpolated fractional lesson value.
+
+Verified live: header renders phase bands + lesson ticks + target flags correctly; sticky Name/vs-
+Target columns stay pinned while scrolling through all 96 lesson columns (confirmed IFR Sim/Real/
+ME Sim/Real bands and their target-flagged columns L74/78/82/86/90/94/96 at the far right); the
+"vs L30" column shows the correct ascending sort (most-behind at top); clicking a completed cell
+opens the student drawer with the correct lesson/date/duration in its title tooltip; zero console
+errors. Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched.

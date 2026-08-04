@@ -247,4 +247,25 @@ th.d127v4-heat-today-col{background:color-mix(in oklch,var(--c127) 14%,transpare
 .d127v4-hours-badge-dot{width:6px;height:6px;border-radius:50%;background:var(--acc);flex-shrink:0;}
 .d127v4-hours-badge-sub{color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:0;}
 @media(max-width:700px){.d127v4-hours-badge-sub{display:none;}}
+
+/* Lesson Completion Matrix — a Roster-style heatmap on the lesson-number axis instead of the date
+   axis. Two sticky columns (Name, vs Target) since 96 lesson columns need horizontal scroll. */
+.d127v4-lm-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;}
+.d127v4-lm-table{border-collapse:separate;border-spacing:1.5px;}
+.d127v4-lm-name{position:sticky;left:0;background:var(--s1);z-index:2;white-space:nowrap;padding:1px 8px 1px 2px;text-align:left;font-size:9.5px;}
+.d127v4-lm-name b{font-weight:700;}
+.d127v4-lm-vs{position:sticky;left:82px;background:var(--s1);z-index:2;white-space:nowrap;padding:0 8px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;}
+.d127v4-lm-phaserow th{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);padding:2px 0;}
+.d127v4-lm-phaselbl{white-space:nowrap;overflow:hidden;}
+.d127v4-lm-numlbl{font-family:'JetBrains Mono',monospace;font-size:6.5px;color:var(--tx3);text-align:center;}
+.d127v4-lm-cell{position:relative;width:10px;height:12px;border-radius:2px;background:var(--s3);cursor:default;transition:transform .1s;}
+.d127v4-lm-cell:hover{transform:scale(1.35);z-index:1;}
+.d127v4-lm-cell-next{box-shadow:inset 0 0 0 1.5px #fbbf24;}
+.d127v4-lm-retake-dot{position:absolute;top:-1.5px;right:-1.5px;width:4px;height:4px;border-radius:50%;background:#38bdf8;box-shadow:0 0 0 1px var(--s1);}
+.d127v4-lm-target-col{box-shadow:inset 1.5px 0 0 rgba(244,63,94,.55),inset -1.5px 0 0 rgba(244,63,94,.55);}
+th.d127v4-lm-target-col{background:rgba(244,63,94,.14);}
+.d127v4-lm-flag{width:4px;height:4px;border-radius:50%;background:#f43f5e;margin:1px auto 0;}
+.d127v4-lm-footrow td{padding-top:5px;}
+.d127v4-lm-footrow .d127v4-lm-name{padding-top:5px;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--tx3);letter-spacing:.4px;}
+@media(max-width:700px){.d127v4-lm-vs{left:66px;}}
 /* ##AP127V4CSS_END## */

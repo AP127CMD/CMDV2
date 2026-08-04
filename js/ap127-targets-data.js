@@ -70,3 +70,20 @@ function ap127TargetLessonForDate(dateStr, targets) {
   return list[list.length - 1].lesson;
 }
 window.ap127TargetLessonForDate = ap127TargetLessonForDate;
+
+// The single schedule checkpoint whose date is nearest to dateStr (by absolute day count, ties
+// broken toward the earlier one) — used where a discrete "the current target is exactly Lesson N
+// by exactly this date" reading is more useful than ap127TargetLessonForDate's continuous
+// interpolation (e.g. the Lesson Completion Matrix's per-SP lead/lag column).
+function ap127ClosestMilestoneTarget(dateStr, targets) {
+  const list = targets || ap127GetMilestoneTargets();
+  if (!list.length) return null;
+  const dt = new Date(dateStr + "T00:00:00").getTime();
+  let best = list[0], bestDiff = Math.abs(new Date(list[0].date + "T00:00:00").getTime() - dt);
+  list.forEach(t => {
+    const diff = Math.abs(new Date(t.date + "T00:00:00").getTime() - dt);
+    if (diff < bestDiff) { best = t; bestDiff = diff; }
+  });
+  return best;
+}
+window.ap127ClosestMilestoneTarget = ap127ClosestMilestoneTarget;

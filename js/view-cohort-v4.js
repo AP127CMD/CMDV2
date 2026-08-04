@@ -204,6 +204,14 @@
       </div>
     </div>
     <div class="d127-panel">
+      <div class="d127-h"><span class="d127-t">Lesson Completion Matrix</span><span class="d127-s" id="d127v4-lm-sub">-</span></div>
+      <div class="d127-body">
+        <div class="d127-note">Every SP × every curriculum lesson, at a glance — colored cells are completed lessons (click one for detail), the amber ring marks each SP's next lesson, a small dot marks a retaken lesson. Rose-flagged columns are AP127 Target checkpoints; the <b>vs Target</b> column is each SP's lead/lag (lessons) against the single closest checkpoint. The bottom row shows what share of the batch has completed each lesson — a quick way to spot bottleneck lessons.</div>
+        <div class="d127-phase-legend" id="d127v4-lm-legend"></div>
+        <div id="d127v4-lesson-matrix"></div>
+      </div>
+    </div>
+    <div class="d127-panel">
       <div class="d127-h"><span class="d127-t">Phase Progress Funnel</span><span class="d127-s">Batch-wide completion by curriculum phase</span></div>
       <div class="d127-body">
         <div class="d127-note">Done vs remaining lesson-slots (students × phase lessons) — shows where the batch is bottlenecked.</div>
@@ -620,6 +628,7 @@ function renderAP127Detail(){
   buildAP127RaceChart(all,curriculum,maxDate);
   buildAP127ConsIdle(all,today0);
   buildAP127OverallChart(all,curriculum,maxDate);
+  buildAP127LessonMatrix();
   buildAP127HistBatch();
   buildAP127HistSolo();
   buildAP127PaceBand(all,today0);
@@ -2038,6 +2047,107 @@ function buildAP127Watchlist(all,today){
       <span class="d127v4-watch-sub" style="color:${x.hrsDelta<0?'#ff6b6b':'var(--done)'}">${x.hrsDelta>=0?"+":""}${x.hrsDelta.toFixed(1)}h</span>
     </div>`;
   }).join("");
+}
+
+// ── Lesson Completion Matrix — a Roster-style heatmap turned 90°: columns are curriculum LESSON
+// NUMBER (1..96, fixed) instead of calendar date, so it answers "who's done what" rather than
+// "who flew when." Rows are sorted most-behind-target-first (not the usual pace sort) since the
+// whole point of this view is spotting AP127 Target lead/lag at a glance. Target-checkpoint
+// columns get a rose flag + highlighted border; each SP's next lesson gets an amber ring; a
+// retaken lesson gets a small dot badge; a footer row shows batch-wide %-complete per lesson
+// (bottleneck spotting) using the same intensity-shading idea as a calendar heatmap, just on the
+// lesson axis instead of the date axis. ──
+function buildAP127LessonMatrix(){
+  if(!G||!G.ap127)return;
+  const all=ap127AsOfStudents();if(!all.length)return;
+  const today=ap127AsOf();
+  const cur=G.cur127||[];
+  const totalLessons=cur.length||96;
+  const targets=(window.ap127GetMilestoneTargets?window.ap127GetMilestoneTargets():[]).slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  const targetByLesson={};targets.forEach(t=>{targetByLesson[t.lesson]=t;});
+  const closest=window.ap127ClosestMilestoneTarget?window.ap127ClosestMilestoneTarget(today,targets):null;
+
+  const perSP=all.map(s=>{
+    const byLesson={};
+    (s.flown||[]).forEach(f=>{
+      const n=ap127LessonNum(f.lesson);
+      if(n==null)return;
+      (byLesson[n]=byLesson[n]||[]).push(f);
+    });
+    const vsClosest=closest?(s.done||0)-closest.lesson:null;
+    const nextNum=ap127LessonNum(s.next_lesson);
+    return{s,byLesson,vsClosest,nextNum};
+  });
+  perSP.sort((a,b)=>{
+    if(a.vsClosest==null||b.vsClosest==null)return a.s.name.localeCompare(b.s.name);
+    return a.vsClosest-b.vsClosest||a.s.name.localeCompare(b.s.name);
+  });
+
+  const subEl=document.getElementById("d127v4-lm-sub");
+  if(subEl)subEl.textContent=closest?`Sorted by lead/lag vs closest target · ${ap127FmtDate(closest.date)} → Lesson ${closest.lesson}`:"AP127 Targets not configured";
+
+  const legend=document.getElementById("d127v4-lm-legend");
+  if(legend){
+    legend.innerHTML=AP127_BAR_SEGMENTS.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("")
+      +`<span class="d127-pc" style="margin-left:10px"><span class="d127v4-lm-flag" style="position:static;margin:0 4px 0 0"></span>target checkpoint</span>`
+      +`<span class="d127-pc"><span class="d127v4-lm-cell-next" style="width:10px;height:10px;display:inline-block;border-radius:2px;margin-right:4px"></span>next lesson</span>`
+      +`<span class="d127-pc"><span class="d127v4-lm-retake-dot" style="position:static;display:inline-block;margin-right:4px"></span>retaken</span>`;
+  }
+
+  const CELL_W=Math.max(6,Math.min(13,Math.floor(1000/totalLessons)));
+  let headPhase=`<tr class="d127v4-lm-phaserow"><th class="d127v4-lm-name"></th><th class="d127v4-lm-vs"></th>`;
+  AP127_BAR_SEGMENTS.forEach(seg=>{
+    const span=Math.min(seg.hi,totalLessons)-seg.lo+1;if(span<=0)return;
+    headPhase+=`<th colspan="${span}" style="background:${seg.c}" title="${escHtml(seg.title)} · Lessons ${seg.lo}–${Math.min(seg.hi,totalLessons)}"><span class="d127v4-lm-phaselbl">${seg.label}</span></th>`;
+  });
+  headPhase+="</tr>";
+
+  let headNum=`<tr><th class="d127v4-lm-name">Name</th><th class="d127v4-lm-vs" title="Lead/lag vs the closest AP127 Target checkpoint">${closest?`vs L${closest.lesson}`:"vs Target"}</th>`;
+  for(let n=1;n<=totalLessons;n++){
+    const tgt=targetByLesson[n];
+    const show=n===1||n===totalLessons||n%5===0||tgt;
+    headNum+=`<th class="${tgt?"d127v4-lm-target-col":""}" style="width:${CELL_W}px;min-width:${CELL_W}px" title="${tgt?`AP127 Target: Lesson ${n} by ${ap127FmtDate(tgt.date)}`:"Lesson "+n}">${show?`<div class="d127v4-lm-numlbl">${n}</div>`:""}${tgt?'<div class="d127v4-lm-flag"></div>':""}</th>`;
+  }
+  headNum+="</tr>";
+
+  let bodyHtml="";
+  perSP.forEach(({s,byLesson,vsClosest,nextNum})=>{
+    const viewIdx=AP127_VIEW_ROWS.findIndex(r=>r.catc_id===s.catc_id);
+    const vsColor=vsClosest==null?"var(--tx3)":vsClosest>=0?"var(--done)":"#f43f5e";
+    const vsTxt=vsClosest==null?"—":`${vsClosest>=0?"+":""}${vsClosest}`;
+    bodyHtml+=`<tr><td class="d127v4-lm-name"><b>${ap127ShortName(s.name)}</b></td><td class="d127v4-lm-vs" style="color:${vsColor}">${vsTxt}</td>`;
+    for(let n=1;n<=totalLessons;n++){
+      const flights=byLesson[n];
+      const tgt=targetByLesson[n];
+      const isNext=n===nextNum;
+      let bg="var(--s3)",cls="d127v4-lm-cell",title=`${ap127ShortName(s.name)} · Lesson ${n} — not yet flown`,inner="";
+      if(flights&&flights.length){
+        const ph=ap127SyllabusPhase(String(n));
+        bg=ph.c;
+        const detail=flights.map(f=>`${ap127FmtDate(f.date)} (${hm(ap127FlightMins(f))||"—"})`).join(", ");
+        title=`${ap127ShortName(s.name)} · Lesson ${n} · ${detail}${flights.length>1?" · retaken":""}${viewIdx>=0?" · click for detail":""}`;
+        if(flights.length>1)inner='<span class="d127v4-lm-retake-dot"></span>';
+      }else if(isNext){
+        cls+=" d127v4-lm-cell-next";
+        title=`${ap127ShortName(s.name)} · Lesson ${n} — next up`;
+      }
+      const clickable=flights&&flights.length&&viewIdx>=0;
+      bodyHtml+=`<td style="padding:1px"><div class="${cls}${tgt?" d127v4-lm-target-col":""}" style="background:${bg};${clickable?"cursor:pointer":""}" title="${escHtml(title)}" ${clickable?`onclick="openAP127DrawerV4(${viewIdx})"`:""}>${inner}</div></td>`;
+    }
+    bodyHtml+="</tr>";
+  });
+
+  let footHtml=`<tr class="d127v4-lm-footrow"><td class="d127v4-lm-name">BATCH %</td><td class="d127v4-lm-vs"></td>`;
+  for(let n=1;n<=totalLessons;n++){
+    const doneCount=perSP.filter(p=>p.byLesson[n]&&p.byLesson[n].length).length;
+    const pct=perSP.length?doneCount/perSP.length:0;
+    const tgt=targetByLesson[n];
+    footHtml+=`<td style="padding:1px"><div class="d127v4-lm-cell${tgt?" d127v4-lm-target-col":""}" style="background:color-mix(in oklch, var(--c127) ${Math.round(pct*100)}%, transparent)" title="Lesson ${n} · ${Math.round(pct*100)}% of batch complete (${doneCount}/${perSP.length})"></div></td>`;
+  }
+  footHtml+="</tr>";
+
+  const el=document.getElementById("d127v4-lesson-matrix");
+  if(el)el.innerHTML=`<div class="d127v4-lm-wrap"><table class="d127v4-lm-table"><thead>${headPhase}${headNum}</thead><tbody>${bodyHtml}</tbody><tfoot>${footHtml}</tfoot></table></div>`;
 }
 
 // ── AP127 Roster — day-by-day phase heatmap + all-time totals grouped by instructor ──

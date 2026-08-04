@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p141` (all currently at p140)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p142` (all currently at p141)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,26 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p140` (2026-08-04 — **AP127 Targets — new batch-wide milestone
+**Last known:** all files `p141` (2026-08-04 — **AP127 Detail V4 — new Lesson Completion
+Matrix chart.** User asked for a Roster-style heatmap but with LESSON NUMBER (1-96) as the
+columns instead of calendar date, showing who's completed what, with AP127 Target checkpoints
+marked and each SP's lead/lag against the closest one. New `buildAP127LessonMatrix()`, new panel
+between Overall Progress Bar View and Phase Progress Funnel. Design: rows sorted most-behind-
+target-first (not the usual pace sort, since this view's whole point is target lead/lag); two
+sticky columns (Name, "vs L{closest target lesson}" — colored green/rose) since 96 lesson columns
+need horizontal scroll; a phase-color header band (`AP127_BAR_SEGMENTS`, same 7-segment scheme as
+Overall Progress) plus lesson-number ticks every 5 lessons; target-checkpoint columns get a rose
+flag in the header and a rose outline running down the whole column; completed-lesson cells are
+phase-colored and clickable (opens the same student drawer as Roster); each SP's immediate next
+lesson gets an amber ring; a retaken lesson gets a small blue dot badge; a footer "BATCH %" row
+shades each lesson column by what fraction of the 28 SPs have completed it (bottleneck spotting,
+reusing the `color-mix` intensity idea). New helper `ap127ClosestMilestoneTarget(dateStr,targets)`
+added to `js/ap127-targets-data.js` (nearest schedule checkpoint by date, ties toward the earlier
+one) alongside the existing interpolation helper. Verified live: header/phase-bands/target-flags
+render correctly; sticky columns stay pinned while scrolling 96 columns wide; clicking a completed
+cell opens the student drawer; zero console errors; original `js/view-cohort.js` confirmed still
+byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `js/ap127-targets-data.js`,
+`css/progress.css`. Full write-up: REVAMP.md's p141 entry.) p140 (2026-08-04 — **AP127 Targets — new batch-wide milestone
 schedule feature.** User supplied a 17-checkpoint date→lesson-number schedule (9 Aug 2026 L30
 through 29 Nov 2026 L96) that the whole AP127 batch is expected to keep pace with, and asked for
 (1) an editable admin page under System with a revision record, (2) the schedule overlaid on every
