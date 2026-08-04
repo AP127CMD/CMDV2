@@ -189,11 +189,15 @@
         <span class="d127-t">Overall Progress Bar View</span>
         <span style="display:flex;align-items:center;gap:8px">
           <span class="d127-s">x-axis = lesson number · stacked by syllabus phase</span>
-          <button class="d127-reset" title="Reset zoom/pan" onclick="ap127OverallResetZoomV4()">⟳ Reset View</button>
+          <span class="d127v4-zoom-ctl">
+            <button class="d127-reset" title="Zoom out" onclick="ap127OverallZoomV4(0.8)">−</button>
+            <button class="d127-reset" title="Zoom in" onclick="ap127OverallZoomV4(1.25)">+</button>
+            <button class="d127-reset" title="Reset zoom/pan" onclick="ap127OverallResetZoomV4()">⟳ Reset View</button>
+          </span>
         </span>
       </div>
       <div class="d127-body">
-        <div class="d127-note">The SYLLABUS strip above the chart is the full 96-lesson curriculum — click a segment for full detail, hover a milestone icon for a quick note. Every SP bar below it is split into segments per official curriculum phase (same colors as Flight Timeline and the Roster), lined up against the same lesson-number axis. White dashed lines mark where each phase starts; a bold solid line marks the single→multi-engine changeover; amber dotted lines mark finer syllabus key points. Text at bar end = current/next lesson. Scroll/pinch to zoom, drag to pan, drag the bottom-right corner to resize.</div>
+        <div class="d127-note">The SYLLABUS strip above the chart is the full 96-lesson curriculum — click a segment for full detail, hover a milestone icon for a quick note. Every SP bar below it is split into segments per official curriculum phase (same colors as Flight Timeline and the Roster), lined up against the same lesson-number axis. White dashed lines mark where each phase starts; a bold solid line marks the single→multi-engine changeover; amber dotted lines mark finer syllabus key points. Text at bar end = current/next lesson. Use the +/− buttons (or pinch, or Ctrl/⌘+scroll) to zoom, drag to pan, drag the bottom-right corner to resize.</div>
         <div class="d127-phase-legend" id="d127v4-overall-legend"></div>
         <div id="d127v4-syllabus-strip"></div>
         <div class="d127v4-overall-wrap" id="d127v4-overall-wrap"><canvas id="d127v4-overall"></canvas></div>
@@ -1307,10 +1311,15 @@ function buildAP127OverallChart(all,curriculum,maxDate){
         tooltip:{filter:item=>item.dataset.label!=="Remaining",callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.x} lessons`}},
         // Interactive pan/zoom (chartjs-plugin-zoom, already loaded globally — same plugin the
         // Combined Progress vs Plan chart uses via cpvResetZoom). 'xy' mode lets a wide batch
-        // scroll/zoom both across lesson number (x) and down through SP rows (y) — wheel/pinch to
-        // zoom, click-drag to pan. Paired with the resizable container below and the Reset button.
+        // scroll/zoom both across lesson number (x) and down through SP rows (y). Bare mouse-wheel
+        // zoom was dropped (user-reported: "all over the place... very sensitive") — a wheel
+        // handler on a chart embedded in a normally-scrolling page fires on every incidental
+        // scroll-past, not just deliberate zoom intent. Wheel zoom now requires holding Ctrl/⌘
+        // (modifierKey) at a slower speed, so plain scrolling behaves like plain scrolling; the
+        // +/− buttons (ap127OverallZoomV4) are the primary, predictable, discoverable zoom control.
+        // Pinch stays unconditional since a two-finger touch gesture is inherently deliberate.
         zoom:{
-          zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:"xy"},
+          zoom:{wheel:{enabled:true,modifierKey:"ctrl",speed:0.06},pinch:{enabled:true},mode:"xy"},
           pan:{enabled:true,mode:"xy"},
         }
       },
@@ -1326,6 +1335,14 @@ function buildAP127OverallChart(all,curriculum,maxDate){
 function ap127OverallResetZoom(){
   const chart=CHARTS.ap127overall;
   if(chart&&chart.resetZoom)chart.resetZoom();
+}
+// Explicit +/− zoom buttons — the primary zoom control (see the zoom-plugin comment in
+// buildAP127OverallChart for why bare wheel-zoom was removed). A fixed 1.25x/0.8x step per click
+// is predictable; repeated clicks compound smoothly since chart.zoom() multiplies the current
+// range each call.
+function ap127OverallZoom(factor){
+  const chart=CHARTS.ap127overall;
+  if(chart&&chart.zoom)chart.zoom(factor);
 }
 let CPV_FILTER='proj';
 let CPV_MODE='hours';
@@ -2139,6 +2156,7 @@ function opsAugment(students, curriculum) {
     setCPVModeV4: setCPVMode,
     cpvResetZoomV4: cpvResetZoom,
     ap127OverallResetZoomV4: ap127OverallResetZoom,
+    ap127OverallZoomV4: ap127OverallZoom,
     openAP127DrawerV4: openAP127Drawer,
     closeAP127DrawerV4: closeAP127Drawer,
     openAP127SyllabusModalV4: openAP127SyllabusModal,

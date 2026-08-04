@@ -1422,3 +1422,36 @@ breakdown section (single-segment path); `chart.zoom(1.5,'x')` confirmed via dir
 (scale 0-96 → 24-72), `ap127OverallResetZoomV4()` confirmed restoring 0-96; original AP127 Detail
 (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only files touched:
 `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust bump).
+
+### AP127 Detail V4 — Overall Progress: zoom UX overhaul (2026-08-04, p138)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+User-reported on the p137 zoom feature: "The zoomable bar chart should be more user friendly, may
+be with zoom button? Now with scroll zoom, it all over the place and very sensitive to zoom in and
+out too much." Root cause: bare mouse-wheel zoom on a chart sitting inside a page that otherwise
+scrolls normally fires on every incidental scroll-past — a user just trying to scroll down the page
+while their cursor happened to be over the chart would get an unwanted, disorienting zoom instead.
+
+Fixed with two changes:
+
+1. **Explicit +/− zoom buttons.** New `ap127OverallZoomV4(factor)` calls chartjs-plugin-zoom's
+   `chart.zoom(factor)` with a fixed step (1.25x for "+", 0.8x for "−") per click — predictable,
+   discoverable, and compounds smoothly on repeated clicks. Added next to the existing "⟳ Reset
+   View" button in the panel header (new `.d127v4-zoom-ctl` button group), now the primary zoom
+   control rather than an incidental side-effect of scrolling.
+2. **Wheel-zoom gated behind Ctrl/⌘.** `wheel:{enabled:true}` (unconditional, default speed)
+   changed to `wheel:{enabled:true,modifierKey:"ctrl",speed:0.06}` — plain scrolling over the chart
+   now scrolls the page like anywhere else; holding Ctrl (⌘ on Mac) while scrolling still zooms, at
+   a gentler rate than before, for users who want the wheel shortcut. Pinch-zoom (touch) stays
+   unconditional since a two-finger gesture is inherently a deliberate zoom intent, unlike an
+   incidental wheel scroll.
+
+Panel note text and button tooltips updated to describe the new interaction model.
+
+Verified live: clicking "+" confirmed the scale went from 0-96 to 12-84 (the expected 1.25x zoom,
+centered); a plain (non-Ctrl) wheel event dispatched at the chart's center confirmed NO zoom
+happened (scale stayed 0-96); the same event with `ctrlKey:true` confirmed a gentle zoom did
+happen; "⟳ Reset View" confirmed restoring 0-96 after each test. Zero console errors. Original
+AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust bump).

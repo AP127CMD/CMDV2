@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p138` (all currently at p137)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p139` (all currently at p138)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,21 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p137` (2026-08-04 — **AP127 Detail V4 — Overall Progress: mobile
+**Last known:** all files `p138` (2026-08-04 — **AP127 Detail V4 — Overall Progress: zoom UX
+overhaul.** User-reported the p137 wheel-zoom was "all over the place... very sensitive" —
+plain mouse-wheel zoom on a chart embedded in a normally-scrolling page fires on every incidental
+scroll-past the chart, not just deliberate zoom intent, and there was no way to zoom in a
+controlled, predictable step. Fixed with two changes: (1) explicit "−"/"+" zoom buttons
+(`ap127OverallZoomV4(factor)`, calling Chart.js zoom-plugin's `chart.zoom()` with a fixed
+1.25x/0.8x step per click) added next to the existing "⟳ Reset View" button — now the primary,
+discoverable zoom control; (2) wheel-zoom gated behind `modifierKey:"ctrl"` at a slower `speed:0.06`
+(was unconditional at default speed) — plain scrolling over the chart now behaves like plain
+scrolling, Ctrl/⌘+scroll still zooms gently for power users, pinch-zoom stays unconditional since a
+two-finger touch gesture is inherently deliberate. Verified live: `+` button confirmed
+0-96→12-84 (1.25x zoom), plain wheel dispatch confirmed NO zoom (still 0-96), Ctrl+wheel dispatch
+confirmed a gentle zoom, Reset button confirmed restoring 0-96 in all cases. Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css`. Full write-up: REVAMP.md's p138 entry.) p137
+(2026-08-04 — **AP127 Detail V4 — Overall Progress: mobile
 alignment fix, clickable SYLLABUS phases, Phase IV SIM/REAL + SE/ME split, aviation icons,
 zoom/pan/resize.** Twelfth round of same-day feedback, five items in one pass:
 1. **Mobile alignment fix.** A prior mobile media-query zeroed out the SYLLABUS strip's 100px left
