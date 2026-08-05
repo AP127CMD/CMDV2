@@ -190,7 +190,7 @@
             ];
           }))))),
       // diagnostics
-      diagPanel('multiLeg', 'Multi-leg bookings (OPS double-counts one lesson)', diag.multiLeg.filter(inScope).length,
+      diagPanel('multiLeg', 'Multi-leg bookings (Ops Portal data quality — hours no longer double-counted)', diag.multiLeg.filter(inScope).length,
         renderMultiLeg(diag.multiLeg.filter(inScope))),
       diagPanel('sim', 'Sim-tag mismatch (PROG "(SIM)" lesson vs OPS isSim flag)', diag.simMismatch.filter(x => batches.includes(x.batch)).filter(x => x.delta !== 0).length,
         renderSimMismatch(diag.simMismatch.filter(x => batches.includes(x.batch)))),
@@ -206,7 +206,7 @@
       h('div', { className: 'panel' }, h('div', { className: 'pb' },
         h('div', { className: 'pt', style: { marginBottom: 8 } }, 'Why they differ, and how to fix it'),
         h('ol', { style: { fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.7, paddingLeft: 18 } },
-          h('li', null, h('b', null, 'Multi-leg bookings double-credit hours. '), 'When one curriculum lesson is flown across 2+ separate Ops Portal bookings on the same day, each booking independently gets the full curriculum-standard duration. Fix: tag continuation bookings with the existing "/2", "/3" split-lesson suffix convention (already supported by the effective-hours formula on both sides) instead of repeating the bare lesson code.'),
+          h('li', null, h('b', null, 'Multi-leg bookings — FIXED. '), 'Ops Analytics and this Monthly view now count each curriculum lesson\'s effective hours once per SP, no matter how many separate Ops Portal bookings share that lesson code (the extra bookings still count as real flights/block hours, just not extra curriculum credit). The list below is now a data-quality view — these are the specific bookings that would have double-counted before the fix, worth tidying up in the Ops Portal with the "/2", "/3" split-lesson suffix convention so they read cleanly too.'),
           h('li', null, h('b', null, 'Sim flights are tagged two different ways. '), 'Ops Analytics flags sim via a per-booking aircraft/tail-type field; Progress detects sim via a "(SIM)" marker baked into the curriculum lesson code. Fix: pick one source of truth (recommend the curriculum lesson code, since it is the more stable of the two) and derive the other system’s flag from it.'),
           h('li', null, h('b', null, 'Date drift is largely expected. '), 'A lesson can be flown on one date and logged into Progress a day or more later. Small (≤1-3 day) drift near month boundaries is normal lag, not a data error — the existing per-flight Cross-Check’s date-tolerance setting already accounts for this for AP127; this monthly view surfaces it for AP126 too.'),
           h('li', null, h('b', null, 'No-PROG-match entries are an actionable queue. '), 'These are real Ops-completed flights waiting on a Progress entry — worth a periodic check-in with whoever enters Progress data, not a bug to fix in code.'),

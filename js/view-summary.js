@@ -58,6 +58,100 @@
     return f.durMin || 0;
   }
 
+  // ── Effective-hours dedup: a curriculum lesson is only "required by the syllabus"
+  // once per SP — if the Ops Portal logs the same lesson code as 2+ separate bookings
+  // for one student (a multi-leg session split into extra rows, no "/2" continuation
+  // suffix used), only ONE of those rows should carry the lesson's curriculum-standard
+  // duration; the rest are real flights (still counted in flight totals/block hours)
+  // but contribute 0 *effective* hours, so a repeated lesson can't inflate the syllabus
+  // total. A lesson genuinely marked "/2","/3" etc. is unaffected — sEffectiveMins()
+  // already credits only the "/1"/bare part and zeroes the rest, and this dedup keys on
+  // the RAW lesson string (suffix included), so a "/1"/"/2" pair is never merged here.
+  // Computed once over ALL Completed flights (not the period-filtered set) so it gives
+  // the same single credit regardless of which view/date-range is reading it — the
+  // all-time cumulative roster (`cumulStudentGroups`) and the period-filtered charts
+  // must agree on which single booking "is" the lesson.
+  function sDedupLessonKey(lesson) {
+    return String(lesson || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  }
+  function sBuildEffectiveCreditSet(flights) {
+    const groups = new Map(); // "student|LESSON" -> {f,idx}[]
+    flights.forEach((f, idx) => {
+      if (f.status !== 'Completed' || !f.student || !f.lesson) return;
+      const key = f.student + '|' + sDedupLessonKey(f.lesson);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push({ f, idx });
+    });
+    // Set of flight OBJECT REFERENCES, not `.id` — confirmed live that some rows share
+    // identical `.id` values (a known upstream ACTUAL_ONLY_ id-generation bug, see
+    // CLAUDE.md), so `.id` can't safely identify "is this the one credited row"; object
+    // identity can, since every aggregation reads the same FLIGHTS array references.
+    const credited = new Set();
+    groups.forEach(entries => {
+      if (entries.length === 1) { credited.add(entries[0].f); return; }
+      // Representative = latest date, then latest start time, then original array
+      // position (stable, and immune to duplicate ids) — "the booking that finished
+      // the lesson" gets the credit, duplicates don't.
+      const rep = entries.slice().sort((a, b) => {
+        if (a.f.date !== b.f.date) return a.f.date < b.f.date ? 1 : -1;
+        const as = a.f.start || '', bs = b.f.start || '';
+        if (as !== bs) return as < bs ? 1 : -1;
+        return b.idx - a.idx;
+      })[0].f;
+      credited.add(rep);
+    });
+    return credited;
+  }
+
+  // ── Lesson sequence check: flight training is sequential — a SP who has completed
+  // curriculum lesson N should, in the ordinary case, also have completed every lesson
+  // before N. This does NOT change any hours total (flag, don't fabricate — see
+  // docs/superpowers/specs/2026-08-04-crosscheck-monthly-ops-prog-design.md) — it only
+  // surfaces SPs whose completed-lesson set has a gap, for human follow-up.
+  //
+  // Sourced from window.NGT_CACHE's flown[] (the Progress feed), NOT window.FLIGHTS —
+  // confirmed live that FLIGHTS is a ROLLING WINDOW of Ops Portal history (this is
+  // documented behavior — see assets/reconcile.js's own comment: "Operations history
+  // is a rolling window; progress goes back further"), so a long-finished batch like
+  // AP-124 has most of its early lesson-by-lesson bookings aged out of FLIGHTS even
+  // though every lesson was genuinely flown; checking against FLIGHTS produced a wall
+  // of false "missing" lessons for exactly this reason. NGT_CACHE's flown[] is each
+  // student's full completed-lesson history with no retention window, so it's the
+  // reliable ground truth for "has this lesson ever been logged done."
+  function sBaseLessonCode(lesson) {
+    return sDedupLessonKey(lesson).replace(/\/\d+\s*$/, '');
+  }
+  function sBuildLessonOrderMap() {
+    const G = window.NGT_CACHE;
+    const orderFor = cur => (cur || []).map(c => c.lesson).filter(Boolean);
+    const cur127 = orderFor(G?.cur127);
+    return {
+      'AP-124': orderFor(G?.cur124),
+      'AP-126': orderFor(G?.cur126),
+      'AP-127': cur127,
+      'AP-129': cur127, // AP-129 has no curriculum of its own — shares AP-127's (same convention as js/view-program.js's collectCurriculumPlan())
+    };
+  }
+  function sBuildSequenceGaps(batchAllowed) {
+    const orderMap = sBuildLessonOrderMap();
+    const gaps = [];
+    Object.keys(orderMap).forEach(batch => {
+      const order = orderMap[batch];
+      if (!order.length || !batchAllowed(batch)) return; // no curriculum for this batch, or filtered out
+      const orderIndex = new Map(order.map((l, i) => [sBaseLessonCode(l), i]));
+      sBatchRoster(batch).forEach(s => {
+        const done = new Set((s.flown || []).map(f => sBaseLessonCode(f.lesson)).filter(Boolean));
+        let maxIdx = -1;
+        done.forEach(code => { const idx = orderIndex.get(code); if (idx != null && idx > maxIdx) maxIdx = idx; });
+        if (maxIdx < 0) return; // nothing this student flew maps to a known curriculum lesson
+        const missing = [];
+        for (let i = 0; i < maxIdx; i++) { const code = order[i]; if (!done.has(sBaseLessonCode(code))) missing.push(code); }
+        if (missing.length) gaps.push({ batch, student: s.nick || s.name, reached: order[maxIdx], missing });
+      });
+    });
+    return gaps.sort((a, b) => a.batch === b.batch ? b.missing.length - a.missing.length : a.batch.localeCompare(b.batch));
+  }
+
   // ── Batch Summary: progress-vs-plan lookups (window.NGT_CACHE, a separate data
   // feed from FLIGHTS — the same one js/view-cohort.js's Progress tab already uses) ──
   // AP-128 intentionally has no entry: it has zero data in the current feed.
@@ -657,6 +751,54 @@
     );
   }
 
+  function SequenceGapPanel({ rows }) {
+    if (rows.length === 0) {
+      return (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: '14px 16px', textAlign: 'center' }}>
+          <span className="mono uc" style={{ fontSize: 9, color: 'var(--col-done, #3fb950)' }}>✓ NO SEQUENCE GAPS — every SP's completed lessons have no missing prior lesson</span>
+        </div>
+      );
+    }
+    return (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+          <div className="mono uc" style={{ fontSize: 10, color: 'var(--ink)', fontWeight: 600 }}>LESSON SEQUENCE CHECK</div>
+          <div className="mono uc" style={{ fontSize: 9, color: 'var(--ink-3)', marginTop: 1 }}>
+            {rows.length} SP{rows.length !== 1 ? 's' : ''} completed a lesson without an earlier one logged — investigate, not auto-fixed
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                {['BATCH', 'SP', 'REACHED', 'MISSING PRIOR LESSON(S)'].map(h => (
+                  <th key={h} style={{ padding: '6px 10px', textAlign: h === 'MISSING PRIOR LESSON(S)' ? 'left' : 'left', whiteSpace: 'nowrap' }}>
+                    <span className="mono uc" style={{ fontSize: 8, color: 'var(--ink-3)' }}>{h}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const isHL = r.batch === HIGHLIGHT_BATCH;
+                return (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                    <td style={{ padding: '6px 10px' }}><span className="mono uc" style={{ fontSize: 10, color: isHL ? 'var(--highlight)' : 'var(--ink-2)', fontWeight: isHL ? 700 : 400 }}>{r.batch}</span></td>
+                    <td style={{ padding: '6px 10px' }}><span className="mono" style={{ fontSize: 10, color: 'var(--ink)' }}>{r.student}</span></td>
+                    <td style={{ padding: '6px 10px' }}><span className="mono" style={{ fontSize: 10, color: 'var(--ink-2)' }}>{r.reached}</span></td>
+                    <td style={{ padding: '6px 10px' }}>
+                      <span className="mono" style={{ fontSize: 10, color: 'var(--col-cancel, #f85149)' }}>{r.missing.join(', ')}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // SummaryBoard — top-level Ops Analytics tab: period/metric header, filter
   // panel, KPI strip, batch composition, charts, breakdown table, rosters.
@@ -723,11 +865,16 @@
     }, [batchMode, customBatches]);
 
     const curMap = useMemo(() => (metric === 'effective' ? sBuildCurMap() : {}), [metric]);
+    // Global (all-time, not period-filtered) — see sBuildEffectiveCreditSet's comment for why.
+    const effectiveCredited = useMemo(() => sBuildEffectiveCreditSet(FLIGHTS), []);
     const hoursOf = useCallback(f => {
       if (f.status !== 'Completed') return 0;
-      const mins = metric === 'effective' ? sEffectiveMins(f, curMap) : (f.durMin || 0);
-      return mins / 60;
-    }, [metric, curMap]);
+      if (metric !== 'effective') return (f.durMin || 0) / 60;
+      // Effective hours: each curriculum lesson counts once per SP. A flight with no
+      // lesson code can't be deduped (nothing to match against) and passes through.
+      if (f.lesson && !effectiveCredited.has(f)) return 0;
+      return sEffectiveMins(f, curMap) / 60;
+    }, [metric, curMap, effectiveCredited]);
 
     const filteredFlights = useMemo(() => {
       return FLIGHTS.filter(f => {
@@ -1034,6 +1181,9 @@
       });
     }, [batchAllowed, today]);
 
+    // All-time, batch-filtered — same scope as Batch Summary above (period selector doesn't apply).
+    const sequenceGapRows = useMemo(() => sBuildSequenceGaps(batchAllowed), [batchAllowed]);
+
     const handleCumulRowClick = useCallback(r => { if (r.latestId) app.setDrawer(r.latestId); }, [app]);
 
     const rosterInstructors = useMemo(() => {
@@ -1213,6 +1363,7 @@
             <KpiStrip kpi={kpi} isMobile={isMobile}/>
             <CompositionStrip slices={compositionSlices} metricLabel={metric}/>
             <BatchSummary rows={batchSummaryRows}/>
+            <SequenceGapPanel rows={sequenceGapRows}/>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <StackedBatchChart title="DAILY FLIGHT COUNT BY BATCH" subtitle="STACKED · ONE BAR PER DAY" labels={dayLabels} batches={batchesPresent} series={dailyCountSeries} unit="flights"/>
               <StackedBatchChart title="DAILY FLIGHT HOURS BY BATCH" subtitle={`STACKED · ${metric.toUpperCase()} HOURS`} labels={dayLabels} batches={batchesPresent} series={dailyHoursSeries} unit="hours"/>

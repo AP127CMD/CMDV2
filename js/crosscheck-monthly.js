@@ -46,7 +46,9 @@
   }
   // PROG-side effective minutes — mirrors js/view-program.js:1447-1466
   // (collectEffectiveFlights), fallback field is f.actual_mins (progress feed's
-  // own logged duration).
+  // own logged duration). PROG's flown[] is already one record per completed
+  // lesson (not per booking), so no dedup is needed on this side — confirmed
+  // during the original investigation (its counts were never inflated).
   function effMinsFromActual(f, curMap) {
     const lesson = (f.lesson || '').trim();
     if (!lesson) return f.actual_mins || 0;
@@ -57,6 +59,38 @@
       return part === 1 ? (curMap[base] != null ? curMap[base] : f.actual_mins || 0) : 0;
     }
     return f.actual_mins || 0;
+  }
+
+  // OPS-side effective-hours dedup — mirrors js/view-summary.js's
+  // sBuildEffectiveCreditSet(): a curriculum lesson is required once per SP, so a
+  // lesson logged as 2+ separate same-day Ops Portal bookings (no "/2" continuation
+  // suffix) must only credit ONE of those rows. Computed globally (every Completed
+  // OPS flight, not just the 3 target months) so the credited row — and the month it
+  // falls in — matches exactly what the (now-fixed) Ops Analytics tab shows.
+  function dedupLessonKey(l) { return String(l || '').trim().toUpperCase().replace(/\s+/g, ' '); }
+  function buildEffectiveCreditSet(flights) {
+    const groups = new Map(); // "student|LESSON" -> {f,idx}[]
+    flights.forEach((f, idx) => {
+      if (f.status !== 'Completed' || !f.student || !f.lesson) return;
+      const key = f.student + '|' + dedupLessonKey(f.lesson);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push({ f, idx });
+    });
+    // Set of flight OBJECT REFERENCES, not `.id` — some Ops Portal rows share identical
+    // `.id` values (a known upstream ACTUAL_ONLY_ id-generation bug), so `.id` can't
+    // safely identify the single credited row; object identity can.
+    const credited = new Set();
+    groups.forEach(entries => {
+      if (entries.length === 1) { credited.add(entries[0].f); return; }
+      const rep = entries.slice().sort((a, b) => {
+        if (a.f.date !== b.f.date) return a.f.date < b.f.date ? 1 : -1;
+        const as = a.f.start || '', bs = b.f.start || '';
+        if (as !== bs) return as < bs ? 1 : -1;
+        return b.idx - a.idx;
+      })[0].f;
+      credited.add(rep);
+    });
+    return credited;
   }
 
   function opsStudentKeyBuilder() {
@@ -88,6 +122,9 @@
     const curMap = hoursMode === 'effective' ? buildCurMap() : {};
     const R = window.AP127Reconcile;
     const { key: opsStudentKey } = opsStudentKeyBuilder();
+    // Only effective-hours accumulation is deduped (see buildEffectiveCreditSet) —
+    // Actual/Block mode legitimately sums every real booking's logged block time.
+    const credited = hoursMode === 'effective' ? buildEffectiveCreditSet(window.FLIGHTS || []) : null;
 
     const ops = {};
     BATCHES.forEach(({ label }) => { ops[label] = {}; MONTHS.forEach(m => ops[label][m] = { hours: 0, count: 0, byStu: {} }); });
@@ -97,7 +134,8 @@
       if (!MONTHS.includes(mk)) return;
       const b = BATCHES.find(x => x.label === f.batch);
       if (!b) return;
-      const hrs = hoursMode === 'effective' ? effMinsFromDur(f, curMap) / 60 : (f.durMin || 0) / 60;
+      const deduped = hoursMode === 'effective' && f.lesson && !credited.has(f);
+      const hrs = deduped ? 0 : (hoursMode === 'effective' ? effMinsFromDur(f, curMap) / 60 : (f.durMin || 0) / 60);
       const sk = opsStudentKey(f.student);
       const bucket = ops[b.label][mk];
       bucket.hours += hrs; bucket.count += 1;

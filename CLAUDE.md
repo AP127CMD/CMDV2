@@ -14,7 +14,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p143` (all currently at p142)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p144` (all currently at p143)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -40,7 +40,37 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p142` (2026-08-05 — **AP127 Detail V4 — performance fix: search box
+**Last known:** all files `p143` (2026-08-05 — **Ops Analytics — effective-hours counting fix +
+lesson sequence check.** Follow-up to the previous day's Cross-Check "Monthly OPS ⇄ PROG"
+diagnostic, which had found (but deliberately not fixed) that multi-leg Ops Portal bookings
+double-credit curriculum hours. User set a hard rule: a curriculum lesson's effective hours count
+**once per SP**, no matter how many Ops Portal bookings reference it — and asked for a check
+surfacing SPs who show a later lesson complete without an earlier one logged (flag, don't
+fabricate, per explicit decision). `js/view-summary.js`'s single shared `hoursOf()` (used by every
+KPI/chart/table/roster in the tab — 9 call sites, confirmed by grep) now dedups Effective-mode
+hours per (student, raw lesson code) globally, crediting only one representative booking (latest
+date/time) per lesson; Block/Actual mode is untouched (real logged time per booking, correctly not
+deduped). New `SequenceGapPanel`/`sBuildSequenceGaps()` flags any SP whose completed-lesson set has
+a gap, sourced from `window.NGT_CACHE` (Progress feed), mounted after Batch Summary.
+**Two real bugs caught during live verification, not just written and shipped:** (1) the dedup's
+first version tracked credited rows by `f.id`, but live data showed several Ops Portal rows share
+identical `.id` strings (pre-existing upstream id-generation issue, already documented below for
+`ACTUAL_ONLY_*` records) — a plain `Set` of ids silently over-credited every row sharing a
+duplicated id, undershooting the fix (AP-126 May corrected only 523.2h→510.2h instead of the true
+523.2h→475.2h). Fixed by tracking flight **object references** instead of `.id` strings. (2) the
+sequence-gap check's first version sourced "completed" from `window.FLIGHTS`, which is a documented
+rolling window of Ops Portal history — for a long-finished batch like AP-124 this produced a wall
+of false positives (a student who reached the final checkride reported as missing nearly the whole
+curriculum, since their early lessons had aged out of the window). Fixed by sourcing from
+`window.NGT_CACHE`'s non-windowed `flown[]` via the existing `sBatchRoster()` helper — gap count
+dropped from 57 (mostly false) to 5 plausible single-lesson gaps. `js/crosscheck-monthly.js`
+updated with the identical object-identity dedup so the Cross-Check Monthly view's "OPS hrs" column
+keeps mirroring Ops Analytics' real (now-corrected) behavior — re-verified live: every AP-126/
+AP-127 × May/Jun/Jul Δ% is now within ±10% (AP-126 May, the prior worst case, −1.4%). Verified
+live: zero console errors, Block mode confirmed unchanged, mobile 390px checked. Design:
+`docs/superpowers/specs/2026-08-05-ops-analytics-effective-hours-fix-design.md`. Only files
+touched: `js/view-summary.js`, `js/crosscheck-monthly.js`, `js/view-crosscheck.js` (framing text
+only).) p142 (2026-08-05 — **AP127 Detail V4 — performance fix: search box
 no longer rebuilds the whole tab.** User-reported the tab "feel laggy." Root cause found by
 reading the render wiring, not guessing: the search `<input>`'s `oninput` called
 `renderAP127DetailV4()` directly — the FULL render orchestrator — on every single keystroke, with

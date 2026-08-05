@@ -1695,3 +1695,76 @@ path still works correctly: scrubbing the As-Of date produces a genuinely new ch
 (`chartRebuilt: true`) which now reports `animation: false`. Zero console errors throughout.
 Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file
 touched: `js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump).
+
+### Ops Analytics — effective-hours counting fix + lesson sequence check (2026-08-05, p143)
+
+`js/view-summary.js`, `js/crosscheck-monthly.js`, `js/view-crosscheck.js`
+
+Follow-up to the previous day's Cross-Check "Monthly OPS ⇄ PROG" diagnostic (p136), which had
+found — but deliberately not fixed — that multi-leg Ops Portal bookings double-credit curriculum
+hours. User set a hard rule: **"we will count effective hour as required by syllabus for the
+lesson once for each SP only."** Also: "as SP complete their lesson, typically they should finish
+all the prior lessons, pls check and notice this" — clarified via question: flag any such gap,
+never fabricate hours for an assumed-but-unlogged prior lesson.
+
+**Fix 1 — effective-hours dedup.** `js/view-summary.js`'s `hoursOf(f)` is the single shared
+callback every KPI tile, batch composition strip, all 4 stacked charts, the batch breakdown table,
+and both student/instructor rosters read for hours (confirmed by grep: 9 call sites, all through
+`hoursOf`) — so fixing it once fixes the whole tab consistently. New `sBuildEffectiveCreditSet()`
+groups every Completed flight by `student|RAW lesson code` (suffix-preserving, so an existing
+"/1"/"/2" split-lesson pair is untouched — `sEffectiveMins()` already handles that pair correctly)
+and, for any group with more than one row (an un-suffixed duplicate booking), credits only ONE
+representative row (latest date, then latest start time) with the curriculum-standard duration;
+every other row in the group now returns 0 *effective* hours (still counts toward flight totals
+and Block-mode hours — only the duplicate curriculum credit is removed). Computed globally
+(all-time, not period-filtered) because `hoursOf` is called from both the period-filtered
+`filteredFlights` (charts/KPI) and the all-time `FLIGHTS` (the "STUDENT ALL-TIME SUMMARY" roster,
+`cumulStudentGroups`) — a period-scoped dedup would disagree with itself across these two
+populations.
+
+**Real bug caught during live verification (not shipped blind):** the first version tracked
+credited rows by `f.id`. Live testing found several Ops Portal rows share the *exact same* `.id`
+string — a pre-existing upstream id-generation issue (this file's own p116 entry above already
+documents `ACTUAL_ONLY_*` id collisions: "60 ids map to genuinely different flights... upstream
+id-generation bug"). A plain `Set` of ids silently credited *every* row sharing a duplicated id
+instead of just the intended one — confirmed live: for one real group (student NANJITRA D., lesson
+`CSXV 45`, 5 Ops rows, 4 of them sharing the literal id `"ACTUAL_ONLY_3255"`), the id-based version
+credited 4 of the 5 rows instead of 1. Fixed by tracking flight **object references** in the
+credited `Set` instead of `.id` strings — safe regardless of duplicate ids, since every
+aggregation reads the same `FLIGHTS` array's object references. Re-verified: AP-126 May's true
+correction is 523.2h→475.2h (212 of 227 bookings credited), not the id-based version's
+523.2h→510.2h (which had under-corrected due to the collision).
+
+**Fix 2 — lesson sequence check.** New `sBuildSequenceGaps()`/`SequenceGapPanel`, mounted directly
+after the existing Batch Summary panel (same all-time, batch-filtered scope). For each batch with
+curriculum data (AP-124/126/127, plus AP-129 sharing AP-127's curriculum — same convention as
+`js/view-program.js`'s `collectCurriculumPlan()`), flags any SP whose highest-reached curriculum
+lesson has an earlier lesson with no completion record at all — never backfills hours for it, only
+surfaces it for human follow-up.
+
+**Second real bug caught live:** the first version sourced "completed" from `window.FLIGHTS`,
+which produced nonsense — AP-124 students who reached the batch's *final checkride lesson* were
+reported missing nearly the entire 97-lesson curriculum. Root cause: `FLIGHTS` is a documented
+**rolling window** of Ops Portal history (`assets/reconcile.js`'s own comment: "Operations history
+is a rolling window; progress goes back further") — AP-124 finished months ago, so most of its
+early lesson-by-lesson bookings have aged out of that window even though every lesson was
+genuinely flown. Fixed by sourcing "completed" from `window.NGT_CACHE`'s `flown[]` (the Progress
+feed, via the already-existing `sBatchRoster()` helper) — a full, non-windowed completion history.
+Re-verified live: flagged-SP count dropped from 57 (almost entirely AP-124 false positives) to 5
+genuinely plausible single-lesson gaps (e.g. AP-127's "A-RUT" reached `CDIL 25` with `CSGL 24`
+unlogged — consistent with that same student's known conflict already visible in the existing
+per-flight Cross-Check).
+
+**Keeping Cross-Check in sync.** `js/crosscheck-monthly.js`'s own OPS-side effective-hours
+calculation (built the previous day specifically to mirror "current site logic") got the identical
+object-identity dedup fix, so its "OPS hrs" column keeps reflecting Ops Analytics' real behavior
+rather than the bug that's now fixed. `js/view-crosscheck.js`'s "Multi-leg bookings" diagnostic
+panel and "why they differ" text were reworded to say the double-counting is now fixed (the panel
+is now a data-quality view of bookings worth tidying up with the existing "/2" suffix convention
+in the Ops Portal, not an open bug). Re-verified live: every AP-126/AP-127 × May/Jun/Jul Δ% is now
+within ±10% (AP-126 May — the prior worst case at +8.5% — is now −1.4%).
+
+Verified live throughout: zero console errors, Block/Actual mode confirmed unchanged (no dedup
+applied there), mobile 390px checked (Batch Summary + Lesson Sequence Check panels scroll within
+their own containers, no page-level overflow), `js/view-program.js` (School Perf./School Analysis)
+confirmed untouched. Design: `docs/superpowers/specs/2026-08-05-ops-analytics-effective-hours-fix-design.md`.
