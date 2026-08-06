@@ -20,6 +20,11 @@ export function buildSnapshot(flights) {
       // flight's TRACKED-field transition already produces (most commonly Pending→Completed) and
       // are rendered on the Completed message block by telegram.js's buildCombinedMessages().
       to: f.to, ldg: f.ldg, tkoff: f.tkoff, ldgTime: f.ldgTime, inst: f.inst,
+      // 2026-08-06: recover_vanished_bookings() (fetch_schedule.py) marks a synthesized
+      // Canceled entry `recovered: true` when no Cancel Record was ever found for it (removed
+      // via some portal path other than the Cancel Flight form). Not diffable — telegram.js
+      // uses it to render a distinct "Removed" notice instead of a normal "Cancelled" one.
+      recovered: f.recovered,
     };
   }
   return snap;

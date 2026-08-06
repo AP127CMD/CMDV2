@@ -112,6 +112,44 @@ describe('buildCombinedMessages', () => {
     expect(msg).toContain('- 💬 flight solo');
   });
 
+  // 2026-08-06: recover_vanished_bookings() (fetch_schedule.py) marks a synthesized Canceled
+  // entry `recovered: true` only when no Cancel Record was ever found for it — a booking removed
+  // via some portal path other than the Cancel Flight form (e.g. an Edit Request delete). There's
+  // no reason to show for these, and showing them identically to a real Cancel-Flight cancellation
+  // was confusing (user report) — they now group separately as "Removed", not "Cancelled".
+  it('a REMOVED event whose flight is `recovered` groups as Removed, not Cancelled, and explains why there is no reason', () => {
+    const flight = { ...BASE_FLIGHT, status: 'Canceled', recovered: true };
+    const [msg] = buildCombinedMessages('AP127', [{ type: 'REMOVED', flight, diff: {} }], ROSTER);
+    expect(msg).toContain('🗑️ Removed');
+    expect(msg).not.toContain('❌ Cancelled');
+    expect(msg).toContain('no Cancel Flight record found');
+  });
+
+  it('a STATUS → Canceled event whose flight is `recovered` also groups as Removed', () => {
+    const flight = { ...BASE_FLIGHT, status: 'Canceled', recovered: true };
+    const event = { type: 'STATUS', flight, diff: { status: { from: 'Pending', to: 'Canceled' } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('🗑️ Removed');
+    expect(msg).not.toContain('❌ Cancelled');
+  });
+
+  it('a REMOVED event with recovered=false (or absent) still groups as Cancelled as before', () => {
+    const [msg] = buildCombinedMessages('AP127', [{ type: 'REMOVED', flight: BASE_FLIGHT, diff: {} }], ROSTER);
+    expect(msg).toContain('❌ Cancelled');
+    expect(msg).not.toContain('🗑️ Removed');
+    expect(msg).not.toContain('no Cancel Flight record found');
+  });
+
+  it('a recovered Removed event still shows a real cancel reason if one exists (retroactive backfill case)', () => {
+    const flight = { ...BASE_FLIGHT, status: 'Canceled', recovered: true };
+    const event = { type: 'REMOVED', flight, diff: { cancelReason: { reason: 'Weather (WX)' } } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    // recovered is a scraper-side snapshot of "no reason at the time it vanished" — if diff.js's
+    // attachCancelReasons still found one for this run, show it; the group label stays Removed
+    // since `recovered` reflects the booking's own history, not just this run's join outcome.
+    expect(msg).toContain('- 📝 Weather (WX)');
+  });
+
   it('STATUS → Canceled is in the Cancelled group, not a separate Status update group', () => {
     const event = { type: 'STATUS', flight: { ...BASE_FLIGHT, status: 'Canceled' },
       diff: { status: { from: 'Pending', to: 'Canceled' } } };

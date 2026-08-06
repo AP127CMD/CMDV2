@@ -52,6 +52,12 @@ describe('buildSnapshot', () => {
     expect(snap['100'].ldgTime).toBe('09:56');
     expect(snap['100'].inst).toBe(2);
   });
+
+  it('carries `recovered` through (2026-08-06 — not diffable, used only to distinguish a Removed notice from a real Cancelled one)', () => {
+    const flights = [{ ...SAMPLE_FLIGHTS[0], status: 'Canceled', recovered: true }];
+    const snap = buildSnapshot(flights);
+    expect(snap['100'].recovered).toBe(true);
+  });
 });
 
 describe('diffSnapshots', () => {

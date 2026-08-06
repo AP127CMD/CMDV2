@@ -30,13 +30,19 @@ function sortKey(f) {
 // docs/superpowers/specs/2026-07-25-watchdog-combined-notifications-design.md §3.
 function classifyForGrouping(event) {
   const { type, flight: f, diff = {} } = event;
-  if (type === 'REMOVED') return 'cancelled';
-  if (type === 'STATUS' && diff.status?.to === 'Canceled') return 'cancelled';
+  const isCancelledShape = type === 'REMOVED'
+    || (type === 'STATUS' && diff.status?.to === 'Canceled')
+    // 2026-07-27: stabilizeCancelledFlights (diff.js) can rebuild a cancelled booking's tracking
+    // post-flap as a fresh ADDED with flight.status already 'Canceled' — not via STATUS or REMOVED.
+    // Real incident: this fell through to 'new' and rendered "✈️ New" for an actually-cancelled flight.
+    || (type === 'ADDED' && f.status === 'Canceled');
+  // 2026-08-06: recover_vanished_bookings() (fetch_schedule.py) marks `flight.recovered` true
+  // when a booking vanished with no Cancel Record ever found (removed via some portal path
+  // other than the Cancel Flight form) — there's no reason to show, so route it to its own
+  // group instead of looking like a normal, explained cancellation.
+  if (isCancelledShape && f.recovered) return 'removed';
+  if (isCancelledShape) return 'cancelled';
   if (type === 'STATUS' && diff.status?.to === 'Completed') return 'completed';
-  // 2026-07-27: stabilizeCancelledFlights (diff.js) can rebuild a cancelled booking's tracking
-  // post-flap as a fresh ADDED with flight.status already 'Canceled' — not via STATUS or REMOVED.
-  // Real incident: this fell through to 'new' and rendered "✈️ New" for an actually-cancelled flight.
-  if (type === 'ADDED' && f.status === 'Canceled') return 'cancelled';
   if (type === 'ADDED' && f.status === 'Completed') return 'completed';
   if (type === 'ADDED') return 'new';
   if (type === 'CHANGED') return 'changed';
@@ -45,6 +51,7 @@ function classifyForGrouping(event) {
 
 const GROUPS = [
   { key: 'cancelled', emoji: '❌', label: 'Cancelled' },
+  { key: 'removed',   emoji: '🗑️', label: 'Removed' },
   { key: 'changed',   emoji: '⚠️', label: 'Changed' },
   { key: 'status',    emoji: '🔄', label: 'Status update' },
   { key: 'new',       emoji: '✈️', label: 'New' },
@@ -88,6 +95,10 @@ function renderEventBlock(event, roster) {
   const reasonLines = [];
   if (diff.cancelReason?.reason)  reasonLines.push(`- 📝 ${diff.cancelReason.reason}`);
   if (diff.cancelReason?.remarks) reasonLines.push(`- 💬 ${diff.cancelReason.remarks}`);
+  // 2026-08-06: a 'removed' event never has a Cancel Record (that's what makes it 'removed'
+  // instead of 'cancelled' — see classifyForGrouping) — say so explicitly rather than just
+  // silently showing fewer lines than a normal Cancelled notice, which read as broken/incomplete.
+  if (group === 'removed') reasonLines.push('- ⚠️ no Cancel Flight record found — removed from the schedule directly, verify with ops/instructor');
 
   // Reassignment context (diff.js synthesizes this): the old owner's cancellation names who
   // replaced them, the new owner's new-flight line names who it came from.
