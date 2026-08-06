@@ -1,5 +1,20 @@
 # CMDV2 — Claude Code Context
 
+## Note (2026-08-06): Watchdog now shows a distinct "Removed" notice, and notifications are back ON
+
+AP127 notifications were turned back on and are working — but a real user report found recent cancel
+notices showing no reason. Root cause was upstream in CMD_CTR: bookings removed via a portal path other
+than the Cancel Flight form (e.g. an Edit Request's delete-entirely option) never get a Cancel Record
+and never surface as status=Canceled in `getStudentSchedule` — they just vanish. CMD_CTR restored its
+`recover_vanished_bookings()` safety net (removed by mistake during the RPC migration below) with a new
+`recovered` flag, true only when no cancel reason is found anywhere for the booking. `diff.js`'s
+`buildSnapshot()` now carries `recovered` through; `telegram.js`'s `classifyForGrouping()` routes these
+to a new "🗑️ Removed" group instead of "❌ Cancelled" (per explicit user request — the two were getting
+mixed up), with an explanatory line since there's no reason to show. A real cancel reason, if one is
+still found for the run, displays regardless of group. Watchdog code touched:
+`src/diff.js`, `src/telegram.js` (+ tests) — **needs `cd watchdog && npx wrangler deploy`, this is not
+git-push-triggered.** See `flight-schedule-feed/CLAUDE.md` for the CMD_CTR-side half of this fix.
+
 ## Note (2026-07-27): CMD_CTR-side root cause of the notification flip-flop is fixed
 
 The `2026-07-31` status flip-flop that caused duplicate Cancelled/Pending Telegram notices was root-caused
