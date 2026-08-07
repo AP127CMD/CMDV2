@@ -2331,3 +2331,33 @@ to fix today.
 
 **This closes the full 26-item audit catalog from `.claude/plans/nested-sparking-tide.md`
 (Rounds A–E, p149–p152).**
+
+### Schedule Gantt — AP-127 FOCUS dim fixed to be per-flight, not per-row (2026-08-07, p153)
+
+User-reported: "In schedule Gantt, the AP127 quick button seem to a bit off. When it active it
+should dim all other than AP127 SP but I found some other than AP127 still not dim."
+
+**Root cause** (systematic debugging — traced against the correct, already-working pattern in
+`view-board.js`/`view-weekly.js` before touching anything): `view-gantt.js` was the only Schedule
+view dimming AP-127 FOCUS at the **row** level instead of per **flight**. It computed
+`hasHL = r.flights.some(f=>f.batch===HIGHLIGHT_BATCH)` and applied a single `rowAlpha` (0.28 when
+`highlightAP127` is on and the row has zero AP-127 flights, else 1) as `opacity` on the whole row
+`<div>`. Gantt groups rows by tail or instructor — a row routinely contains flights from more than
+one batch (e.g. the same tail flying an AP-127 student in one slot and an AP-126 student in the
+next; or one instructor teaching across batches that day). Any such mixed row had `hasHL === true`,
+so `rowAlpha` stayed `1` and **every** bar in that row rendered at full brightness, AP-127 or not —
+exactly the reported symptom.
+
+**Fix:** removed the row-level `hasHL`/`rowAlpha` mechanism entirely and applied the same shared
+`flightAlpha(f, hlOn)` helper (`js/shared.js`) Board/Weekly already use, per flight bar, keyed off
+that flight's own `f.batch` — folded into the bar's existing status-based opacity expression:
+`opacity: (dim?0.4:isFiSP?0.75:1) * flightAlpha(f, app.highlightAP127)`.
+
+**Verified live** (local static server, `python3 -m http.server`, since the file served via
+`file://` can't fetch the local JSON data): toggled AP-127 FOCUS on in both A/C and INSTRUCTOR
+grouping. Tail `HS-TVC` (AWIRUT, AP-127, dashed magenta) sitting next to a same-row AP-129 flight —
+only AWIRUT stayed bright, the AP-129 bar dimmed. Instructor `EKKAPHOP R.` (an AP-127 flight) shown
+correctly bright while every other instructor row (no AP-127 flights that day) dimmed as before.
+Toggled focus off — confirmed full brightness restored everywhere (no regression). Zero new console
+errors (only the pre-existing, already-documented local-dev CORS fallback). Only file touched:
+`js/view-gantt.js`.

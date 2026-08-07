@@ -224,8 +224,6 @@ function GanttBoard() {
             <div>
               {rows.map((r,ri)=>{
             const totalMin = r.flights.reduce((a,b)=>a+(b.durMin||0),0);
-            const hasHL    = r.flights.some(f=>f.batch===HIGHLIGHT_BATCH);
-            const rowAlpha = app.highlightAP127&&!hasHL ? 0.28 : 1;
             const dateLeaveMap = leavesOnDate(app.date);
             const rowOnLeave   = groupBy === 'instructor' && dateLeaveMap[r.key];
             const rowOnMaint   = groupBy === 'tail'       && isTailMaint(r.key);
@@ -280,7 +278,6 @@ function GanttBoard() {
                 display:'grid', gridTemplateColumns:`${TRACK_LEFT}px 1fr ${TRACK_RIGHT}px`,
                 borderBottom:'1px solid var(--line-soft)', minHeight:rowH,
                 background:ri%2?'transparent':'color-mix(in oklch,var(--ink) 1.2%,transparent)',
-                opacity:rowAlpha, transition:'opacity .15s',
               }}>
                 <div style={{ padding: isMobile?'4px 6px':'8px 10px', display:'flex', alignItems:'center', borderRight:'1px solid var(--line)', overflow:'hidden',
                   position:'sticky', left:0, zIndex:2, background:'var(--bg-2)' }}>
@@ -319,6 +316,10 @@ function GanttBoard() {
                     const dotted    = f.isSim && !isFiSP;           // SIM → dotted border, status color
                     const dashed    = !dotted && (stby||isFiSP||isSolo); // SOLO/STBY/FI-AS-SP → dashed
                     const lane      = flightLane.get(f) || 0;
+                    // Per-flight AP-127 focus dim (matches Board/Weekly) — must key off THIS
+                    // flight's own batch, not the row's, since a row (tail/instructor) can mix
+                    // AP-127 and non-AP-127 flights on the same day.
+                    const hlAlpha   = flightAlpha(f, app.highlightAP127);
                     // Short display labels
                     const shortBatch = (f.batch||'').replace('-','');  // "AP-127" → "AP127"
                     const shortTail  = f.tail ? f.tail[0]+f.tail.slice(-2) : 'TBD'; // "HS-TVG" → "HVG"
@@ -337,7 +338,7 @@ function GanttBoard() {
                           borderLeft:`3px ${dotted?'dotted':dashed?'dashed':'solid'} ${color}`,
                           borderRadius:4, padding:'2px 5px', textAlign:'left',
                           cursor:'pointer', overflow:'hidden', color:'var(--ink)',
-                          opacity: dim?0.4:isFiSP?0.75:1,
+                          opacity: (dim?0.4:isFiSP?0.75:1) * hlAlpha,
                           textDecoration: dim?'line-through':'none',
                           zIndex: 1,
                         }}>

@@ -64,7 +64,25 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p152` (2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
+**Last known:** all files `p153` (2026-08-07 — **Schedule Gantt — AP-127 FOCUS dim fixed to be
+per-flight, not per-row.** User-reported: "the AP127 quick button seem to a bit off. When it
+active it should dim all other than AP127 SP but I found some other than AP127 still not dim."
+Root cause (found via systematic debugging, confirmed against the correct pattern already used by
+`view-board.js`/`view-weekly.js`): `view-gantt.js` computed dimming per ROW (`hasHL`/`rowAlpha` —
+opacity 0.28 applied to the whole row `<div>` only when NONE of that row's flights were AP-127),
+instead of per FLIGHT like every other view. Since Gantt groups rows by tail or instructor, a row
+routinely mixes an AP-127 flight with a different batch's flight on the same tail/FI — that row's
+`hasHL` was true, so `rowAlpha` stayed 1 and the whole row (including the non-AP-127 bars) rendered
+at full brightness. Fixed by deleting the row-level `hasHL`/`rowAlpha` mechanism entirely and
+applying the same shared `flightAlpha(f, app.highlightAP127)` helper Board/Weekly already use,
+per flight bar, keyed off that flight's own `f.batch` — multiplied into the bar's existing
+status-based opacity (`(dim?0.4:isFiSP?0.75:1) * hlAlpha`). Verified live (local static server):
+toggled AP-127 FOCUS on in both A/C and INSTRUCTOR grouping — a tail (HS-TVC) and an instructor
+(EKKAPHOP R.) each showing one AP-127 flight alongside a different-batch flight on the same
+row now correctly show only the AP-127 bar at full brightness, the other bar dimmed; toggling
+focus off restores full brightness across the board; zero new console errors (only the
+pre-existing local-dev CORS fallback). Only file touched: `js/view-gantt.js`.) p152
+(2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
 Round D: SYLLABUS strip + Overall Progress polish.** Continuation of the p149-p151 audit (plan:
 `.claude/plans/nested-sparking-tide.md`). Fixes, all in `ap127SyllabusStrip()`/new
 `ap127SetSyllabusStripHtml()`/`buildAP127OverallChart()`:
