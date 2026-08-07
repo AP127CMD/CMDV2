@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p149` (all currently at p148)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p150` (all currently at p149)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -55,7 +55,49 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p148` (2026-08-07 — **AP127 Detail V4 — Daily Output "By Type"
+**Last known:** all files `p149` (2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
+Round A: Progress Ranking + Pace Monitor bug fixes.** User: "Pls go through all stat, table and
+Charts in AP127 DETAIL V4. Suggest improvement idea and flaw that might currently there." Full
+audit done via 3 parallel Explore agents covering every stat card, table, and chart in
+`js/view-cohort-v4.js`, hand-verified the top findings against source, then implemented in tiered
+rounds (plan: `.claude/plans/nested-sparking-tide.md`). Round A fixes, all in
+`renderAP127Rows()`/`renderAP127Detail()`/`renderAP127Pace()`/`ap127RequiredPace()`/
+`ap127HeaderClick()`:
+1. **NaN% bug fixed.** Progress Ranking's Total row divided `0/0` when a search matched zero
+   students, rendering literal "NaN%". Now guards `rows.length` and shows clean zeros.
+2. **Total row no longer mixes filtered/unfiltered data.** `lagLastLes`/`leadLastLes`/
+   `minFltDate`/`maxFltDate` now derive from the search-filtered `rows`, matching every other
+   figure on that row (previously silently sourced from the full unfiltered cohort).
+3. **"On track" terminology collision fixed.** The Progress Ranking meta line ("X/Y on track" —
+   meant "at/above cohort avg") and the Pace Monitor's "On Track" KPI card (meant "ETC ≤ plan end
+   date") used the same word for two different measures. Renamed the meta line to "at/above avg".
+4. **Pace Monitor's "avg +Xd" no longer blows up from a never-flown student.** A 0-hour SP's ETC
+   sentinel (`9999-12-31`) was getting averaged into the At Risk card's delay figure, capable of
+   producing a meaningless multi-million-day average. Now excluded from the average and reported
+   separately ("N not started").
+5. **Plan-overdue state gets its own message.** Previously, once the batch passed its plan end
+   date, the Required Action banner said "Plan end date unavailable" while the Plan End KPI card
+   two lines above correctly showed the real date + "0d remaining" — same fact, contradictory
+   text. `ap127RequiredPace()` now returns `overdue`/`daysOverdue`; both the KPI card ("overdue by
+   Xd") and the action banner now agree.
+6. Also fixed a latent UTC-parse timezone bug in the per-SP ETC calc (line ~553, matching the
+   pattern already correct elsewhere in this file) plus several Tier-3 cleanups: removed dead
+   `ap127RankClass()`, gave dynamically-added sort options friendly labels ("Sort: HRS Delta" not
+   "Sort: hrsDelta"), split the LESSON DONE column onto its own `donelessons` sort key (was
+   sharing `data-key="ahead"` with Progress %, causing the sort-arrow to appear on both
+   simultaneously), added `tabindex`/`role="button"`/`aria-sort` to every sortable table header for
+   keyboard/screen-reader support, and added an explanatory tooltip to the bare "Rank" header.
+Verified live: reproduced every bug's trigger condition before and after (zero-match search → no
+more NaN; time-traveled the As-Of scrubber to 01 Dec 2026, past the 27 Nov plan end, confirmed
+"overdue by 4d" now shows consistently in both the KPI card and action banner instead of the old
+contradictory pair); confirmed the LESSON DONE header's arrow/aria-sort no longer also lights up
+Progress %'s header; confirmed every sortable `<th>` now carries `tabIndex=0`/`role="button"`.
+Zero new console errors (only the pre-existing local-dev CORS fallback). Original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file touched:
+`js/view-cohort-v4.js`. Full write-up: REVAMP.md's p149 entry. Rounds B–E (charts, Daily
+Output/Funnel/Roster/Lesson Matrix, SYLLABUS strip polish, lesson-code normalization audit) still
+pending — see the plan file for the full 26-item catalog.) p148
+(2026-08-07 — **AP127 Detail V4 — Daily Output "By Type"
 breakdown recolored: Dual = magenta, Solo = mustard.** User: "When By Type option is ON. Dual
 should be in the Magenta and Solo in Mustard color." `AP127_LESSON_TYPE_COLORS` changed from
 `{Dual:"#60a5fa",Solo:"#facc15",Simulator:"#a78bfa"}` to `{Dual:"#e88aff",Solo:"#d4a017",

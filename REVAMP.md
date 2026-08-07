@@ -1955,3 +1955,89 @@ with good contrast against the dark cockpit theme; legend swatches match. Zero n
 (only the pre-existing local-dev CORS fallback, unrelated, present on every local test this
 session). Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched.
 Only file touched: `js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump, p147→p148).
+
+### AP127 Detail V4 — full stats/table/chart audit, Round A: Progress Ranking + Pace Monitor bug fixes (2026-08-07, p149)
+
+`js/view-cohort-v4.js`
+
+User: "Pls go through all stat, table and Charts in AP127 DETAIL V4. Suggest improvement idea and
+flaw that might currently there."
+
+**Audit method.** Three Explore agents read every function in the file in parallel — one covering
+KPI cards/Pace Monitor/Progress Ranking table, one covering the Timeline/Race/Cons-Idle/SYLLABUS-
+strip/Overall-Progress/Combined-Progress charts, one covering Pace Distribution/Pace Band/Daily
+Output/Funnel/Watchlist/Lesson-Matrix/Roster. Their combined findings (26 items total) were then
+independently hand-verified against source for the 5 highest-value claims before committing to a
+plan (`.claude/plans/nested-sparking-tide.md`, kept as the standing checklist for Rounds B–E). User
+chose to implement all three severity tiers, grouped into 5 sequential rounds by chart/table area
+rather than one giant change — this entry covers **Round A** only.
+
+**1. NaN% in the Progress Ranking Total row on a zero-match search.** `renderAP127Rows()`'s
+`avgPctAll` divided `0/0` whenever the search box matched nobody (`rows.length===0`), rendering a
+literal "NaN%" in the Total row's progress bar and text. Guarded with `rows.length?...:0`.
+Reproduced and confirmed fixed live: searching a nonsense string now shows a clean "AP127 · 0 SPs"
+row with 0.0%/0.0h/0 lessons and "-→-"/"-–-" placeholders, no NaN anywhere.
+
+**2. Total row no longer mixes filtered and unfiltered data.** Every other Total-row figure
+(`avgPctAll`, `sumHrsAll`, `sumDoneAll`, `avgIdleAll`, `avgDayDeltaAll`, `sumHrsDeltaAll`) already
+read from the search-filtered `rows`, but `lagLastLes`/`leadLastLes` (via `sortedByDone`) and
+`minFltDate`/`maxFltDate` (via `allLastDates`) were built from the full unfiltered `all` — so
+narrowing the search left the "last lesson transition"/"date range" text still describing the
+whole 28-SP cohort. Both now derive from `rows`, consistent with the rest of the row.
+
+**3. "On track" no longer means two different things on the same page.** The Progress Ranking
+meta line ("X/Y on track") meant "at/above the cohort's own average" (`done>=avgDone` — by
+construction, roughly half the batch always qualifies); the Pace Monitor's "On Track" KPI card a
+few lines away means "ETC ≤ plan end date" — a genuinely plan-based measure. Renamed the meta
+phrase to "X/Y at/above avg" so it no longer reads as a second, contradictory on-track figure.
+
+**4. Pace Monitor's "avg +Xd" no longer distorted by a never-flown student.** In the per-SP ETC
+loop, a 0-hour SP has no measurable pace and falls to a `"9999-12-31"` sentinel ETC — correctly
+counted as at-risk, but averaging that ~2.9-million-day "delay" straight into `avgDelay` could
+render an At Risk card reading something like "avg +2900000d" the moment any one SP is at 0 hours.
+Sentinel-based delays are now excluded from the average and reported separately: `atRiskSub` shows
+`"avg +Xd (+N not started)"` when there's a mix, or `"N not started"` alone if every at-risk SP is
+in that state. Current live data has zero 0-hour students so the visible number was unchanged
+(avg +273d, same as before) — this is a latent-bug fix, not a visible regression fix, verified by
+reading the code path rather than a live before/after.
+
+**5. Plan-overdue state gets its own, non-contradictory message.** `ap127RequiredPace()` clamped
+`daysRem` to 0 once the plan end date had passed and returned every `req*` field as `null` — which
+made the Required Action banner say "Plan end date unavailable" while the Plan End KPI card two
+lines above it, using the same underlying data, correctly showed the real date plus "0d
+remaining." Added `overdue`/`daysOverdue` fields (true when the *unclamped* days-remaining is
+negative); the KPI card now shows "overdue by Xd" instead of a stale "0d remaining", and the
+banner shows "Plan end date (27 Nov) has passed — batch is 4d overdue" instead of "unavailable."
+**Verified live** by time-traveling the As-Of scrubber to 01 Dec 2026 (4 days past the 27 Nov 2026
+plan end date): both the KPI card and the banner now agree, where before this fix they'd have
+shown contradictory text for the identical situation.
+
+**6. Also fixed while in this section of the file:**
+- Latent UTC-parse timezone bug in the per-SP ETC calc (`new Date(today+"T00:00:00")` →
+  `"T00:00:00Z"`), matching the pattern this file already gets right in `ap127AllDatesRange`/
+  `ap127v4WeekStart` — the original bug class documented in earlier rounds resurfaced here.
+- Removed dead code: `ap127RankClass()` (defined, never called — `getBandColor` inline in
+  `renderAP127Rows` does the real rank-badge coloring).
+- Dynamically-added sort options (from clicking a column header not in the static dropdown list)
+  now get friendly labels via a new `AP127_SORT_LABELS` map ("Sort: HRS Delta" instead of the
+  previous raw "Sort: hrsDelta").
+- The LESSON DONE column header had `data-key="ahead"`, identical to the Progress % column —
+  functionally harmless (same sort order under the shared-curriculum-size assumption) but meant
+  the sort-arrow indicator lit up both headers simultaneously whenever "ahead" was the active
+  sort, which could look like a rendering glitch. Split onto its own `donelessons` key, wired to
+  the same `ap127PaceSort()` behavior in `ap127SortRows()`. Verified live: clicking LESSON DONE
+  now shows the arrow/`aria-sort="descending"` on only that header, not Progress % too.
+- Added `tabindex="0"`, `role="button"`, and `aria-sort` (updated on every render) to every
+  sortable `<th>`, plus Enter/Space keydown handling — previously these were plain, unlabeled
+  `<th>`s with a bare `onclick`, unusable via keyboard or screen reader.
+- Added an explanatory `title` tooltip to the previously bare "Rank" header, clarifying that the
+  number reflects position in the *current* sort while the badge color reflects a fixed
+  lessons-done performance tier — two independent signals that could otherwise be misread as one.
+
+Verified live throughout (see individual items above for specific repro steps); zero new console
+errors beyond the pre-existing local-dev CORS fallback. Original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file touched:
+`js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump, p148→p149). **Rounds B
+(Combined Progress/Race/Cons-Idle/Timeline charts), C (Daily Output/Funnel/Roster/Lesson Matrix),
+D (SYLLABUS strip/Overall Progress polish), and E (lesson-code normalization audit) are still
+pending** — full 26-item catalog in `.claude/plans/nested-sparking-tide.md`.

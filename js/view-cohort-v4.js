@@ -64,14 +64,14 @@
         <div class="d127-table-wrap">
           <table class="d127-table">
             <thead><tr>
-              <th>Rank</th>
+              <th title="Position in the current sort order. Badge color = performance tier (lessons done, whole-cohort tercile) — independent of which column you're sorted by.">Rank</th>
               <th data-key="name" title="Sort by name">Name</th>
               <th data-key="nick" title="Sort by call sign">CALL<br>SIGN</th>
               <th data-key="se" title="Sort by single-engine type">SE<br>TYPE</th>
               <th data-key="fi" title="Sort by Flight Instructor">FI</th>
               <th data-key="ahead" title="Sort by progress (most ahead first)">Progress</th>
               <th data-key="hours" title="Sort by hours done (most first). Effective hours — standard duration per lesson, not actual logged time.">HRS<br>DONE</th>
-              <th data-key="ahead" title="Sort by lessons done (most first)">LESSON<br>DONE</th>
+              <th data-key="donelessons" title="Sort by lessons done (most first)">LESSON<br>DONE</th>
               <th data-key="lastLesson" title="Sort by last lesson code">Last<br>Lesson</th>
               <th data-key="lastFlt" title="Sort by last flight date (newest first)">Last FLT</th>
               <th data-key="idle" title="Sort by idle days (most idle first)">IDLE<br>DAYS</th>
@@ -421,7 +421,7 @@ function ap127BehindSort(arr,asOf){return [...arr].sort((a,b)=>(a.done||0)-(b.do
 function ap127SortRows(arr,asOf="",planMap={},today=""){
   const mode=document.getElementById("d127v4-sort")?.value||"behind";
   const cmpStr=(a,b)=>(a||"").toString().localeCompare((b||"").toString());
-  if(mode==="ahead")return ap127PaceSort(arr,asOf);
+  if(mode==="ahead"||mode==="donelessons")return ap127PaceSort(arr,asOf);
   if(mode==="hours")return [...arr].sort((a,b)=>ap127Hours(b)-ap127Hours(a)||(b.done||0)-(a.done||0));
   if(mode==="name")return [...arr].sort((a,b)=>a.name.localeCompare(b.name));
   if(mode==="nick")return [...arr].sort((a,b)=>cmpStr(a.nick,b.nick));
@@ -440,10 +440,14 @@ function ap127ResetSort(){
   const q=document.getElementById("d127v4-q");if(q)q.value="";
   renderAP127Rows();
 }
+// Friendly labels for sort keys that only ever get added dynamically (via a header click) rather
+// than existing as a hand-written <option> in the markup — without this map they'd show the raw
+// internal key ("Sort: hrsDelta") instead of a readable name.
+const AP127_SORT_LABELS={nick:"Call Sign",se:"SE Type",fi:"Instructor",lastLesson:"Last Lesson",lastFlt:"Last Flight",idle:"Idle Days",dayDelta:"DAY Delta",hrsDelta:"HRS Delta",donelessons:"Lessons Done"};
 function ap127HeaderClick(key){
   const sel=document.getElementById("d127v4-sort");
   if(!sel||!key)return;
-  if(![...sel.options].some(o=>o.value===key)){const o=document.createElement("option");o.value=key;o.textContent="Sort: "+key;o.dataset.dyn="1";sel.appendChild(o);}
+  if(![...sel.options].some(o=>o.value===key)){const o=document.createElement("option");o.value=key;o.textContent="Sort: "+(AP127_SORT_LABELS[key]||key);o.dataset.dyn="1";sel.appendChild(o);}
   sel.value=key;
   renderAP127Rows();
 }
@@ -454,7 +458,6 @@ function ap127RowsDebounced(){
   clearTimeout(_ap127RowsDebounce);
   _ap127RowsDebounce=setTimeout(renderAP127Rows,120);
 }
-function ap127RankClass(rank,total){if(rank<=3)return"bad";if(rank<=Math.ceil(total*.4))return"mid";return"ok";}
 
 // ── Pace Monitor v2 — current situation vs target, at a glance ──
 // Shared "required batch pace" calc — the single source of truth for reqDay/Week/MonthHrsB/LesB,
@@ -463,6 +466,10 @@ function ap127RankClass(rank,total){if(rank<=3)return"bad";if(rank<=Math.ceil(to
 // several competing "hours done" formulas once did before being unified (see ap127Hours()'s own
 // comment). Returns null only when there are no students at all; when the plan end date/remaining
 // days can't be determined, the req* fields come back null but remHrsB/remLesB/n are still valid.
+// `overdue`/`daysOverdue` distinguish "plan end date has already passed" from "no plan end date
+// exists at all" — both used to collapse into the same null req* state, which made the Required
+// Action banner say "Plan end date unavailable" even while the Plan End KPI card right above it
+// correctly showed a real date + "0d remaining" for the exact same batch.
 function ap127RequiredPace(){
   const all=ap127AsOfStudents();if(!all.length)return null;
   const cur=G.cur127||[];
@@ -477,10 +484,13 @@ function ap127RequiredPace(){
   const remHrsB=Math.max((currHrs*n)-totalHrsDone,0);
   const remLesB=Math.max((currLes*n)-totalLesDone,0);
   const planEndDate=cur.map(c=>c.planned_date).filter(Boolean).sort().at(-1)||"";
-  const daysRem=planEndDate?Math.max(ap127DateDiff(planEndDate,today),0):null;
-  if(daysRem===null||daysRem<=0)return{n,remHrsB,remLesB,daysRem,planEndDate,reqDayHrsB:null,reqDayLesB:null,reqWeekHrsB:null,reqWeekLesB:null,reqMonthHrsB:null,reqMonthLesB:null};
+  const rawDaysRem=planEndDate?ap127DateDiff(planEndDate,today):null;
+  const overdue=rawDaysRem!==null&&rawDaysRem<0;
+  const daysOverdue=overdue?Math.abs(rawDaysRem):0;
+  const daysRem=rawDaysRem===null?null:Math.max(rawDaysRem,0);
+  if(daysRem===null||daysRem<=0)return{n,remHrsB,remLesB,daysRem,planEndDate,overdue,daysOverdue,reqDayHrsB:null,reqDayLesB:null,reqWeekHrsB:null,reqWeekLesB:null,reqMonthHrsB:null,reqMonthLesB:null};
   const reqDayHrsB=remHrsB/daysRem,reqDayLesB=remLesB/daysRem;
-  return{n,remHrsB,remLesB,daysRem,planEndDate,reqDayHrsB,reqDayLesB,reqWeekHrsB:reqDayHrsB*7,reqWeekLesB:reqDayLesB*7,reqMonthHrsB:reqDayHrsB*30.44,reqMonthLesB:reqDayLesB*30.44};
+  return{n,remHrsB,remLesB,daysRem,planEndDate,overdue,daysOverdue,reqDayHrsB,reqDayLesB,reqWeekHrsB:reqDayHrsB*7,reqWeekLesB:reqDayLesB*7,reqMonthHrsB:reqDayHrsB*30.44,reqMonthLesB:reqDayLesB*30.44};
 }
 // Shared "actual batch pace" calc — the exact same period-appropriate rolling window Pace Monitor
 // uses (Day = trailing 7d ÷ 7, Week = trailing 14d ÷ 2, Month = trailing 30d directly), paired
@@ -535,31 +545,44 @@ function renderAP127Pace(){
 
   const gHrWkBatch=hasReq?actWeekHrsB-reqWeekHrsB:null;
 
-  let onTime=0,atRisk=0;const etcDelays=[];
+  // Per-SP ETC (estimated completion date). A never-flown SP (sHrs===0) has no measurable pace, so
+  // its ETC falls to a "never at this rate" sentinel (9999-12-31) — correctly counted as at-risk,
+  // but its ~2.9-million-day "delay" must NOT be averaged in with everyone else's real delays below
+  // (it would swamp the "avg +Xd" figure into a meaningless number the moment any one SP is at 0h).
+  let onTime=0,atRisk=0,neverStarted=0;const etcDelays=[];
   all.forEach(s=>{
     const sHrs=(s.flown||[]).reduce((a,f)=>a+fHrsOf(f),0);
     const sRem=Math.max(currHrs-sHrs,0);const sPace=sHrs/daysFromStart;
     let sEtc;
-    if(sPace>0&&sRem>0){sEtc=new Date(new Date(today+"T00:00:00").getTime()+(sRem/sPace)*86400000).toISOString().slice(0,10);}
+    if(sPace>0&&sRem>0){sEtc=new Date(new Date(today+"T00:00:00Z").getTime()+(sRem/sPace)*86400000).toISOString().slice(0,10);}
     else if(sRem<=0){sEtc=today;}else{sEtc="9999-12-31";}
-    if(planEndDate&&sEtc>planEndDate){atRisk++;etcDelays.push(ap127DateDiff(sEtc,planEndDate));}
+    if(planEndDate&&sEtc>planEndDate){
+      atRisk++;
+      if(sHrs>0)etcDelays.push(ap127DateDiff(sEtc,planEndDate));else neverStarted++;
+    }
     else onTime++;
   });
   const avgDelay=etcDelays.length?Math.round(etcDelays.reduce((a,v)=>a+v,0)/etcDelays.length):0;
+  const atRiskSub=atRisk===0?"none":etcDelays.length?`avg +${avgDelay}d${neverStarted?` (+${neverStarted} not started)`:""}`:`${neverStarted} not started`;
 
   const fH=h=>h===null?"—":h>=100?h.toFixed(0)+"h":h>=10?h.toFixed(1)+"h":h.toFixed(2)+"h";
   const fL=l=>l===null?"—":l>=100?l.toFixed(0)+" les":l>=10?l.toFixed(1)+" les":l.toFixed(2)+" les";
 
   const riskColor=atRisk>0?"#ef4444":"var(--done)";
+  // "Overdue" (plan end date known but already passed) gets its own message, distinct from "no plan
+  // data at all" — previously both collapsed into the same "unavailable" text even while the Plan
+  // End KPI card two lines below correctly showed the real date + "0d remaining" for the same batch.
+  const isOverdue=!!(reqPace&&reqPace.overdue);
   const actionMsg=gHrWkBatch!==null&&gHrWkBatch<0
     ?`Batch needs <b style="color:#ef4444">${fH(Math.abs(gHrWkBatch))} more hours per week</b> (all 28 SP combined) to finish by plan date.`
     :gHrWkBatch!==null?`Batch is <b style="color:var(--done)">${fH(gHrWkBatch)} per week ahead</b> of required pace — on track.`
+    :isOverdue?`Plan end date (${ap127ShortDate(reqPace.planEndDate)}) has passed — batch is <b style="color:#ef4444">${reqPace.daysOverdue}d overdue</b>. Required pace can no longer be computed against it.`
     :"Plan end date unavailable — required pace can't be computed.";
 
   const cardsHtml=`<div class="d127v4-cards">
-    <div class="d127v4-card"><div class="d127-kl">Plan End</div><div class="d127-kv" style="color:var(--tx3)">${planEndDate?ap127ShortDate(planEndDate):"TBC"}</div><div class="d127-ks">${daysRem!==null?daysRem+"d remaining":"—"}</div></div>
+    <div class="d127v4-card"><div class="d127-kl">Plan End</div><div class="d127-kv" style="color:var(--tx3)">${planEndDate?ap127ShortDate(planEndDate):"TBC"}</div><div class="d127-ks">${isOverdue?`overdue by ${reqPace.daysOverdue}d`:daysRem!==null?daysRem+"d remaining":"—"}</div></div>
     <div class="d127v4-card"><div class="d127-kl">On Track</div><div class="d127-kv" style="color:var(--done)">${onTime}</div><div class="d127-ks">of ${n} SP</div></div>
-    <div class="d127v4-card"><div class="d127-kl">At Risk</div><div class="d127-kv" style="color:${riskColor}">${atRisk}</div><div class="d127-ks">${atRisk>0?"avg +"+avgDelay+"d":"none"}</div></div>
+    <div class="d127v4-card"><div class="d127-kl">At Risk</div><div class="d127-kv" style="color:${riskColor}">${atRisk}</div><div class="d127-ks">${atRiskSub}</div></div>
   </div>`;
 
   // Compact Required/Actual/Gap table — one row per period (Month/Week/Day), Hours + Lessons
@@ -642,7 +665,11 @@ function renderAP127Detail(){
   const lesVarColor=lesVariance>=0?"var(--done)":"#ef4444";
   setH("d127v4-k-les",`<span style="color:${lesVarColor};font-size:22px">${lesVariance>=0?"+":""}${lesVariance}</span>`);
   setH("d127v4-k-les-s",`<span style="color:${lesVarColor}">${lesVariance>=0?"ahead":"behind"} plan</span> <span style="color:var(--tx3)">(${doneAll} / ${totalExpectedLessons})</span>`);
-  setT("d127v4-meta",`${doneAll} lessons done · Avg ${avgDone.toFixed(1)} · ${onTrack}/${total} on track`);
+  // "at/above cohort avg" (NOT "on track") — that word is reserved for the Pace Monitor's own
+  // plan-based On Track card just below (ETC <= plan end date), a different, incompatible measure.
+  // This line means only "at/above the batch's own average lessons-done", which by construction
+  // always tags roughly half the batch regardless of whether the whole batch is ahead of plan.
+  setT("d127v4-meta",`${doneAll} lessons done · Avg ${avgDone.toFixed(1)} · ${onTrack}/${total} at/above avg`);
 
   renderAP127Rows();
 
@@ -693,8 +720,12 @@ function renderAP127Rows(){
   const tbody=document.getElementById("d127v4-rows");
   if(!tbody)return;
   const plannedHrsToday=ap127PlannedHoursAsOf(today);
-  const sortedByDone=[...all].sort((a,b)=>(a.done||0)-(b.done||0));
-  const avgPctAll=curriculum?rows.reduce((a,s)=>a+(s.done||0),0)/rows.length/curriculum*100:0;
+  // Total row = totals for what's currently shown (the search-filtered `rows`), not the whole
+  // cohort — every figure below reads from `rows`, never the unfiltered `all`, so the row stays
+  // internally consistent no matter what's typed in the search box. Guarded against rows.length===0
+  // (a search matching nobody previously rendered a literal "NaN%").
+  const sortedByDone=[...rows].sort((a,b)=>(a.done||0)-(b.done||0));
+  const avgPctAll=(curriculum&&rows.length)?rows.reduce((a,s)=>a+(s.done||0),0)/rows.length/curriculum*100:0;
   const sumHrsAll=rows.reduce((a,s)=>a+ap127Hours(s),0);
   const sumDoneAll=rows.reduce((a,s)=>a+(s.done||0),0);
   const validIdles=rows.map(s=>ap127IdleDays(s,today)).filter(v=>v!==9999);
@@ -704,7 +735,7 @@ function renderAP127Rows(){
   const sumHrsDeltaAll=rows.reduce((a,s)=>a+(ap127Hours(s)-plannedHrsToday),0);
   const lagLastLes=(sortedByDone[0]?.flown||[]).at(-1)?.lesson||sortedByDone[0]?.next_lesson||'-';
   const leadLastLes=(sortedByDone.at(-1)?.flown||[]).at(-1)?.lesson||sortedByDone.at(-1)?.next_lesson||'-';
-  const allLastDates=all.map(s=>ap127LastFlightDate(s)).filter(Boolean).sort();
+  const allLastDates=rows.map(s=>ap127LastFlightDate(s)).filter(Boolean).sort();
   const minFltDate=allLastDates[0]?ap127ShortDate(allLastDates[0]):'-';
   const maxFltDate=allLastDates.at(-1)?ap127ShortDate(allLastDates.at(-1)):'-';
   const totalRowHtml=`<tr class="d127-total-row"><td colspan="2" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--c127);font-weight:700;letter-spacing:.5px">AP127 · ${rows.length} SPs</td><td>-</td><td>-</td><td>-</td><td style="padding:0 5px"><span class="d127-pbg"><span class="d127-pf" style="width:${avgPctAll.toFixed(1)}%"></span></span><span class="d127-mono" style="font-size:9px">${avgPctAll.toFixed(0)}%</span></td><td class="d127-mono" style="color:var(--c127)">${sumHrsAll.toFixed(1)}</td><td class="d127-mono" style="color:var(--c127)">${sumDoneAll}</td><td class="d127-mono" style="font-size:9px">${lagLastLes}→${leadLastLes}</td><td class="d127-mono" style="font-size:9px">${minFltDate}–${maxFltDate}</td><td class="d127-mono">${avgIdleAll.toFixed(0)}d</td><td class="d127-mono" style="color:${avgDayDeltaAll>=0?'#ff6b6b':'var(--done)'}">${avgDayDeltaAll>=0?'+':''}${avgDayDeltaAll}d</td><td class="d127-mono" style="color:${sumHrsDeltaAll>=0?'var(--done)':'#ff6b6b'}">${sumHrsDeltaAll>=0?'+':''}${sumHrsDeltaAll.toFixed(1)}h</td></tr>`;
@@ -728,9 +759,13 @@ function renderAP127Rows(){
   }).join("");
   const curSort=document.getElementById("d127v4-sort")?.value||"behind";
   document.querySelectorAll(".d127-table th[data-key]").forEach(th=>{
-    th.onclick=()=>ap127HeaderClick(th.getAttribute("data-key"));
+    const key=th.getAttribute("data-key");
+    th.onclick=()=>ap127HeaderClick(key);
+    th.tabIndex=0;th.setAttribute("role","button");
+    th.onkeydown=(e)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();ap127HeaderClick(key);}};
+    th.setAttribute("aria-sort",key===curSort?"descending":"none");
     const existing=th.querySelector(".d127-sarr");if(existing)existing.remove();
-    if(th.getAttribute("data-key")===curSort){const s=document.createElement("span");s.className="d127-sarr";s.textContent="▼";th.appendChild(s);}
+    if(key===curSort){const s=document.createElement("span");s.className="d127-sarr";s.textContent="▼";th.appendChild(s);}
   });
 }
 function openAP127Drawer(idx){
