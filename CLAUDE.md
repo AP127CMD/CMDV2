@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p155` (all currently at p154)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p159` (all currently at p158)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -64,7 +64,36 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p154` (2026-08-07 — **AP127 Detail V4 — Daily Output: explanation
+**Last known:** all files `p158` (2026-08-05 — **OPS ⇄ PROG exact reconciliation — root-caused
+every remaining hour of Δ.** Follow-up to the same day's earlier fix (p143, effective-hours dedup +
+lesson sequence check). User: "All should be match exactly... go through all detail as much as you
+need... If still cannot make it the same then show me in the way that we can pin point all the
+different points." Found and fixed **three more real bugs**, each confirmed live by comparing
+matched-same-month totals record-by-record, not just aggregate hour totals: (1) **duplicate `.id`
+values silently under-corrected the effective-hours dedup** — several Ops Portal rows share the
+exact same `.id` (a known upstream issue, see the p116 entry below) so a `Set` of ids credited every
+row sharing a duplicated id instead of just one; fixed by tracking flight object references instead.
+(2) **A lesson-code spelling mismatch between the Ops Portal and the curriculum** — `"CDNXV 48"`
+(Ops) and `"CDNXC 48"` (curriculum/Progress) are the same lesson, confirmed via 28 exact 1:1
+student+date matches; fixed with a new `AP_LESSON_CODE_ALIASES` map in `js/shared.js`, same pattern
+as the existing `AP127_STUDENT_ALIASES` fix, applied once at load time so every view benefits.
+(3) **The dedup didn't treat bare and "/1" lesson codes as the same lesson**, and gave zero credit
+to a lesson logged only as continuation legs ("/2","/3"...) with no "/1"/bare leg ever recorded;
+rewrote `sBuildEffectiveCreditSet()` (`js/view-summary.js`) and its `js/crosscheck-monthly.js`
+mirror around a "lesson family" (base code, any suffix stripped) with a part-1-preferred
+representative pick. New **Reconciliation Ledger** panel in Cross-Check's "Monthly OPS ⇄ PROG"
+view (`js/view-crosscheck.js`) — `computeLedger()` in `js/crosscheck-monthly.js` accounts for
+every hour of Δ across 6 bidirectional categories (Ops-Pending, Ops-Canceled, structural,
+true-gap, cross-month drift both directions, Progress-not-logged-yet), itemized to
+student+lesson+date, with a printed residual so nothing is left unexplained. **Result: 5 of 6
+batch/month rows now reconcile to an exact 0.00h residual; the 6th is 0.01h off (rounding only,
+~0.6 minutes).** Superseded the prior day's one-directional dateDrift/noMatch diagnostic panels
+(the ledger strictly subsumes them). Verified live: Ops Analytics renders correctly with the
+updated formula, Block/Actual mode confirmed unchanged, ledger expand/collapse exercised at both
+category and line-item level, mobile 390px checked, zero console errors throughout. Design:
+`docs/superpowers/specs/2026-08-05-ops-prog-exact-reconciliation-design.md`. Only files touched:
+`js/shared.js`, `js/view-summary.js`, `js/crosscheck-monthly.js`, `js/view-crosscheck.js`.) p154
+(2026-08-07 — **AP127 Detail V4 — Daily Output: explanation
 hidden behind an ⓘ icon, new Total/Dual/Solo/Simulator summary row.** User: "Hide the explanation
 in an i icon" + "Add summary KPI card, not too big: Total, Total duo, Total solo, Total sim."
 1. **Explanation collapsed behind a ⓘ button.** The panel's long explanation paragraph

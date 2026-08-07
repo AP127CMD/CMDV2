@@ -2405,3 +2405,83 @@ layout breakage, screenshotted both states. Zero new console errors beyond the p
 local-dev CORS fallback. Original AP127 Detail (`js/view-cohort.js`) confirmed still
 byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the
 usual `index.html` cache-bust bump, p153→p154).
+
+### OPS ⇄ PROG exact reconciliation — root-caused every remaining hour of Δ (2026-08-05, p158)
+
+`js/shared.js`, `js/view-summary.js`, `js/crosscheck-monthly.js`, `js/view-crosscheck.js`
+
+Same-day follow-up to the p143 fix (effective-hours dedup + lesson sequence check). User: **"All
+should be match exactly... go through all detail as much as you need and make it all the same...
+If still cannot make it the same then show me in the way that we can pin point all the different
+points."** Method: instead of trusting aggregate hour totals, directly compared the "matched,
+same-month" totals on both sides of each batch/month **record-by-record** until every remaining
+discrepancy traced to a named, real cause. Found and fixed three more real bugs, all confirmed live:
+
+1. **Duplicate `.id` values silently under-corrected the effective-hours dedup.** The credited-row
+   `Set` from the p143 fix tracked rows by `f.id`. Live testing found several Ops Portal rows share
+   the *exact same* `.id` string — the same upstream id-generation issue this file's own p116 entry
+   already documented for `ACTUAL_ONLY_*` records ("60 ids map to genuinely different flights...").
+   A plain `Set` of ids credits *every* row sharing a duplicated id, not just the intended one —
+   confirmed on a real group (student NANJITRA D., lesson `CSXV 45`, 5 Ops rows, 4 sharing the
+   literal id `"ACTUAL_ONLY_3255"`): the id-based version credited 4 of 5 instead of 1. Fixed by
+   tracking flight **object references** in the credited `Set` instead — safe regardless of
+   duplicate ids, since every aggregation reads the same `FLIGHTS` array's object references. The
+   true correction for AP-126 May turned out to be 523.2h→475.2h (212 of 227 bookings credited),
+   not the id-based version's under-corrected 523.2h→510.2h.
+2. **A lesson-code spelling mismatch between the Ops Portal and the curriculum.** Systematic sweep
+   (edit-distance search between every OPS-only and PROG-only lesson code, both batches) found
+   `"CDNXV 48"` (Ops Portal) and `"CDNXC 48"` (curriculum `cur126` / Progress) are the *same lesson*
+   — confirmed by matching all 28 occurrences 1:1 by student+date (same students, same dates,
+   near-identical durations). Left unfixed, this both under-priced Ops Analytics' effective hours
+   for these bookings (curriculum-map lookup keyed on the curriculum's own spelling failed, falling
+   back to raw block time) and made every reconciliation misreport it as two independent gaps — a
+   false "lesson type Ops never tracks" on the Progress side, a false "Ops-only, no Progress record"
+   on the Ops side. Fixed with a new `AP_LESSON_CODE_ALIASES` map in `js/shared.js`, applied once at
+   load time to `window.FLIGHT_DATA.flights[].lesson` — same pattern, same file, as the existing
+   `AP127_STUDENT_ALIASES` fix (p131), so every downstream view benefits with zero per-view change.
+3. **The dedup didn't recognize bare and "/1" lesson codes as the same lesson, and zeroed a lesson
+   logged only as continuation legs with no "/1"/bare leg at all.** Two related gaps in the p143
+   dedup: (a) a short/aborted bare-coded attempt (e.g. `"CSXV 45"`, 45 min — clearly too short to be
+   the real completion) plus a later properly-split `"/1,/2,/3"` re-attempt of the *same* lesson
+   were two unrelated single-row groups, each independently credited — confirmed live (student
+   NAPATH T., lesson `CSXV 45`: a 2026-05-22 bare booking + a 2026-05-26 3-leg booking; Progress's
+   own single flown record matches only the May-26 completion) and found to recur in 4 cases across
+   the whole dataset (~11h). (b) A lesson logged *only* as continuation legs (`"/2"`,`"/3"`...) with
+   no `"/1"`/bare leg ever recorded fell through `sEffectiveMins()`'s part-based logic to 0 credit
+   every time, despite Progress showing it done — confirmed live in 8 cases across the whole
+   dataset (~9h). Fixed by rewriting `sBuildEffectiveCreditSet()` (`js/view-summary.js`) and its
+   `js/crosscheck-monthly.js` mirror around a single "lesson family" concept: group every Completed
+   flight by **base** lesson code (any `/N` suffix stripped), then pick one credited representative
+   — a "part 1" (bare or `/1`) row if any exists in the family (latest date/time wins among those);
+   only when the family has *no* part-1 row at all does the earliest-available continuation leg
+   stand in. The credited row's hours are now looked up directly by base code (not by re-parsing its
+   own suffix via `sEffectiveMins()`/`effMinsFromDur()`), which required updating `hoursOf()` and
+   the ledger's `minsOps` accordingly.
+
+**New deliverable: the Reconciliation Ledger.** Even after all three fixes, small residuals could
+remain from ordinary system lag. New `computeLedger(hoursMode)` in `js/crosscheck-monthly.js`
+computes, per batch/month, the complete bidirectional accounting — `Δ(PROG−OPS) = structural +
+opsPending + opsCanceled + progTrueGap + progDrift − opsOrphan − opsDrift (+ residual)` — six
+categories (lesson-type-never-tracked, Ops-still-Pending, Ops-Canceled, no-Ops-record-at-all,
+cross-month drift both directions, Progress-hasn't-logged-it-yet), each a real itemized list of
+student+lesson+date records, with `residual` printed as a direct self-validation rather than
+assumed zero. New "Reconciliation Ledger" panel in Cross-Check's "Monthly OPS ⇄ PROG" view
+(`js/view-crosscheck.js`) — one collapsible row per batch/month, each category a clickable
+count+hours chip expanding to its full line list, closed with a "✓ fully explained" / "residual
+±Xh" badge. Supersedes and removes the prior day's one-directional `dateDrift`/`noMatch` diagnostic
+panels (the ledger strictly subsumes them — bidirectional, status-aware, validated).
+
+**Result, confirmed live after all three fixes:** 5 of 6 batch/month rows now reconcile to an
+exact **0.00h** residual; the 6th (AP-127 July) is **0.01h** off — floating-point rounding only
+(~0.6 minutes), not an unexplained gap. AP-126 June — the worst case going in (+8.5% before the
+p143 fix) — is now fully explained: 18 Ops-Pending bookings (+62.0h), 1 Canceled (+2.0h), 1 true
+gap (+2.0h), 2 cross-month-drift-from-Ops (+4.5h), 1 cross-month-drift-from-Progress (+5.0h), net
+Δ +65.5h, residual 0.0h.
+
+Verified live throughout: Ops Analytics (KPI/composition/charts/Batch Summary/Lesson Sequence
+Check) renders correctly with the updated formula, zero console errors; Block/Actual hours mode
+confirmed unchanged (no dedup applied there, as designed); flight *counts* unaffected (still raw
+per-booking, only hours are deduped); `js/view-program.js` (School Perf./School Analysis)
+confirmed untouched; ledger expand/collapse exercised at both category and line-item level;
+mobile 390px checked (panel + expanded breakdown both scroll correctly, no horizontal overflow).
+Design: `docs/superpowers/specs/2026-08-05-ops-prog-exact-reconciliation-design.md`.

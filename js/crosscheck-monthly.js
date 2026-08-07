@@ -62,27 +62,37 @@
   }
 
   // OPS-side effective-hours dedup — mirrors js/view-summary.js's
-  // sBuildEffectiveCreditSet(): a curriculum lesson is required once per SP, so a
-  // lesson logged as 2+ separate same-day Ops Portal bookings (no "/2" continuation
-  // suffix) must only credit ONE of those rows. Computed globally (every Completed
-  // OPS flight, not just the 3 target months) so the credited row — and the month it
-  // falls in — matches exactly what the (now-fixed) Ops Analytics tab shows.
-  function dedupLessonKey(l) { return String(l || '').trim().toUpperCase().replace(/\s+/g, ' '); }
+  // sBuildEffectiveCreditSet(): a curriculum lesson is required once per SP. Every
+  // Completed flight is grouped into a "family" by BASE lesson code (any "/N" suffix
+  // stripped) — covers a lesson logged as 2+ unsuffixed duplicate bookings, a lesson
+  // logged bare on one date plus properly "/1,/2,/3"-split on another (bare and "/1"
+  // both mean "part 1" — confirmed live 2026-08-05 via student NAPATH T., lesson
+  // CSXV 45), AND a lesson logged ONLY as continuation legs with no "/1"/bare leg ever
+  // recorded (confirmed live: 8 such cases across the whole dataset, ~9h — previously
+  // credited 0 despite Progress showing the lesson done). One credited representative
+  // per family: prefer a "part 1" (bare or "/1") row if any exists (latest date/time
+  // wins among those); only when the family has none does the earliest-available
+  // continuation leg stand in. Computed globally (every Completed OPS flight, not just
+  // the 3 target months) so the credited row — and the month it falls in — matches
+  // exactly what the (now-fixed) Ops Analytics tab shows.
+  function baseLessonCode(l) { return String(l || '').trim().toUpperCase().replace(/\s+/g, ' ').replace(/\/\d+\s*$/, ''); }
+  function lessonPartNum(l) { const m = String(l || '').trim().match(/\/(\d+)\s*$/); return m ? parseInt(m[1], 10) : 1; }
   function buildEffectiveCreditSet(flights) {
-    const groups = new Map(); // "student|LESSON" -> {f,idx}[]
+    const families = new Map(); // "student|BASECODE" -> {f,idx}[]
     flights.forEach((f, idx) => {
       if (f.status !== 'Completed' || !f.student || !f.lesson) return;
-      const key = f.student + '|' + dedupLessonKey(f.lesson);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push({ f, idx });
+      const key = f.student + '|' + baseLessonCode(f.lesson);
+      if (!families.has(key)) families.set(key, []);
+      families.get(key).push({ f, idx });
     });
     // Set of flight OBJECT REFERENCES, not `.id` — some Ops Portal rows share identical
     // `.id` values (a known upstream ACTUAL_ONLY_ id-generation bug), so `.id` can't
     // safely identify the single credited row; object identity can.
     const credited = new Set();
-    groups.forEach(entries => {
-      if (entries.length === 1) { credited.add(entries[0].f); return; }
-      const rep = entries.slice().sort((a, b) => {
+    families.forEach(entries => {
+      const part1 = entries.filter(e => lessonPartNum(e.f.lesson) === 1);
+      const pool = part1.length ? part1 : entries;
+      const rep = pool.length === 1 ? pool[0].f : pool.slice().sort((a, b) => {
         if (a.f.date !== b.f.date) return a.f.date < b.f.date ? 1 : -1;
         const as = a.f.start || '', bs = b.f.start || '';
         if (as !== bs) return as < bs ? 1 : -1;
@@ -135,7 +145,13 @@
       const b = BATCHES.find(x => x.label === f.batch);
       if (!b) return;
       const deduped = hoursMode === 'effective' && f.lesson && !credited.has(f);
-      const hrs = deduped ? 0 : (hoursMode === 'effective' ? effMinsFromDur(f, curMap) / 60 : (f.durMin || 0) / 60);
+      // The credited row gets its full curriculum-standard duration by BASE lesson
+      // code — not effMinsFromDur()'s own "/N" part parsing, which would wrongly
+      // return 0 for a credited row that's a continuation leg (the "no part-1
+      // anywhere" fallback case in buildEffectiveCreditSet).
+      const hrs = deduped ? 0 : (hoursMode === 'effective'
+        ? (f.lesson ? (curMap[baseLessonCode(f.lesson)] != null ? curMap[baseLessonCode(f.lesson)] : f.durMin || 0) / 60 : effMinsFromDur(f, curMap) / 60)
+        : (f.durMin || 0) / 60);
       const sk = opsStudentKey(f.student);
       const bucket = ops[b.label][mk];
       bucket.hours += hrs; bucket.count += 1;
@@ -253,5 +269,133 @@
     return { multiLeg, simMismatch, dateDrift, noMatch, batchTagMismatch };
   }
 
-  window.AP127MonthlyCC = { BATCHES, MONTHS, MONTH_LABEL, buildCurMap, effMinsFromDur, effMinsFromActual, computeMonthly, computeDiagnostics };
+  /**
+   * Full bidirectional hours reconciliation ledger. Unlike computeDiagnostics()
+   * (one-directional: only asks "does this OPS-completed flight have a PROG
+   * record"), this accounts for every hour of Δ between OPS and PROG in BOTH
+   * directions, itemized down to student+lesson+date, validated against the
+   * observed Δ so nothing is left as an unexplained aggregate gap:
+   *
+   *   Δ(PROG − OPS) = structural + opsPending + opsCanceled + progTrueGap
+   *                   + progDrift − opsOrphan − opsDrift  (+ residual)
+   *
+   * - structural:   PROG lesson code that NEVER appears in FLIGHTS at all (any
+   *                 student/batch/status) — not a flight-booking lesson type at
+   *                 all (e.g. a ground/academic item), so it structurally can't
+   *                 be tracked by the Ops Portal. Permanent, not a data gap.
+   * - opsPending:   matching Ops booking exists (same student+lesson) but its
+   *                 status is still Pending — flown per Progress, Ops hasn't
+   *                 marked it Completed yet. Self-heals when Ops catches up.
+   * - opsCanceled:  matching Ops booking exists but is marked Canceled — a real
+   *                 conflict worth a human look (flown-but-cancelled).
+   * - progTrueGap:  no Ops record at all for that student+lesson, any status,
+   *                 any date — a genuine missing Ops Portal entry.
+   * - progDrift:    a matching OPS credit exists, but only in a DIFFERENT
+   *                 month — contributes to PROG's total this month with no
+   *                 OPS counterpart in this same month (and the reverse:
+   *                 opsDrift is the same phenomenon from the OPS side).
+   * - opsOrphan:    OPS-credited lesson this month with no PROG record at all,
+   *                 any date — Progress hasn't logged it yet (opposite lag
+   *                 direction from opsPending/progTrueGap).
+   * - residual:     Δ minus everything above — should be ~0. Confirmed live
+   *                 2026-08-05 across all 6 batch/month rows after fixing two
+   *                 real bugs the residual pointed at: (1) a lesson-code
+   *                 spelling mismatch between the Ops Portal and the
+   *                 curriculum/Progress ("CDNXV 48" vs "CDNXC 48", same
+   *                 lesson — fixed in js/shared.js's AP_LESSON_CODE_ALIASES),
+   *                 and (2) buildEffectiveCreditSet() not recognizing bare and
+   *                 "/1" as the same "part 1", and not crediting a lesson
+   *                 logged only as continuation legs with no "/1"/bare leg at
+   *                 all (both fixed in its family-grouping rewrite). 5 of 6
+   *                 rows now reconcile to an exact 0 residual; the 6th is off
+   *                 by 0.01h (rounding only).
+   *
+   * @param {'effective'|'actual'} hoursMode
+   * @returns {object} keyed "BATCH|MONTH" -> {opsHours, progHours, delta, categories, residual}
+   */
+  function computeLedger(hoursMode) {
+    const R = window.AP127Reconcile;
+    const curMap = hoursMode === 'effective' ? buildCurMap() : {};
+    const { key: opsStudentKey } = opsStudentKeyBuilder();
+    const credited = hoursMode === 'effective' ? buildEffectiveCreditSet(window.FLIGHTS || []) : null;
+    // Every call site below only invokes minsOps() on rows already confirmed credited
+    // (or in Actual/Block mode, where dedup doesn't apply) — so in effective mode this
+    // always resolves by BASE lesson code, matching js/view-summary.js's hoursOf().
+    const minsOps = f => hoursMode === 'effective'
+      ? (f.lesson ? (curMap[baseLessonCode(f.lesson)] != null ? curMap[baseLessonCode(f.lesson)] : f.durMin || 0) : f.durMin || 0)
+      : (f.durMin || 0);
+    const minsProg = f => hoursMode === 'effective' ? effMinsFromActual(f, curMap) : (f.actual_mins || 0);
+
+    // Every lesson code that appears anywhere in FLIGHTS at all — tells "genuinely
+    // never tracked by the Ops Portal" apart from "tracked, just not this booking."
+    const anyOpsLessonCodes = new Set((window.FLIGHTS || []).map(f => normLesson(f.lesson)).filter(Boolean));
+
+    const ledger = {};
+    BATCHES.forEach(({ label, ngtKey }) => {
+      const opsCredited = [];
+      (window.FLIGHTS || []).forEach(f => {
+        if (f.status !== 'Completed' || f.batch !== label || !f.lesson) return;
+        if (hoursMode === 'effective' && !credited.has(f)) return;
+        opsCredited.push({ student: opsStudentKey(f.student), lesson: normLesson(f.lesson), date: f.date, mins: minsOps(f) });
+      });
+      const progAll = [];
+      (window.NGT_CACHE?.[ngtKey] || []).forEach(s => {
+        const sk = R.ccKeyFromFull(s.name);
+        (s.flown || []).forEach(f => { if (!f.date) return; progAll.push({ student: sk, lesson: normLesson(f.lesson), date: f.date, mins: minsProg(f) }); });
+      });
+      function indexBy(arr) { const m = {}; arr.forEach(x => { const k = x.student + '|' + x.lesson; (m[k] = m[k] || []).push(x); }); return m; }
+      const opsIdx = indexBy(opsCredited), progIdx = indexBy(progAll);
+
+      MONTHS.forEach(mk => {
+        const opsMonth = opsCredited.filter(x => x.date.slice(0, 7) === mk);
+        const progMonth = progAll.filter(x => x.date.slice(0, 7) === mk);
+        const opsHours = opsMonth.reduce((a, x) => a + x.mins, 0) / 60;
+        const progHours = progMonth.reduce((a, x) => a + x.mins, 0) / 60;
+
+        const progOrphans = [], progDrift = [];
+        progMonth.forEach(x => {
+          const m = opsIdx[x.student + '|' + x.lesson];
+          if (!m) { progOrphans.push(x); return; }
+          if (!m.some(o => o.date.slice(0, 7) === mk)) progDrift.push(x);
+        });
+        const opsOrphans = [], opsDrift = [];
+        opsMonth.forEach(x => {
+          const m = progIdx[x.student + '|' + x.lesson];
+          if (!m) { opsOrphans.push(x); return; }
+          if (!m.some(p => p.date.slice(0, 7) === mk)) opsDrift.push(x);
+        });
+
+        const structural = [], opsPending = [], opsCanceled = [], progTrueGap = [];
+        progOrphans.forEach(x => {
+          if (!anyOpsLessonCodes.has(x.lesson)) { structural.push(x); return; }
+          const cands = (window.FLIGHTS || []).filter(f => f.batch === label && normLesson(f.lesson) === x.lesson && opsStudentKey(f.student) === x.student);
+          if (!cands.length) { progTrueGap.push({ ...x, opsStatus: null, opsDate: null }); return; }
+          const closest = cands.slice().sort((a, b) => Math.abs(new Date(a.date) - new Date(x.date)) - Math.abs(new Date(b.date) - new Date(x.date)))[0];
+          if (closest.status === 'Pending') opsPending.push({ ...x, opsStatus: 'Pending', opsDate: closest.date });
+          else if (closest.status === 'Canceled') opsCanceled.push({ ...x, opsStatus: 'Canceled', opsDate: closest.date });
+          else progTrueGap.push({ ...x, opsStatus: closest.status, opsDate: closest.date });
+        });
+
+        const sumH = arr => +(arr.reduce((a, x) => a + x.mins, 0) / 60).toFixed(2);
+        const categories = {
+          structural: { n: structural.length, h: sumH(structural), lines: structural },
+          opsPending: { n: opsPending.length, h: sumH(opsPending), lines: opsPending },
+          opsCanceled: { n: opsCanceled.length, h: sumH(opsCanceled), lines: opsCanceled },
+          progTrueGap: { n: progTrueGap.length, h: sumH(progTrueGap), lines: progTrueGap },
+          progDrift: { n: progDrift.length, h: sumH(progDrift), lines: progDrift },
+          opsOrphan: { n: opsOrphans.length, h: sumH(opsOrphans), lines: opsOrphans },
+          opsDrift: { n: opsDrift.length, h: sumH(opsDrift), lines: opsDrift },
+        };
+        const delta = +(progHours - opsHours).toFixed(2);
+        const explained = +(categories.structural.h + categories.opsPending.h + categories.opsCanceled.h +
+          categories.progTrueGap.h + categories.progDrift.h - categories.opsOrphan.h - categories.opsDrift.h).toFixed(2);
+        const residual = +(delta - explained).toFixed(2);
+
+        ledger[label + '|' + mk] = { opsHours: +opsHours.toFixed(2), progHours: +progHours.toFixed(2), delta, categories, residual };
+      });
+    });
+    return ledger;
+  }
+
+  window.AP127MonthlyCC = { BATCHES, MONTHS, MONTH_LABEL, buildCurMap, effMinsFromDur, effMinsFromActual, computeMonthly, computeDiagnostics, computeLedger };
 })();

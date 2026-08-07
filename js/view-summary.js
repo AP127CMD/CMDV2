@@ -59,40 +59,52 @@
   }
 
   // ── Effective-hours dedup: a curriculum lesson is only "required by the syllabus"
-  // once per SP — if the Ops Portal logs the same lesson code as 2+ separate bookings
-  // for one student (a multi-leg session split into extra rows, no "/2" continuation
-  // suffix used), only ONE of those rows should carry the lesson's curriculum-standard
-  // duration; the rest are real flights (still counted in flight totals/block hours)
-  // but contribute 0 *effective* hours, so a repeated lesson can't inflate the syllabus
-  // total. A lesson genuinely marked "/2","/3" etc. is unaffected — sEffectiveMins()
-  // already credits only the "/1"/bare part and zeroes the rest, and this dedup keys on
-  // the RAW lesson string (suffix included), so a "/1"/"/2" pair is never merged here.
+  // once per SP. Every Completed flight for a student is grouped into a "family" by its
+  // BASE lesson code (any "/N" suffix stripped) — this covers a lesson logged as 2+
+  // unsuffixed duplicate bookings (a multi-leg session split into extra rows with no
+  // "/2" convention used), AND a lesson logged as bare on one date plus properly
+  // "/1,/2,/3"-split on another (bare and "/1" both mean "part 1" to the curriculum —
+  // confirmed live 2026-08-05: student NAPATH T., lesson CSXV 45, a 45-minute bare
+  // booking 2026-05-22 too short to be the real completion, alongside a full
+  // "/1,/2,/3" 3-leg booking 2026-05-26 that Progress's own single flown record
+  // matches — both were separately credited before this fix, double-counting one
+  // lesson as two), AND a lesson logged ONLY as continuation legs with no "/1"/bare
+  // leg ever recorded at all (confirmed live: 8 such cases across the whole dataset,
+  // ~9h — previously credited 0 despite Progress showing the lesson done).
+  // One credited representative per family: prefer a "part 1" (bare or "/1") row if
+  // any exists (latest date/time wins among those); only when the family has NO part-1
+  // row at all does the earliest-available continuation leg stand in for it. The
+  // credited row always gets the lesson's full curriculum-standard duration (looked up
+  // by BASE code, not by parsing its own suffix) — every other row in the family gets 0
+  // *effective* hours (still counted in flight totals/block hours).
   // Computed once over ALL Completed flights (not the period-filtered set) so it gives
   // the same single credit regardless of which view/date-range is reading it — the
   // all-time cumulative roster (`cumulStudentGroups`) and the period-filtered charts
   // must agree on which single booking "is" the lesson.
-  function sDedupLessonKey(lesson) {
-    return String(lesson || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  function sBaseLessonCode(lesson) {
+    return String(lesson || '').trim().toUpperCase().replace(/\s+/g, ' ').replace(/\/\d+\s*$/, '');
+  }
+  function sLessonPartNum(lesson) {
+    const m = String(lesson || '').trim().match(/\/(\d+)\s*$/);
+    return m ? parseInt(m[1], 10) : 1; // bare (no "/N" at all) counts as part 1
   }
   function sBuildEffectiveCreditSet(flights) {
-    const groups = new Map(); // "student|LESSON" -> {f,idx}[]
+    const families = new Map(); // "student|BASECODE" -> {f,idx}[]  (every suffix variant + bare, together)
     flights.forEach((f, idx) => {
       if (f.status !== 'Completed' || !f.student || !f.lesson) return;
-      const key = f.student + '|' + sDedupLessonKey(f.lesson);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push({ f, idx });
+      const key = f.student + '|' + sBaseLessonCode(f.lesson);
+      if (!families.has(key)) families.set(key, []);
+      families.get(key).push({ f, idx });
     });
     // Set of flight OBJECT REFERENCES, not `.id` — confirmed live that some rows share
     // identical `.id` values (a known upstream ACTUAL_ONLY_ id-generation bug, see
     // CLAUDE.md), so `.id` can't safely identify "is this the one credited row"; object
     // identity can, since every aggregation reads the same FLIGHTS array references.
     const credited = new Set();
-    groups.forEach(entries => {
-      if (entries.length === 1) { credited.add(entries[0].f); return; }
-      // Representative = latest date, then latest start time, then original array
-      // position (stable, and immune to duplicate ids) — "the booking that finished
-      // the lesson" gets the credit, duplicates don't.
-      const rep = entries.slice().sort((a, b) => {
+    families.forEach(entries => {
+      const part1 = entries.filter(e => sLessonPartNum(e.f.lesson) === 1);
+      const pool = part1.length ? part1 : entries; // no part-1 row anywhere → best-available continuation leg stands in
+      const rep = pool.length === 1 ? pool[0].f : pool.slice().sort((a, b) => {
         if (a.f.date !== b.f.date) return a.f.date < b.f.date ? 1 : -1;
         const as = a.f.start || '', bs = b.f.start || '';
         if (as !== bs) return as < bs ? 1 : -1;
@@ -117,10 +129,9 @@
   // though every lesson was genuinely flown; checking against FLIGHTS produced a wall
   // of false "missing" lessons for exactly this reason. NGT_CACHE's flown[] is each
   // student's full completed-lesson history with no retention window, so it's the
-  // reliable ground truth for "has this lesson ever been logged done."
-  function sBaseLessonCode(lesson) {
-    return sDedupLessonKey(lesson).replace(/\/\d+\s*$/, '');
-  }
+  // reliable ground truth for "has this lesson ever been logged done." Reuses
+  // sBaseLessonCode() defined above (part of the effective-hours dedup) — same
+  // "strip any /N suffix" normalization serves both features.
   function sBuildLessonOrderMap() {
     const G = window.NGT_CACHE;
     const orderFor = cur => (cur || []).map(c => c.lesson).filter(Boolean);
@@ -873,6 +884,11 @@
       // Effective hours: each curriculum lesson counts once per SP. A flight with no
       // lesson code can't be deduped (nothing to match against) and passes through.
       if (f.lesson && !effectiveCredited.has(f)) return 0;
+      // The credited row always gets the lesson's full curriculum-standard duration
+      // looked up by its BASE code — NOT via sEffectiveMins()'s own "/N" part parsing,
+      // which would wrongly return 0 for a credited row that's a continuation leg (the
+      // sBuildEffectiveCreditSet "no part-1 anywhere" fallback case).
+      if (f.lesson) return (curMap[sBaseLessonCode(f.lesson)] != null ? curMap[sBaseLessonCode(f.lesson)] : f.durMin || 0) / 60;
       return sEffectiveMins(f, curMap) / 60;
     }, [metric, curMap, effectiveCredited]);
 

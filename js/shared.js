@@ -145,6 +145,32 @@ window.FLIGHT_DATA.flights.forEach(f => {
   const canon = AP127_STUDENT_ALIASES[f.student.trim().toUpperCase()];
   if (canon) f.student = canon;
 });
+// Same class of fix, one level down: the Ops Portal spells some lesson codes
+// differently than the official curriculum (window.NGT_CACHE cur124/126/127) /
+// Progress feed do. Confirmed live 2026-08-05 while reconciling Ops Analytics
+// against Progress: every one of AP-126's 28 "CDNXV 48" Ops Portal bookings
+// matches, 1:1 by student+date, a "CDNXC 48" Progress/curriculum record — same
+// lesson, different spelling, not two different gaps. Left unfixed, this both
+// (a) makes Ops Analytics fall back to logged block time instead of the
+// curriculum-standard duration for these bookings (curMap lookups are keyed by
+// the curriculum's own spelling), and (b) makes every cross-system reconciliation
+// (Cross-Check) misreport it as a missing-on-both-sides pair. Fixed once here,
+// like the student-alias map above, so every downstream view benefits with no
+// per-view change needed. Keyed upper-cased/trimmed for case-insensitive match;
+// applied before any lesson-code splitting ("/2" etc.) since the alias is on the
+// base code.
+const AP_LESSON_CODE_ALIASES = {
+  'CDNXV 48': 'CDNXC 48',
+};
+window.FLIGHT_DATA.flights.forEach(f => {
+  if (!f.lesson) return;
+  const trimmed = f.lesson.trim();
+  const m = trimmed.match(/^(.*?)(\/\d+)?$/);
+  const base = (m ? m[1] : trimmed).trim();
+  const suffix = (m && m[2]) || '';
+  const canon = AP_LESSON_CODE_ALIASES[base.toUpperCase()];
+  if (canon) f.lesson = canon + suffix;
+});
 const FLIGHTS     = window.FLIGHT_DATA.flights;
 const INSTRUCTORS = window.FLIGHT_DATA.instructors;
 const RESOURCES   = window.FLIGHT_DATA.resources;

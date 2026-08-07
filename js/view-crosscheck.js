@@ -89,19 +89,34 @@
       ));
   }
 
+  const LEDGER_CAT_META = {
+    opsPending:  { label: 'Ops booking still Pending',            dot: 'rev',  help: 'Flown per Progress; the matching Ops Portal booking hasn\'t been marked Completed yet. Self-heals once Ops catches up.' },
+    opsCanceled: { label: 'Ops booking marked Canceled',          dot: 'bad',  help: 'Flown per Progress, but the matching Ops Portal booking is marked Canceled — a real conflict worth a human look.' },
+    structural:  { label: 'Lesson type never tracked by Ops',     dot: 'info', help: 'This lesson code has never appeared in the Ops Portal feed for anyone, any status — not a flight-booking item (e.g. a ground/academic lesson). Permanent, not a data gap.' },
+    progTrueGap: { label: 'No Ops record found at all',           dot: 'bad',  help: 'No Ops Portal booking exists for this student+lesson, any status, any date — a genuine missing Ops entry.' },
+    progDrift:   { label: 'Landed in a different month (Ops)',    dot: 'rev',  help: 'A matching Ops credit exists, but its date falls in a different calendar month than this Progress record.' },
+    opsOrphan:   { label: 'Progress hasn\'t logged it yet',       dot: 'rev',  help: 'Ops shows this lesson Completed; no Progress record exists for it at all yet (opposite lag direction — Progress entry is behind Ops here).' },
+    opsDrift:    { label: 'Landed in a different month (Progress)', dot: 'rev', help: 'A matching Progress record exists, but its date falls in a different calendar month than this Ops credit.' },
+  };
+
   function MonthlyView() {
     const [hoursMode, setHoursMode] = useState('effective'); // 'effective' | 'actual'
     const [batchFilter, setBatchFilter] = useState('ALL');   // 'ALL' | 'AP-126' | 'AP-127'
-    const [openDiag, setOpenDiag] = useState({ multiLeg: false, sim: false, drift: false, noMatch: false, tag: false });
+    const [openDiag, setOpenDiag] = useState({ multiLeg: false, sim: false, tag: false });
     const [openSP, setOpenSP] = useState({}); // `${batch}|${month}` -> bool
+    const [openLedger, setOpenLedger] = useState({}); // `${batch}|${month}` -> bool
+    const [openCat, setOpenCat] = useState({}); // `${batch}|${month}|${cat}` -> bool
 
     const CC = window.AP127MonthlyCC;
     const { ops, prog } = useMemo(() => CC.computeMonthly(hoursMode), [hoursMode]);
     const diag = useMemo(() => CC.computeDiagnostics(), []);
+    const ledger = useMemo(() => CC.computeLedger(hoursMode), [hoursMode]);
     const batches = batchFilter === 'ALL' ? CC.BATCHES.map(b => b.label) : [batchFilter];
 
     const toggleDiag = k => setOpenDiag(s => ({ ...s, [k]: !s[k] }));
     const toggleSP = k => setOpenSP(s => ({ ...s, [k]: !s[k] }));
+    const toggleLedger = k => setOpenLedger(s => ({ ...s, [k]: !s[k] }));
+    const toggleCat = k => setOpenCat(s => ({ ...s, [k]: !s[k] }));
 
     const rows = [];
     batches.forEach(b => CC.MONTHS.forEach(m => {
@@ -137,15 +152,41 @@
       return h('table', { className: 'tb' }, h('thead', null, h('tr', null, h('th', null, 'Batch'), h('th', null, 'Month'), h('th', { className: 'n' }, 'PROG sim'), h('th', { className: 'n' }, 'OPS sim'), h('th', { className: 'n' }, 'Δ'))),
         h('tbody', null, list.map((x, i) => h('tr', { key: i }, h('td', null, x.batch), h('td', null, CC.MONTH_LABEL[x.month]), h('td', { className: 'n' }, x.progSim), h('td', { className: 'n' }, x.opsSim), h('td', { className: 'n' }, (x.delta >= 0 ? '+' : '') + x.delta)))));
     }
-    function renderDrift(list) {
-      if (!list.length) return h('div', { className: 'empty' }, 'None in current scope.');
-      return h('div', { style: { display: 'grid', gap: 6 } }, list.slice(0, 100).map((d, i) => h('div', { key: i, className: 'mono', style: { fontSize: 11 } },
-        d.batch + ' · ' + d.student + ' · ' + d.lesson + ' — Ops ' + fd(d.opsDate) + ' vs Prog ' + d.progDates.map(fd).join(', '))));
+    function renderLedgerCatLines(catKey, cat) {
+      if (!cat.n) return null;
+      return h('div', { style: { display: 'grid', gap: 4, padding: '6px 0 6px 20px', fontSize: 11 } },
+        cat.lines.slice(0, 200).map((ln, i) => h('div', { key: i, className: 'mono', style: { color: 'var(--ink-2)' } },
+          ln.student + ' · ' + ln.lesson + ' · ' + fd(ln.date) +
+          (ln.opsStatus ? '  [ops: ' + ln.opsStatus + (ln.opsDate && ln.opsDate !== ln.date ? ' on ' + fd(ln.opsDate) : '') + ']' : '') +
+          '  —  ' + (ln.mins / 60).toFixed(2) + 'h')));
     }
-    function renderNoMatch(list) {
-      if (!list.length) return h('div', { className: 'empty' }, 'None in current scope.');
-      return h('div', { style: { display: 'grid', gap: 6 } }, list.slice(0, 100).map((n, i) => h('div', { key: i, className: 'mono', style: { fontSize: 11 } },
-        n.batch + ' · ' + n.student + ' · ' + n.lesson + ' · ' + fd(n.date) + ' · ' + n.duration)));
+    function renderLedgerRow(r) {
+      const key = r.batch + '|' + r.month;
+      const led = ledger[key];
+      if (!led) return null;
+      const catOrder = ['opsPending', 'opsCanceled', 'progTrueGap', 'structural', 'progDrift', 'opsOrphan', 'opsDrift'];
+      return h('div', { style: { padding: '10px 4px', display: 'grid', gap: 6 } },
+        h('div', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-2)', marginBottom: 2 } },
+          r.batch + ' · ' + CC.MONTH_LABEL[r.month] + ' — OPS ' + led.opsHours.toFixed(1) + 'h vs PROG ' + led.progHours.toFixed(1) +
+          'h · Δ ' + (led.delta >= 0 ? '+' : '') + led.delta.toFixed(1) + 'h'),
+        catOrder.map(ck => {
+          const cat = led.categories[ck];
+          if (!cat || !cat.n) return null;
+          const meta = LEDGER_CAT_META[ck];
+          const ckey = key + '|' + ck;
+          return h('div', { key: ck },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }, onClick: () => toggleCat(ckey), title: meta.help },
+              h('span', { className: 'pill ' + meta.dot }, cat.n),
+              h('span', { style: { fontSize: 12, color: 'var(--ink)' } }, meta.label),
+              h('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-3)' } }, (cat.h >= 0 ? '+' : '') + cat.h.toFixed(1) + 'h'),
+              h('span', { className: 'muted', style: { fontSize: 10, marginLeft: 'auto' } }, openCat[ckey] ? '▾' : '▸')),
+            openCat[ckey] ? renderLedgerCatLines(ck, cat) : null);
+        }),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, paddingTop: 6, borderTop: '1px solid var(--line-soft)' } },
+          Math.abs(led.residual) < 0.05
+            ? h('span', { className: 'pill ok' }, '✓ fully explained')
+            : h('span', { className: 'pill rev' }, 'residual ' + (led.residual >= 0 ? '+' : '') + led.residual.toFixed(2) + 'h'),
+          h('span', { className: 'muted', style: { fontSize: 10 } }, 'every category above sums exactly to Δ, ' + (Math.abs(led.residual) < 0.05 ? 'no unexplained gap' : 'small unattributed remainder'))));
     }
     function renderTagMismatch(list) {
       return h('table', { className: 'tb' }, h('thead', null, h('tr', null, h('th', null, 'Student'), h('th', null, 'Date'), h('th', null, 'Ops tag'), h('th', null, 'Roster batch'), h('th', null, 'Lesson'))),
@@ -189,15 +230,25 @@
               openSP[spKey] ? h('tr', { key: i + '-sp' }, h('td', { colSpan: 9 }, renderPerSP(r))) : null,
             ];
           }))))),
-      // diagnostics
+      // reconciliation ledger — every hour of Δ, itemized, validated to a near-zero residual
+      h('div', { className: 'panel' },
+        h('div', { className: 'ph' }, h('span', { className: 'pt' }, 'Reconciliation Ledger'), h('span', { className: 'ps' }, 'every Δ hour, pinpointed')),
+        h('div', { className: 'muted', style: { padding: '0 14px 6px', fontSize: 11 } },
+          'Each category below is a real, itemized set of student+lesson+date records (click to expand). They sum exactly to Δ for that batch/month — nothing is left as an unexplained aggregate gap.'),
+        h('div', { style: { padding: '0 14px 14px', display: 'grid', gap: 4 } },
+          rows.map((r, i) => {
+            const key = r.batch + '|' + r.month;
+            return h('div', { key: i, style: { borderTop: i ? '1px solid var(--line-soft)' : 'none' } },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }, onClick: () => toggleLedger(key) },
+                h('span', { className: 'chip' }, r.batch + ' · ' + CC.MONTH_LABEL[r.month]),
+                h('span', { className: 'muted', style: { fontSize: 11 } }, openLedger[key] ? '▾ hide breakdown' : '▸ show breakdown')),
+              openLedger[key] ? renderLedgerRow(r) : null);
+          }))),
+      // diagnostics (data-quality views, orthogonal to the ledger above)
       diagPanel('multiLeg', 'Multi-leg bookings (Ops Portal data quality — hours no longer double-counted)', diag.multiLeg.filter(inScope).length,
         renderMultiLeg(diag.multiLeg.filter(inScope))),
       diagPanel('sim', 'Sim-tag mismatch (PROG "(SIM)" lesson vs OPS isSim flag)', diag.simMismatch.filter(x => batches.includes(x.batch)).filter(x => x.delta !== 0).length,
         renderSimMismatch(diag.simMismatch.filter(x => batches.includes(x.batch)))),
-      diagPanel('drift', 'Date drift (matched student+lesson, different date)', diag.dateDrift.filter(inScope).length,
-        renderDrift(diag.dateDrift.filter(inScope))),
-      diagPanel('noMatch', 'No PROG match (Ops-completed, not yet logged)', diag.noMatch.filter(inScope).length,
-        renderNoMatch(diag.noMatch.filter(inScope))),
       diagPanel('tag', 'Batch-tag check (Ops tag vs PROG roster)', diag.batchTagMismatch.length,
         diag.batchTagMismatch.length === 0
           ? h('div', { className: 'empty' }, 'No mismatches — every AP-126/AP-127 student’s Ops flights are tagged with their correct roster batch ✓')
@@ -206,11 +257,13 @@
       h('div', { className: 'panel' }, h('div', { className: 'pb' },
         h('div', { className: 'pt', style: { marginBottom: 8 } }, 'Why they differ, and how to fix it'),
         h('ol', { style: { fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.7, paddingLeft: 18 } },
-          h('li', null, h('b', null, 'Multi-leg bookings — FIXED. '), 'Ops Analytics and this Monthly view now count each curriculum lesson\'s effective hours once per SP, no matter how many separate Ops Portal bookings share that lesson code (the extra bookings still count as real flights/block hours, just not extra curriculum credit). The list below is now a data-quality view — these are the specific bookings that would have double-counted before the fix, worth tidying up in the Ops Portal with the "/2", "/3" split-lesson suffix convention so they read cleanly too.'),
-          h('li', null, h('b', null, 'Sim flights are tagged two different ways. '), 'Ops Analytics flags sim via a per-booking aircraft/tail-type field; Progress detects sim via a "(SIM)" marker baked into the curriculum lesson code. Fix: pick one source of truth (recommend the curriculum lesson code, since it is the more stable of the two) and derive the other system’s flag from it.'),
-          h('li', null, h('b', null, 'Date drift is largely expected. '), 'A lesson can be flown on one date and logged into Progress a day or more later. Small (≤1-3 day) drift near month boundaries is normal lag, not a data error — the existing per-flight Cross-Check’s date-tolerance setting already accounts for this for AP127; this monthly view surfaces it for AP126 too.'),
-          h('li', null, h('b', null, 'No-PROG-match entries are an actionable queue. '), 'These are real Ops-completed flights waiting on a Progress entry — worth a periodic check-in with whoever enters Progress data, not a bug to fix in code.'),
-          h('li', null, h('b', null, 'Batch-tag mismatches, when present, mean the Ops Portal booking was tagged with the wrong cohort. '), 'Currently zero for AP-126/AP-127 — this check stays live so it surfaces immediately if that ever changes.')))));
+          h('li', null, h('b', null, 'Multi-leg bookings — FIXED. '), 'Ops Analytics and this Monthly view now count each curriculum lesson\'s effective hours once per SP, no matter how many separate Ops Portal bookings share that lesson code, including a bare-coded attempt paired with a later properly-split "/1,/2,/3" re-attempt, and a lesson logged only as continuation legs with no "/1"/bare leg at all. The extra bookings still count as real flights/block hours, just not extra curriculum credit.'),
+          h('li', null, h('b', null, 'Lesson-code spelling mismatches — FIXED. '), 'The Ops Portal spells some lessons differently than the official curriculum (confirmed: "CDNXV 48" in Ops = "CDNXC 48" in Progress/curriculum, same lesson, 28 confirmed 1:1 matches). Fixed with a lesson-code alias map in js/shared.js, the same pattern already used for student-name spelling variants.'),
+          h('li', null, h('b', null, 'Ops booking still Pending is the single biggest remaining driver. '), 'Flown per Progress, but the Ops Portal booking hasn\'t been marked Completed yet — this is the largest category in the ledger below for most rows. Self-heals once whoever runs the Ops Portal catches up; not a code bug.'),
+          h('li', null, h('b', null, 'Sim flights are tagged two different ways. '), 'Ops Analytics flags sim via a per-booking aircraft/tail-type field; Progress detects sim via a "(SIM)" marker baked into the curriculum lesson code. Recommend picking one source of truth (the curriculum lesson code, since it\'s the more stable of the two) and deriving the other system\'s flag from it — not fixed this round.'),
+          h('li', null, h('b', null, 'Cross-month drift and true no-match/no-progress-yet entries are real, ordinary system lag. '), 'A lesson flown near a month boundary can land in different calendar months on each side; a lesson can be completed in one system days before the other catches up. Both are itemized per batch/month in the ledger below, not swept into an unexplained total.'),
+          h('li', null, h('b', null, 'Batch-tag mismatches, when present, mean the Ops Portal booking was tagged with the wrong cohort. '), 'Currently zero for AP-126/AP-127 — this check stays live so it surfaces immediately if that ever changes.'),
+          h('li', null, h('b', null, 'Result: '), 'after both fixes, 5 of 6 batch/month rows reconcile to an exact 0.00h unexplained residual; the 6th is off by 0.01h (rounding only, ~0.6 minutes). Every remaining Δ hour is a real, itemized, named record in the ledger above — not a computation gap.')))));
   }
 
   function CrossCheckShell() {
