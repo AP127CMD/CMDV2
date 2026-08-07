@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p148` (all currently at p147)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p149` (all currently at p148)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -55,7 +55,20 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p147` (2026-08-07 — **AP127 Detail V4 — Daily Output: gap uses the
+**Last known:** all files `p148` (2026-08-07 — **AP127 Detail V4 — Daily Output "By Type"
+breakdown recolored: Dual = magenta, Solo = mustard.** User: "When By Type option is ON. Dual
+should be in the Magenta and Solo in Mustard color." `AP127_LESSON_TYPE_COLORS` changed from
+`{Dual:"#60a5fa",Solo:"#facc15",Simulator:"#a78bfa"}` to `{Dual:"#e88aff",Solo:"#d4a017",
+Simulator:"#a78bfa"}` — Dual now uses the app's own signature magenta accent (`var(--c127)`/
+`#e88aff`, used everywhere else in this tab) instead of a generic blue; Solo uses a deliberately
+duller/browner mustard (`#d4a017`) rather than the bright gold `#facc15` already used elsewhere
+for target-checkpoint flags/key-point ticks, so the two don't get visually confused. Simulator
+unchanged. Verified live: enabled "By Type" on the Daily Output chart, `Chart.getChart(...)`
+confirmed the 3 dataset `backgroundColor`s exactly (`#e88aff`/`#d4a017`/`#a78bfa`), screenshot
+confirmed clear magenta/mustard/purple stacked segments with good contrast on the dark theme,
+zero new console errors (only the pre-existing local-dev CORS fallback). Only file touched:
+`js/view-cohort-v4.js`. Full write-up: REVAMP.md's p148 entry.) p147
+(2026-08-07 — **AP127 Detail V4 — Daily Output: gap uses the
 latest CLOSED period, current period shown hollow with a projected close.** User: "I think we
 should calculate the gap by using the latest closed bar not the opening current bar" plus "For
 current opening bar... change its appearance to be more distinguish, maybe a hollow bar with an

@@ -379,7 +379,11 @@ function ap127IdleLineColor(d){if(d<=2)return"#e6edf3";if(d<=5)return"#fbbf24";r
 // the distinction that matters for this 3-way split. Verified against every code pattern seen in
 // the curriculum (CDGL→Dual, CSGL/CSPGL→Solo, CDIF(SIM)/CMDIF(SIM)→Simulator, CMDGL→Dual,
 // CMSPXI→Solo).
-const AP127_LESSON_TYPE_COLORS={Dual:"#60a5fa",Solo:"#facc15",Simulator:"#a78bfa"};
+// Dual = the app's signature magenta accent (var(--c127)/#e88aff, used everywhere else in this
+// tab), Solo = mustard (deliberately a duller, more brownish yellow than the bright gold #facc15
+// already used for target-checkpoint flags/key-point ticks elsewhere, so the two don't get
+// visually confused).
+const AP127_LESSON_TYPE_COLORS={Dual:"#e88aff",Solo:"#d4a017",Simulator:"#a78bfa"};
 function ap127LessonType(code){
   const c=String(code||"").trim();
   if(/\(SIM\)/i.test(c))return"Simulator";

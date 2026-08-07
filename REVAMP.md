@@ -1922,3 +1922,36 @@ data fetch is blocked by CORS when testing from localhost, falls back to the bun
 same on every local test this session). Original AP127 Detail (`js/view-cohort.js`) confirmed
 still byte-identical/untouched. Only file touched: `js/view-cohort-v4.js` (plus the usual
 `index.html` cache-bust bump).
+
+### AP127 Detail V4 — Daily Output "By Type" breakdown: Dual → magenta, Solo → mustard (2026-08-07, p148)
+
+`js/view-cohort-v4.js`
+
+User: "When By Type option is ON. Dual should be in the Magenta and Solo in Mustard color."
+
+Simple, targeted palette change to `AP127_LESSON_TYPE_COLORS` (the Dual/Solo/Simulator stacked-bar
+colors introduced in p145's breakdown toggle):
+
+```js
+// before: {Dual:"#60a5fa", Solo:"#facc15", Simulator:"#a78bfa"}
+// after:
+const AP127_LESSON_TYPE_COLORS={Dual:"#e88aff",Solo:"#d4a017",Simulator:"#a78bfa"};
+```
+
+- **Dual → `#e88aff`** — the app's own signature magenta accent (`var(--c127)` in
+  `css/program.css`/`css/progress.css`), already used throughout this tab (SYLLABUS strip, key-point
+  icons, projected-bar outline, etc.) — was previously a generic blue (`#60a5fa`) with no particular
+  meaning.
+- **Solo → `#d4a017`** — a deliberately duller, more brownish mustard rather than the bright gold
+  `#facc15` already in use elsewhere in this tab (target-checkpoint flags, key-point ticks), chosen
+  specifically so Solo bars don't get visually confused with those unrelated gold UI elements.
+- **Simulator** unchanged (`#a78bfa`).
+
+Verified live: opened AP127 Detail V4 → Daily Output chart → enabled "By Type". Read the actual
+Chart.js dataset objects via `Chart.getChart(canvas).data.datasets` rather than relying on a visual
+read alone — confirmed `backgroundColor` exactly `#e88aff` (Dual), `#d4a017` (Solo), `#a78bfa`
+(Simulator). Screenshot confirmed clearly distinguishable magenta/mustard/purple stacked segments
+with good contrast against the dark cockpit theme; legend swatches match. Zero new console errors
+(only the pre-existing local-dev CORS fallback, unrelated, present on every local test this
+session). Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched.
+Only file touched: `js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump, p147→p148).
