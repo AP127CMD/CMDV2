@@ -169,7 +169,7 @@
     <div class="d127-panel">
       <div class="d127-h"><span class="d127-t">Consecutive &amp; Idle Streaks</span><span class="d127-s">+days flying streak · −days idle streak</span></div>
       <div class="d127-body">
-        <div class="d127-note">Shares color &amp; student filter with Actual vs Planned above — click a name there to isolate here too. Thick magenta = batch average.</div>
+        <div class="d127-note">Shares color &amp; student filter with Actual vs Planned above — click a name there to isolate here too. Thick magenta = batch average. Every SP's streak is walked from the BATCH's earliest-ever flown date, not their own start — a late-starting SP shows as "idle" for every day before they personally began, so a deep-negative average early in the chart usually reflects staggered enrollment, not the whole batch stalling.</div>
         <div style="position:relative;height:300px"><canvas id="d127v4-considle"></canvas></div>
       </div>
     </div>
@@ -817,7 +817,7 @@ function buildAP127Timeline(all,curriculum,maxDate){
   const legend=document.getElementById("d127v4-phase-legend");
   if(legend){
     const items=AP127_SYLLABUS_PHASES.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("");
-    legend.innerHTML=items+`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#fca5a5;border-radius:2px;width:14px;height:3px"></span>gap &gt; 7 days</span><span class="d127-pc"><span class="d127-pdot" style="background:#e6edf3;border-radius:2px;width:14px;height:3px"></span>idle 1-2d</span><span class="d127-pc"><span class="d127-pdot" style="background:#fbbf24;border-radius:2px;width:14px;height:3px"></span>idle 3-5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#ff6b6b;border-radius:2px;width:14px;height:3px"></span>idle &gt;5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#f59e0b;width:2px;height:10px;border-radius:0"></span>today</span><span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>AP127 target date</span>`;
+    legend.innerHTML=items+`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#fca5a5;border-radius:2px;width:14px;height:3px"></span>gap &gt; 7 days</span><span class="d127-pc"><span class="d127-pdot" style="background:#e6edf3;border-radius:2px;width:14px;height:3px"></span>idle 1-2d</span><span class="d127-pc"><span class="d127-pdot" style="background:#fbbf24;border-radius:2px;width:14px;height:3px"></span>idle 3-5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#ff6b6b;border-radius:2px;width:14px;height:3px"></span>idle &gt;5d</span><span class="d127-pc"><span class="d127-pdot" style="background:#f59e0b;width:2px;height:10px;border-radius:0"></span>today</span><span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>AP127 target date</span><span class="d127-pc"><span class="d127-pdot" style="background:transparent;border:1.5px solid #6e7681;border-radius:50%;width:8px;height:8px"></span>not started</span>`;
   }
   const phaseColor=code=>ap127SyllabusPhase(code).c;
   const datasets=[];
@@ -879,6 +879,24 @@ function buildAP127Timeline(all,curriculum,maxDate){
         pointHitRadius:0,
         _isCount:true,
         _countText:`· ${flights.length} flt`
+      });
+    } else {
+      // Never-flown SP: every other activity state on this chart gets a colored cue (a dot for
+      // each flight, a dashed idle tail when they've gone quiet) — a student who simply hasn't
+      // started yet previously got nothing at all, an empty row indistinguishable from a
+      // data-load glitch. A hollow ring at the plot's left edge reads as "not started" instead.
+      datasets.push({
+        label:"__notstarted_"+idx,
+        data:[{x:minDay,y:idx+1,sIdx:idx,studentName:s.name}],
+        showLine:false,
+        pointStyle:"circle",
+        pointRadius:5,
+        pointHoverRadius:6,
+        pointHitRadius:8,
+        pointBackgroundColor:"rgba(0,0,0,0)",
+        pointBorderColor:"#6e7681",
+        pointBorderWidth:1.5,
+        _isNotStarted:true
       });
     }
   });
@@ -1002,7 +1020,16 @@ function buildAP127Timeline(all,curriculum,maxDate){
         const el=els[0];const ds=chart.data.datasets[el.datasetIndex];if(!ds||ds._isToday||ds._isCount||ds._isIdle)return;
         const raw=ds.data[el.index];if(!raw||raw.sIdx==null)return;
         const student=sorted[raw.sIdx];if(!student)return;
-        const viewIdx=AP127_VIEW_ROWS.findIndex(s=>s.catc_id===student.catc_id);
+        let viewIdx=AP127_VIEW_ROWS.findIndex(s=>s.catc_id===student.catc_id);
+        if(viewIdx<0){
+          // Clicked SP isn't in the current search-filtered Progress Ranking rows — previously
+          // this silently did nothing. openAP127Drawer() only indexes into AP127_VIEW_ROWS (same
+          // array every other click-to-drawer entry point in this tab uses), so the fix is to
+          // clear whatever search is hiding them rather than build a second drawer-render path.
+          const q=document.getElementById("d127v4-q");if(q)q.value="";
+          renderAP127Rows();
+          viewIdx=AP127_VIEW_ROWS.findIndex(s=>s.catc_id===student.catc_id);
+        }
         if(viewIdx>=0)openAP127Drawer(viewIdx);
       },
       plugins:{
@@ -1011,8 +1038,8 @@ function buildAP127Timeline(all,curriculum,maxDate){
         tooltip:{
           filter:(item)=>{const ds=item.chart.data.datasets[item.datasetIndex];return !ds._isToday&&!ds._isCount&&!ds._isIdle;},
           callbacks:{
-            title:(ctx)=>{const r=ctx[0]?.raw;return r?ap127FmtDate(r.date):"";},
-            label:(ctx)=>{const r=ctx.raw;if(!r)return"";return `${ap127ShortName(r.studentName||ctx.dataset.label)} · ${r.lesson} · ${hm(r.mins||0)}`;}
+            title:(ctx)=>{const r=ctx[0]?.raw;if(ctx[0]?.dataset?._isNotStarted)return ap127ShortName(r.studentName);return r?ap127FmtDate(r.date):"";},
+            label:(ctx)=>{const r=ctx.raw;if(!r)return"";if(ctx.dataset._isNotStarted)return"Not started yet";return `${ap127ShortName(r.studentName||ctx.dataset.label)} · ${r.lesson} · ${hm(r.mins||0)}`;}
           }
         }
       },
@@ -1053,6 +1080,24 @@ function buildAP127Timeline(all,curriculum,maxDate){
   document.getElementById("d127v4-tl-meta").textContent=lead&&lag?`Leader ${ap127ShortName(lead.name)} (${lead.done||0}/${curriculum}) · Lag ${ap127ShortName(lag.name)} (${lag.done||0}/${curriculum})`:"-";
 }
 
+// Stable per-student line color, keyed by catc_id rather than sort position. Race, Cons/Idle
+// (and any future per-SP-line chart) previously computed hue as `i*360/n` off `ap127PaceSort`'s
+// index — since that sort order shifts on essentially every render (any SP passing another, or
+// scrubbing the As-Of time-travel slider to a different date), the same student's line color
+// would visibly drift across a session even though both charts used the identical formula and so
+// stayed consistent with EACH OTHER at any single moment. Recomputed only when batch membership
+// actually changes (cheap on ~28 students), so a given catc_id keeps the same hue all session.
+let AP127_STUDENT_HUES=null,AP127_STUDENT_HUES_KEY="";
+function ap127StudentHue(catc_id,allStudents){
+  const ids=[...new Set(allStudents.map(s=>s.catc_id))].sort();
+  const key=ids.join(",");
+  if(key!==AP127_STUDENT_HUES_KEY){
+    AP127_STUDENT_HUES={};
+    ids.forEach((id,i)=>{AP127_STUDENT_HUES[id]=Math.round(i*360/Math.max(ids.length,1));});
+    AP127_STUDENT_HUES_KEY=key;
+  }
+  return AP127_STUDENT_HUES[catc_id]??0;
+}
 let AP127_RACE_SOLO=null;
 let AP127_RACE_MODE='lessons';
 function setAP127RaceMode(m){
@@ -1096,7 +1141,13 @@ function buildAP127RaceChart(all,curriculum,maxDate){
     plannedDates.forEach(d=>{planByDate[d]=(planByDate[d]||0)+1;});
   }
   let planRun=0;
-  const planData=labels.map(d=>{planRun+=(planByDate[d]||0);return +planRun.toFixed(2);});
+  // Each dataset's points carry their own {x:date,y:value} pair (rather than a shared plain-number
+  // array read off a parallel `labels` array) so the chart can use a genuine `type:'time'` x-axis —
+  // `labels` alone forces Chart.js into a category axis, which gives equal pixel width to a 1-day
+  // gap and a 60-day gap between flights alike, visually distorting exactly the pace-over-time
+  // comparison this chart exists to show. Matches the pattern Cons/Idle and Combined Progress
+  // already use correctly.
+  const planData=labels.map(d=>{planRun+=(planByDate[d]||0);return {x:d,y:+planRun.toFixed(2)};});
 
   const datasets=[{
     label:"Planned Target",
@@ -1104,8 +1155,8 @@ function buildAP127RaceChart(all,curriculum,maxDate){
     borderColor:"#cbd5e1",pointRadius:0,tension:.25,borderDash:[6,4],borderWidth:2
   }];
 
-  racers.forEach((s,i)=>{
-    const hue=(i*360/Math.max(racers.length,1)).toFixed(0);
+  racers.forEach((s)=>{
+    const hue=ap127StudentHue(s.catc_id,racers);
     const col=`hsla(${hue},85%,62%,0.8)`;
     const nick=ap127ShortName(s.name);
     const flights=(s.flown||[]).filter(f=>f.date&&f.date<=today).sort((a,b)=>a.date.localeCompare(b.date));
@@ -1113,7 +1164,7 @@ function buildAP127RaceChart(all,curriculum,maxDate){
     const pts=cumSeries(flights);
     datasets.push({
       label:nick,
-      data:pts.map(p=>p.y),
+      data:pts.map((p,idx)=>({x:labels[idx],y:p.y})),
       borderColor:col,
       pointRadius:pts.map(p=>p.r),
       pointHoverRadius:pts.map(p=>p.r?5:0),
@@ -1125,14 +1176,14 @@ function buildAP127RaceChart(all,curriculum,maxDate){
     });
   });
 
-  const avgData=labels.map((_,li)=>{
+  const avgData=labels.map((d,li)=>{
     let sum=0,cnt=0;
     datasets.forEach(ds=>{
       if(ds.label==='Planned Target')return;
-      const v=ds.data[li];
+      const v=ds.data[li]?.y;
       if(typeof v==='number'){sum+=v;cnt++;}
     });
-    return cnt?+(sum/cnt).toFixed(2):0;
+    return {x:d,y:cnt?+(sum/cnt).toFixed(2):0};
   });
   datasets.push({
     label:'Batch Avg',
@@ -1146,14 +1197,16 @@ function buildAP127RaceChart(all,curriculum,maxDate){
   });
 
   CHARTS.ap127race=mkC("d127v4-race",{
-    type:"line",data:{labels,datasets},
+    type:"line",data:{datasets},
     options:{responsive:true,maintainAspectRatio:false,
+      parsing:{xAxisKey:"x",yAxisKey:"y"},
+      interaction:{mode:"index",intersect:false},
       plugins:{datalabels:{display:false},legend:{display:false},tooltip:{callbacks:{
-        title:(ctx)=>ap127FmtDate(ctx[0]?.label||""),
-        label:(ctx)=>`${ctx.dataset.label}: ${isHrs?ctx.parsed.y.toFixed(1)+" hrs":ctx.parsed.y+" les"}`
+        title:(ctx)=>{const r=ctx[0]?.raw;return r?ap127FmtDate(r.x):"";},
+        label:(ctx)=>{const v=ctx.raw?.y;if(v==null)return null;return `${ctx.dataset.label}: ${isHrs?v.toFixed(1)+" hrs":v+" les"}`;}
       }}},
       scales:{
-        x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxTicksLimit:18},grid:{color:"#21262d"}},
+        x:{type:"time",time:{unit:"month",displayFormats:{day:"d MMM",week:"d MMM",month:"MMM yy"}},ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxTicksLimit:18,source:"auto"},grid:{color:"#21262d"}},
         y:{beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",callback:v=>isHrs?v.toFixed(0)+"h":v},grid:{color:"#21262d"}}
       }
     }
@@ -1223,8 +1276,8 @@ function buildAP127ConsIdle(all,asOf){
   const days=ap127AllDatesRange(start,today);
   const datasets=[{label:"Zero",data:days.map(d=>({x:d,y:0})),borderColor:"rgba(255,255,255,0.18)",borderWidth:1,borderDash:[4,3],pointRadius:0,tension:0,order:0}];
   const allSeries=[];
-  racers.forEach((s,i)=>{
-    const hue=(i*360/Math.max(racers.length,1)).toFixed(0);
+  racers.forEach((s)=>{
+    const hue=ap127StudentHue(s.catc_id,racers);
     const col=`hsla(${hue},85%,62%,0.8)`;
     const nick=ap127ShortName(s.name);
     const visible=AP127_RACE_SOLO===null||AP127_RACE_SOLO===nick;
@@ -1683,7 +1736,13 @@ function buildAP127CombinedChart(){
   const curByLessonNum=[...curriculum].filter(c=>ap127LessonNum(c.lesson)!=null).sort((a,b)=>ap127LessonNum(a.lesson)-ap127LessonNum(b.lesson));
   const cumPlannedMinsToLesson=lessonNum=>{let mins=0;for(const c of curByLessonNum){if(ap127LessonNum(c.lesson)>lessonNum)break;mins+=c.planned_mins||0;}return mins;};
   const targetBatchValue=lessonNum=>isHrs?cumPlannedMinsToLesson(lessonNum)*n/60:lessonNum*n;
-  const targetSeries=targetsRaw.map(t=>({x:t.date,y:+targetBatchValue(t.lesson).toFixed(2)}));
+  // Clipped to endDate exactly like planSeries/actSeries above — without this, selecting "To Today"
+  // (CPV_FILTER==='today') had no visible effect on the x-axis: Chart.js autoscales x to the union
+  // of every dataset's points, and the Targets schedule's own points run out to 2026-11-29
+  // regardless of the filter, so the "zoom to what's happened so far" toggle was silently defeated
+  // the moment this series was added (p140). scales.x.min/max below is a second, belt-and-braces
+  // fix so no future dataset can do this again even if a filter step here is missed.
+  const targetSeries=targetsRaw.filter(t=>t.date<=endDate).map(t=>({x:t.date,y:+targetBatchValue(t.lesson).toFixed(2)}));
   const todayTargetLesson=window.ap127TargetLessonForDate?window.ap127TargetLessonForDate(today,targetsRaw):null;
   const targetVariance=todayTargetLesson!=null?totalDone-targetBatchValue(todayTargetLesson):null;
 
@@ -1738,7 +1797,7 @@ function buildAP127CombinedChart(){
         }
       },
       scales:{
-        x:{type:'time',time:{unit:'month',displayFormats:{day:'d MMM',week:'d MMM',month:'MMM yy'}},
+        x:{type:'time',min:firstDate,max:endDate,time:{unit:'month',displayFormats:{day:'d MMM',week:'d MMM',month:'MMM yy'}},
           ticks:{font:{family:'JetBrains Mono',size:8},color:'#6e7681',maxTicksLimit:14,source:'auto'},grid:{color:'#21262d'}},
         y:{beginAtZero:false,
           ticks:{font:{family:'JetBrains Mono',size:9},color:'#8b949e',callback:v=>isHrs?v.toFixed(0)+'h':v},

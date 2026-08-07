@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p150` (all currently at p149)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p151` (all currently at p150)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -55,7 +55,50 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p149` (2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
+**Last known:** all files `p150` (2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
+Round B: Combined Progress + Race + Cons/Idle + Timeline chart fixes.** Continuation of the audit
+started in p149 (plan: `.claude/plans/nested-sparking-tide.md`). Fixes, all in
+`buildAP127CombinedChart()`/`buildAP127RaceChart()`/`buildAP127ConsIdle()`/`buildAP127Timeline()`:
+1. **Combined Progress vs Plan's "To Today" filter actually works now.** `targetSeries` (the
+   AP127 Targets overlay added in p140) wasn't clipped to `endDate` the way `planSeries`/`actSeries`
+   already were — since Chart.js autoscales the x-axis to the union of every dataset's points, the
+   Target schedule's own far-future points (through Nov 2026) kept the axis wide open regardless of
+   the "To Today" toggle. Now clipped, plus explicit `scales.x.min/max` set so no future dataset can
+   do this again. Verified live: switching to "To Today" now correctly shrinks the axis max from
+   2028-12-02 (the long projection) down to today's date.
+2. **Race chart ("Actual vs Planned") now plots on a real time axis, not a category axis.** Was
+   missing `x:{type:'time'}` (its sibling charts, Cons/Idle and Combined Progress, already had it)
+   — under a category axis a 1-day gap and a 60-day gap between flights got equal pixel width,
+   distorting the exact pace-over-time comparison this chart exists to show. Converted every
+   dataset's data to `{x,y}` pairs and added the same time-axis config the other two charts use.
+3. **Per-student line color is now stable across a session, not tied to sort position.** Race and
+   Cons/Idle both colored each SP by `i*360/n` off `ap127PaceSort`'s index — since that order shifts
+   on every render where relative rank changes (progress, or scrubbing the As-Of time-travel
+   slider), the same student's color could visibly drift. New shared `ap127StudentHue(catc_id,...)`
+   assigns hue by a stable identity key (catc_id), recomputed only when batch membership actually
+   changes. Verified live: time-traveled to 01 Jun 2026 (reordering the sort) and confirmed one
+   student's line kept the identical hue (321°) before and after.
+4. **Timeline chart: never-flown students no longer render as a blank row.** Every other activity
+   state (flying, gone-idle) already got a colored visual cue; a student who simply hasn't started
+   training yet got nothing at all — indistinguishable from a data-load glitch. Added a hollow ring
+   marker at the plot's left edge plus a "not started" tooltip and legend chip. (No students in the
+   live dataset currently trigger this path — verified by code review/syntax-check rather than a
+   live before/after, same as a couple of Round A's zero-hour-student edge cases.)
+5. **Timeline chart: dot-click no longer silently no-ops when the student is filtered out of the
+   search box.** `onClick` resolved the clicked SP against `AP127_VIEW_ROWS` (search-filtered) with
+   no fallback — clicking a dot for a student excluded by an active search did nothing, with zero
+   feedback. Now clears the search and re-renders before retrying the lookup.
+6. **Cons/Idle streak chart: added a note explaining early-batch negative average.** Every SP's
+   streak is walked from the BATCH's earliest flown date, not their own start date, so a
+   late-starting SP reads as "idle" for every day before they personally began — which can make the
+   Batch Avg line read as deeply negative early on for reasons unrelated to pace. Panel note now
+   calls this out explicitly instead of leaving it to be misread.
+Verified live throughout (see individual items); zero new console errors beyond the pre-existing
+local-dev CORS fallback. Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/
+untouched. Only file touched: `js/view-cohort-v4.js`. Full write-up: REVAMP.md's p150 entry. Rounds
+C (Daily Output/Funnel/Roster/Lesson Matrix), D (SYLLABUS strip/Overall Progress polish), and E
+(lesson-code normalization audit) still pending.) p149
+(2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
 Round A: Progress Ranking + Pace Monitor bug fixes.** User: "Pls go through all stat, table and
 Charts in AP127 DETAIL V4. Suggest improvement idea and flaw that might currently there." Full
 audit done via 3 parallel Explore agents covering every stat card, table, and chart in

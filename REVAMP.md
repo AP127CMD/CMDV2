@@ -2041,3 +2041,86 @@ errors beyond the pre-existing local-dev CORS fallback. Original AP127 Detail
 (Combined Progress/Race/Cons-Idle/Timeline charts), C (Daily Output/Funnel/Roster/Lesson Matrix),
 D (SYLLABUS strip/Overall Progress polish), and E (lesson-code normalization audit) are still
 pending** — full 26-item catalog in `.claude/plans/nested-sparking-tide.md`.
+
+### AP127 Detail V4 — full stats/table/chart audit, Round B: Combined Progress + Race + Cons/Idle + Timeline chart fixes (2026-08-07, p150)
+
+`js/view-cohort-v4.js`
+
+Continuation of the audit begun in p149 (see that entry for method). Round B covers the four
+charts one Explore agent audited: Flight Timeline vs Progress, the Race chart ("Actual vs
+Planned"), Consecutive & Idle Streaks, and Combined Progress vs Plan.
+
+**1. Combined Progress vs Plan's "To Today" filter is fixed — it was silently a no-op.**
+`buildAP127CombinedChart()`'s `targetSeries` (the AP127 Targets milestone overlay added in p140)
+was built from the full, unclipped schedule (`targetsRaw.map(...)`, running to 2026-11-29) while
+`planSeries`/`actSeries` right next to it were both correctly clipped to `endDate`. Chart.js
+autoscales the x-axis to the union of every dataset's points with no explicit bounds set, so the
+Target series' far-future points kept the axis wide open no matter what `CPV_FILTER` said —
+selecting "To Today" (whose entire job is to zoom the view down to what's happened so far) did
+nothing. Fixed by filtering `targetSeries` to `t.date<=endDate`, same as its siblings, plus adding
+explicit `scales.x.min:firstDate,max:endDate` as a second, belt-and-braces fix so no future
+dataset addition can silently widen the axis again. **Verified live:** default (`proj`) mode
+showed axis max `2028-12-02` (the genuine long-run projection); switching to "To Today" now
+correctly collapses it to `2026-08-07` (today), with the Target series correctly clipping to
+empty (the first AP127 checkpoint, 09 Aug 2026, hasn't arrived yet in this snapshot).
+
+**2. Race chart now plots on a real time axis instead of a category axis.** `buildAP127RaceChart`
+had no `x.type` set in its chart config — Chart.js defaults to `category` when data is a plain
+`{labels,datasets}` pair, which was exactly this chart's shape (irregularly-spaced calendar dates
+as `labels`, plain numeric y-values per dataset). A category axis gives equal pixel width to
+every gap between labels regardless of real elapsed time, so a 1-day gap and a 60-day gap between
+flights looked identical — a real distortion for a chart whose whole point is showing pace *over
+time*. Its siblings (Cons/Idle, Combined Progress) already get this right via `type:'time'`.
+Fixed by converting every dataset's data to `{x:date,y:value}` pairs (the Batch Avg dataset's
+internal average calc updated to read `.y` off each point instead of a raw number) and adding the
+same `type:'time'` config + `parsing:{xAxisKey:'x',yAxisKey:'y'}` the other two charts use.
+**Verified live:** `race.options.scales.x.type === 'time'`, sample data point
+`{x:'2026-03-31',y:0}` confirms the new shape.
+
+**3. Per-student line color is now stable across a session instead of drifting with sort
+position.** Race and Cons/Idle both computed each SP's hue as `i*360/n` off their index in
+`ap127PaceSort(...)` — since that sort order changes on essentially every render where relative
+progress shifts (or the As-Of time-travel slider is scrubbed to a different date), the same
+student's line color could visibly drift across a session even though both charts used the
+identical formula and so stayed consistent *with each other* at any given instant. New shared
+`ap127StudentHue(catc_id, allStudents)`: assigns each student a hue by sorting the batch's
+`catc_id`s (a fixed identity key, not a pace-dependent one) once, cached and only recomputed if
+batch membership itself changes. Wired into both charts' per-racer loops. **Verified live:**
+captured one student's line hue (321°) at the default sort, time-traveled the As-Of scrubber to
+01 Jun 2026 (which reorders `ap127PaceSort`'s output), and confirmed the same student's hue was
+unchanged — 321° both times.
+
+**4. Timeline chart: a never-flown student no longer renders as a blank, unexplained row.** Every
+other activity state on this chart already gets a colored cue — a phase-colored dot per flight,
+a dashed idle tail once a student's gone quiet — but a student who simply hasn't started training
+yet got nothing pushed to the chart at all beyond their own empty dataset, an empty row
+indistinguishable from a data-load glitch. Added a hollow-ring marker at the plot's left edge
+(`_isNotStarted` dataset) with a "Not started yet" tooltip and a matching legend chip, and made it
+clickable into the student drawer via the same `sIdx` mechanism every other point uses. No student
+in the current live snapshot triggers this path, so this was verified via code review + the
+existing `node --check` syntax pass rather than a live before/after — the same verification
+standard already used for a couple of Round A's zero-hour-student edge cases.
+
+**5. Timeline chart: a dot click on a search-filtered-out student no longer silently no-ops.**
+`onClick` resolved the clicked SP against `AP127_VIEW_ROWS` — which is the *search-filtered*
+Progress Ranking rows — with no fallback if the lookup came back empty; clicking a dot for a
+student currently excluded by an active search box query simply did nothing, with no feedback at
+all that anything had happened. Since `openAP127Drawer()` (shared with every other click-to-drawer
+entry point in this tab) strictly indexes into `AP127_VIEW_ROWS`, the correct fix is to clear
+whatever search is hiding the student and re-render before retrying the lookup, rather than build
+a second, parallel drawer-render path.
+
+**6. Cons/Idle streak chart: added a note explaining the early-batch negative-average artifact.**
+Every SP's streak walk starts from the *batch's* earliest-ever flown date (`allFlownDates[0]`),
+not their own individual start — so a late-starting SP reads as "idle" for every calendar day
+before they personally began training, which can pull the Batch Avg line deeply negative early in
+the chart's timeline for reasons that have nothing to do with pace. The panel's existing note
+(which only explained the color-sharing/isolate-by-click behavior) now also explains this, so a
+viewer skimming a deep dip early on doesn't misread it as "the batch was idle."
+
+Verified live throughout (see individual items above); zero new console errors beyond the
+pre-existing local-dev CORS fallback. Original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched. Only file touched: `js/view-cohort-v4.js` (plus the usual `index.html`
+cache-bust bump, p149→p150). **Rounds C (Daily Output/Funnel/Roster/Lesson Matrix), D (SYLLABUS
+strip/Overall Progress polish), and E (lesson-code normalization audit) are still pending** — full
+26-item catalog in `.claude/plans/nested-sparking-tide.md`.
