@@ -55,6 +55,15 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
+**Note (2026-08-07): Round E of the audit closed with a "ruled out" verdict, no code change.**
+The last Tier-3 item — a theoretical lesson-code casing/whitespace mismatch that could make
+`ap127Hours()`/`ap127RequiredPace()`/various `planMap` lookups silently diverge from
+`ap127AsOfStudents()`'s normalized comparison — was checked directly against the live
+`window.PROGRESS_DATA` (96 curriculum codes × 43 flown codes, zero mismatches, zero missing) and
+ruled out as not currently live. No file touched; full reasoning in REVAMP.md's Round E entry.
+**This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
+p149–p152, all shipped and deploy-verified).**
+
 **Last known:** all files `p152` (2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
 Round D: SYLLABUS strip + Overall Progress polish.** Continuation of the p149-p151 audit (plan:
 `.claude/plans/nested-sparking-tide.md`). Fixes, all in `ap127SyllabusStrip()`/new

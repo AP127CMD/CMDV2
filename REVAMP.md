@@ -2286,3 +2286,48 @@ new console errors beyond the pre-existing local-dev CORS fallback. Original AP1
 `js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust bump,
 p151→p152). **Round E (lesson-code normalization audit) is still pending** — full 26-item catalog
 in `.claude/plans/nested-sparking-tide.md`.
+
+### AP127 Detail V4 — full stats/table/chart audit, Round E: lesson-code normalization audit — ruled out (2026-08-07, no code change)
+
+No file touched — this round concludes the audit begun in p149 with a **ruled out, not fixed**
+verdict, per the plan's own framing ("confirm or rule out... before deciding whether it needs a
+fix").
+
+**The concern:** `ap127AsOfStudents()` normalizes lesson codes with `.toUpperCase().trim()` before
+comparing them (its `flownSet`/`nx` lookup) — the only place in the file that does this, which
+reads as defensive coding written in response to some past real casing/whitespace inconsistency.
+Every other lesson-code-keyed lookup in the file — `ap127Hours()`'s `lessonsMap`,
+`ap127RequiredPace()`'s/`ap127ActualPace()`'s `lessonsMap`s, every `planMap` (Progress Ranking,
+Pace Monitor, the student drawer) — does a **raw, unnormalized** object-key lookup. If a flown
+lesson code ever differed in case/whitespace from the curriculum's own code for that same lesson,
+`ap127Hours()` would silently fall back to the flight's *actual* logged minutes instead of the
+curriculum-standard duration — quietly violating the tab's headline "HOURS = EFFECTIVE" guarantee
+for that one flight — and the various `planMap` lookups would silently return `null`/`"-"`
+("no planned date") for a lesson that does have one under a different casing.
+
+**Verification method:** inspected the live bundled dataset directly (`window.PROGRESS_DATA`, the
+same object `ap127AsOfStudents()`/`G` are built from) via the browser console — built the full set
+of unique curriculum lesson codes (`cur127[].lesson`) and the full set of unique flown lesson
+codes across every student (`ap127[].flown[].lesson`), then checked every flown code for (a) an
+exact raw-string match in the curriculum set, and (b) if no exact match, whether a
+`.toUpperCase().trim()`-normalized match existed instead (which would be the smoking gun for this
+bug class).
+
+**Result:** 96 unique curriculum codes, 43 unique flown codes, **zero** casing/whitespace-only
+mismatches, **zero** flown codes missing from the curriculum set entirely — every single flown
+lesson code in the live dataset is an exact raw-string match against its curriculum entry.
+
+**Conclusion: ruled out, no code change made.** The bug class is real in principle (and the
+defensive normalization in `ap127AsOfStudents()` suggests it was a genuine problem at some point,
+likely upstream data that's since been cleaned), but it is not currently live — there is no
+observable case to fix, and no way to verify a preventive change actually does anything against a
+live dataset that already exhaustively passes. Applying a broad "normalize every lookup" change
+across half a dozen call sites for a purely theoretical, currently-nonexistent condition would be
+exactly the kind of speculative, unverifiable "fix" this session's standing discipline (verify
+live, not just written and shipped) argues against. If upstream data quality regresses in the
+future and this class of bug resurfaces, the fix is straightforward and localized (reuse the same
+`.toUpperCase().trim()`-then-Map pattern `ap127AsOfStudents()` already has) — but there's nothing
+to fix today.
+
+**This closes the full 26-item audit catalog from `.claude/plans/nested-sparking-tide.md`
+(Rounds A–E, p149–p152).**
