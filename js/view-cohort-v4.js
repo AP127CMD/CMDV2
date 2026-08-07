@@ -382,8 +382,14 @@ function ap127IdleLineColor(d){if(d<=2)return"#e6edf3";if(d<=5)return"#fbbf24";r
 // Dual = the app's signature magenta accent (var(--c127)/#e88aff, used everywhere else in this
 // tab), Solo = mustard (deliberately a duller, more brownish yellow than the bright gold #facc15
 // already used for target-checkpoint flags/key-point ticks elsewhere, so the two don't get
-// visually confused).
-const AP127_LESSON_TYPE_COLORS={Dual:"#e88aff",Solo:"#d4a017",Simulator:"#a78bfa"};
+// visually confused). Simulator deliberately darkened from an earlier, lighter violet (#a78bfa)
+// — measured perceived luminance had it landing almost identical to Solo's mustard (~160 vs ~160
+// on a 0-299 scale) and uncomfortably close to Dual's magenta too, meaning the three colors were
+// distinguishable mainly by HUE alone with almost no lightness gap backing it up — a real risk for
+// colorblind viewers, since magenta/violet sit close together under deuteranopia/protanopia. The
+// darker indigo (~111 luminance) reads as the same "Simulator" hue family while sitting well below
+// both other segments in brightness.
+const AP127_LESSON_TYPE_COLORS={Dual:"#e88aff",Solo:"#d4a017",Simulator:"#6d5cd6"};
 function ap127LessonType(code){
   const c=String(code||"").trim();
   if(/\(SIM\)/i.test(c))return"Simulator";
@@ -504,7 +510,11 @@ function ap127ActualPace(){
   const lessonsMap={};cur.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
   const fHrsOf=f=>(lessonsMap[f.lesson]||ap127FlightMins(f))/60;
   const over=days=>{
-    const start=(()=>{const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-days);return d.toISOString().slice(0,10);})();
+    // UTC throughout (parse+step+serialize in UTC) — parsing as LOCAL midnight then serializing
+    // via toISOString (always UTC) silently shifts the result back a day in any timezone east of
+    // UTC (Bangkok is UTC+7), widening every "trailing N days" window here by a day. Same bug
+    // class already fixed in ap127AllDatesRange()/ap127v4WeekStart() — see their comments.
+    const start=(()=>{const d=new Date(today+"T00:00:00Z");d.setUTCDate(d.getUTCDate()-days);return d.toISOString().slice(0,10);})();
     let hrs=0,les=0;
     all.forEach(s=>{const wf=(s.flown||[]).filter(f=>f.date&&f.date>=start&&f.date<=today);les+=wf.length;hrs+=wf.reduce((a,f)=>a+fHrsOf(f),0);});
     return{hrs,les};
@@ -1996,6 +2006,10 @@ function ap127FitY(chart){
     let yMin=Infinity,yMax=-Infinity;
     chart.data.datasets.forEach(ds=>{
       if(ds.label==='Today'||ds.label==='Total')return;
+      // Skip hidden datasets — without this, isolating a single SP in Pace Distribution (solo) via
+      // AP127_RACE_SOLO (hidden:true on every other student's dataset, not removed) still let
+      // every OTHER student's Y-range pull the auto-fit wide, defeating the point of isolating one.
+      if(ds.hidden)return;
       (ds.data||[]).forEach(pt=>{
         const t=pt.x instanceof Date?pt.x.getTime():(typeof pt.x==='number'?pt.x:new Date(pt.x).getTime());
         if(t>=xMin&&t<=xMax){if(pt.y<yMin)yMin=pt.y;if(pt.y>yMax)yMax=pt.y;}
@@ -2141,13 +2155,6 @@ function ap127v4PeriodRange(start,end,period){
   while(d<=endD&&guard<240){out.push(d.toISOString().slice(0,7)+"-01");d.setUTCMonth(d.getUTCMonth()+1);guard++;}
   return out;
 }
-// Last calendar date covered by a given period key — used to tell whether that period has fully
-// elapsed yet ("closed") or is still the one today falls inside ("open"/in-progress).
-function ap127v4PeriodEnd(key,period){
-  if(period==="day")return key;
-  if(period==="week"){const d=new Date(key+"T00:00:00Z");d.setUTCDate(d.getUTCDate()+6);return d.toISOString().slice(0,10);}
-  const d=new Date(key+"T00:00:00Z");d.setUTCMonth(d.getUTCMonth()+1);d.setUTCDate(d.getUTCDate()-1);return d.toISOString().slice(0,10);
-}
 // Simple linear projection for an in-progress period: "if the rest of this period keeps pace with
 // what's logged so far, where would it end up." Day view has no meaningful sub-day data to
 // extrapolate from (a day IS this chart's finest grain), so it returns actualSoFar unchanged —
@@ -2229,7 +2236,22 @@ function buildAP127LessonBar(){
   // matched Pace Monitor's exactly, but that meant the line floated away from any real bar, which
   // was worse). Only drawn when the visible range extends to today AND there's an actual closed
   // bar to compare against.
-  const gapIdx=latestIsOpen?openIdx-1:openIdx;
+  // gapIdx must reference the CALENDAR period immediately before today's period, not just
+  // "whatever entry precedes openIdx in `keys`" — when "Hide off days" (AP127V4_LB_SHOWALL=false)
+  // strips zero-activity periods out of `keys`, the entry right before openIdx can be an
+  // arbitrarily older, non-adjacent period (e.g. several idle days/weeks back), silently breaking
+  // the "latest CLOSED period" claim this overlay's own legend/note makes. Resolve the true
+  // immediately-preceding key against the unfiltered `allKeys` first, then look it up in the
+  // (possibly filtered) `keys`/`values` arrays actually being plotted; if that exact period was
+  // filtered out (zero activity), gapIdx comes back -1 and the existing `gapIdx>=0` guard on
+  // showTarget below correctly suppresses the overlay rather than silently comparing against a
+  // stale bar. With "Hide off days" off (the default), keys===allKeys and this reduces to the
+  // original openIdx-1.
+  const gapIdx=latestIsOpen?(()=>{
+    const openKeyPos=allKeys.indexOf(keys[openIdx]);
+    const prevCalKey=openKeyPos>0?allKeys[openKeyPos-1]:null;
+    return prevCalKey!=null?keys.indexOf(prevCalKey):-1;
+  })():openIdx;
   const reqPace=ap127RequiredPace();
   const target=(reqPace&&atToday)
     ?(period==="day"?(isHrs?reqPace.reqDayHrsB:reqPace.reqDayLesB)
@@ -2406,7 +2428,20 @@ function buildAP127Funnel(all){
   const labels=phaseSlots.map(p=>p.label);
   const doneData=phaseSlots.map(p=>{
     let done=0;
-    all.forEach(s=>{done+=(s.flown||[]).filter(f=>inPhase(f.lesson,p)).length;});
+    all.forEach(s=>{
+      // Dedup per (student, lesson NUMBER) before counting — a retaken lesson previously counted
+      // once per flight record, letting a phase's "Done" segment exceed its own slot total
+      // (totalSlots below assumes exactly one completion per curriculum lesson per student) and
+      // show over 100% on the datalabel. Same "credit once per SP" principle as the p143 Ops
+      // Analytics effective-hours fix.
+      const seen=new Set();
+      (s.flown||[]).forEach(f=>{
+        if(!inPhase(f.lesson,p))return;
+        const num=ap127LessonNum(f.lesson);
+        if(num==null||seen.has(num))return;
+        seen.add(num);done++;
+      });
+    });
     return done;
   });
   const totalSlots=phaseSlots.map(p=>p.total*n);
@@ -2480,7 +2515,13 @@ function buildAP127LessonMatrix(){
       if(n==null)return;
       (byLesson[n]=byLesson[n]||[]).push(f);
     });
-    const vsClosest=closest?(s.done||0)-closest.lesson:null;
+    // Unique lesson count (Object.keys(byLesson) is already deduped by lesson NUMBER above),
+    // not the raw s.done flight-record count — a student who retook one lesson would otherwise
+    // show vsClosest one unit more favorable than reality, since s.done counts every flight
+    // including retakes. Same double-count family as the Funnel's phase-completion bug, smaller
+    // blast radius (off by ~1 per retake here vs. able to exceed 100% there).
+    const uniqueDone=Object.keys(byLesson).length;
+    const vsClosest=closest?uniqueDone-closest.lesson:null;
     const nextNum=ap127LessonNum(s.next_lesson);
     return{s,byLesson,vsClosest,nextNum};
   });
@@ -2569,7 +2610,9 @@ function buildAP127Roster(){
   const rangeEl=document.getElementById("d127v4-roster-range");
   const rangeVal=rangeEl?parseInt(rangeEl.value||"30"):30;
   const batchStart=all.flatMap(s=>(s.flown||[]).map(f=>f.date).filter(Boolean)).sort()[0]||today;
-  const start=rangeVal===0?batchStart:(()=>{const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-rangeVal);return d.toISOString().slice(0,10);})();
+  // UTC throughout — same local-parse/UTC-serialize bug already fixed in ap127AllDatesRange()/
+  // ap127ActualPace(); left unfixed here it shifts "Last Nd" back a day east of UTC (Bangkok).
+  const start=rangeVal===0?batchStart:(()=>{const d=new Date(today+"T00:00:00Z");d.setUTCDate(d.getUTCDate()-rangeVal);return d.toISOString().slice(0,10);})();
   const rangeLabel=rangeVal===0?`All time · since ${ap127ShortDate(batchStart)}`:`Last ${rangeVal}d`;
   const heading=document.getElementById("d127v4-fi-heading");
   if(heading)heading.textContent=`By Instructor · ${rangeLabel}`;

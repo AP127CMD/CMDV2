@@ -2124,3 +2124,92 @@ byte-identical/untouched. Only file touched: `js/view-cohort-v4.js` (plus the us
 cache-bust bump, p149→p150). **Rounds C (Daily Output/Funnel/Roster/Lesson Matrix), D (SYLLABUS
 strip/Overall Progress polish), and E (lesson-code normalization audit) are still pending** — full
 26-item catalog in `.claude/plans/nested-sparking-tide.md`.
+
+### AP127 Detail V4 — full stats/table/chart audit, Round C: Daily Output + Funnel + Roster + Lesson Matrix fixes (2026-08-07, p151)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Continuation of the audit begun in p149 (method there). Round C covers the third Explore agent's
+findings: Pace Distribution (batch + solo), Pace Band, Daily Output, Phase Progress Funnel,
+Watchlist, Lesson Completion Matrix, Roster.
+
+**1. Timezone bug fixed at two more sites.** Same local-parse/UTC-serialize bug class already
+fixed in `ap127AllDatesRange()`/`ap127v4WeekStart()` (parsing `today+"T00:00:00"` with no `Z`
+reads as LOCAL midnight, but `.toISOString()` always serializes in UTC — silently shifting the
+result back a day in any timezone east of UTC, e.g. Bangkok UTC+7) had resurfaced in two places
+written after that original fix: `ap127ActualPace()` (line ~506 — feeds Pace Monitor's Actual/Gap
+numbers directly) and `buildAP127Roster()`'s date-range start (line ~2576). Both switched to
+`+"T00:00:00Z"` / `setUTCDate`, matching the already-correct pattern.
+
+**2. Phase Progress Funnel could show over 100% from retaken lessons.** `doneData` counted every
+flown record whose lesson fell in a phase, with no dedup per (student, lesson) — but `totalSlots`
+(`phaseSlots.total * n`) assumes exactly one completion per curriculum lesson per student. A
+student retaking any lesson in a phase could push that phase's "Done" bar past its own slot total,
+showing e.g. "108%" on a completion funnel. Fixed with a `Set` of seen lesson numbers per student
+per phase before counting — same "credit once per SP" principle as the p143 Ops Analytics
+effective-hours fix. **Verified live:** all 4 phases now compute to ≤100%
+(`done:[364,495,73,0]`, `totals:[364,532,644,1148]` → `pcts:[100,93,11,0]`) — `Done+Remaining`
+exactly equals each phase's total by construction, so overshoot is now structurally impossible.
+
+**3. Lesson Completion Matrix's `vsClosest` lead/lag figure had the same bug, smaller blast
+radius.** It compared a student's raw `s.done` (a flight-record count that includes retakes)
+against the closest AP127 Target milestone's lesson number — a student who'd retaken one lesson
+showed one unit more "ahead" than reality. Fixed using a locally-computed `uniqueDone =
+Object.keys(byLesson).length` (the `byLesson` grouping this function already builds is naturally
+deduped by lesson number) instead of `s.done`, scoped to just this function — `s.done` itself is
+left untouched everywhere else in the tab, since it's an intentional, established "raw activity
+count" convention used by many unrelated call sites (Progress Ranking, KPI cards, etc.) that
+weren't flagged as having a bug.
+
+**4. Roster table now has two sticky columns, matching the Lesson Completion Matrix's existing
+pattern.** `.d127v4-heat-total` (the Total lessons/hours column) had no `position:sticky` — on a
+wide date range (potentially many months of day columns) it scrolled out of view while only the
+Name column stayed pinned, unlike the Lesson Matrix right above it in the tab, which already pins
+two columns (Name + "vs Target") for exactly this reason. Fixed by mirroring
+`.d127v4-lm-name`/`.d127v4-lm-vs`'s exact pattern: `.d127v4-heat-total{position:sticky;left:82px;
+...}` with a `left:66px` mobile breakpoint at ≤700px. **Verified live:** `getComputedStyle` on the
+Total header confirms `position:sticky, left:82px`; a screenshot of the rendered table shows the
+Name and Total columns pinned together at the left edge while day cells scroll independently.
+While in this CSS section, also removed the confirmed-dead `.d127v4-heat-group` rule (no matching
+class ever emitted by `buildAP127Roster()` — leftover from an earlier "group by batch" idea that
+was never wired up, verified via grep).
+
+**5. Daily Output's "latest closed period" comparison can no longer silently point at a stale
+period.** `gapIdx` (added in p147, anchors the Required/Actual/Gap overlay on the latest fully-
+elapsed period rather than the still-forming open one) indexed into the *filtered* `keys` array —
+when "Hide off days" strips zero-activity periods out, the entry immediately before `openIdx` in
+that filtered array can be an arbitrarily older, non-adjacent period if there's a real idle gap
+right before today, silently breaking the overlay's own "latest CLOSED period" claim. Fixed by
+resolving the true calendar-adjacent period against the unfiltered `allKeys` first, then looking
+that exact key up in the (possibly filtered) `keys` actually being plotted — if it was filtered
+out, `gapIdx` correctly comes back `-1` and the existing `gapIdx>=0` guard on `showTarget`
+suppresses the overlay rather than comparing against a stale bar. With "Hide off days" off (the
+default), `keys===allKeys` and this reduces to the original `openIdx-1`, so default behavior is
+unchanged. Verified live: toggled "Hide off days" on with the By Type breakdown also active, zero
+console errors, overlay legend/note still render correctly.
+
+**6. Dual/Solo/Simulator "By Type" palette contrast improved.** The p148 recolor (Dual→magenta,
+Solo→mustard) left Simulator at its original light violet `#a78bfa`. Measured perceived luminance
+(0.299R+0.587G+0.114B) put Solo and Simulator at nearly identical brightness (~160 vs ~160 on a
+0-299 scale) — the three colors were distinguishable mainly by hue alone, a real risk for
+colorblind viewers since magenta and violet sit close together under deuteranopia/protanopia.
+Simulator darkened to `#6d5cd6` (~111 luminance) — a real ~50-point lightness gap from both Dual
+and Solo while staying recognizably the same "Simulator" hue family; on-segment datalabels weren't
+affected since Simulator's label is a light-colored stack-total figure positioned above the bar,
+not dark text drawn on top of the fill. **Verified live:** `Chart.getChart(...)`'s Simulator
+dataset confirms `backgroundColor: "#6d5cd6"`.
+
+**7. Two dead-code cleanups + one latent chart-fit bug.** Removed `ap127v4PeriodEnd()` (defined,
+never called — confirmed via grep, its purpose was apparently superseded by a simpler inline check
+elsewhere). Fixed `ap127FitY()` (the shared Y-axis auto-fit helper used by Combined Progress and
+Pace Distribution/solo) to skip `hidden` datasets when computing the visible range — previously,
+isolating a single student in Pace Distribution (solo) via the shared Race-chart student filter
+still let every OTHER (hidden) student's Δ range pull the auto-fit wide after a zoom/pan, working
+against the whole point of isolating one line.
+
+Verified live throughout (see individual items above); zero new console errors beyond the
+pre-existing local-dev CORS fallback. Original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the
+usual `index.html` cache-bust bump, p150→p151). **Rounds D (SYLLABUS strip/Overall Progress
+polish) and E (lesson-code normalization audit) are still pending** — full 26-item catalog in
+`.claude/plans/nested-sparking-tide.md`.

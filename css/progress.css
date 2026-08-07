@@ -231,12 +231,16 @@
 .d127v4-heat-table{border-collapse:separate;border-spacing:1.5px;}
 .d127v4-heat-name{position:sticky;left:0;background:var(--s1);z-index:1;white-space:nowrap;padding:1px 8px 1px 2px;text-align:left;}
 .d127v4-heat-name b{font-size:9.5px;font-weight:700;}
-.d127v4-heat-total{white-space:nowrap;padding:0 8px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--tx2);}
+/* Two sticky columns (Name, Total), same reasoning/pattern as the Lesson Completion Matrix's
+   .d127v4-lm-name/.d127v4-lm-vs pair just below — this table can scroll through many months of
+   day columns, and without a sticky Total the per-SP lessons/hours figure scrolled out of view
+   while only the name stayed pinned. */
+.d127v4-heat-total{position:sticky;left:82px;background:var(--s1);z-index:1;white-space:nowrap;padding:0 8px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--tx2);}
 .d127v4-heat-cell{width:12px;height:13px;border-radius:2px;background:var(--s3);cursor:default;}
 .d127v4-heat-cell.d127v4-heat-today{box-shadow:inset 0 0 0 1.5px var(--c127);}
 th.d127v4-heat-today-col{background:color-mix(in oklch,var(--c127) 14%,transparent);}
 .d127v4-heat-daylbl{font-family:'JetBrains Mono',monospace;font-size:6.5px;color:var(--tx3);text-align:center;white-space:nowrap;}
-.d127v4-heat-group td{padding:5px 10px!important;background:var(--s2);position:sticky;left:0;}
+@media(max-width:700px){.d127v4-heat-total{left:66px;}}
 .d127v4-fi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:6px 10px;align-items:start;}
 .d127v4-fi-group{break-inside:avoid;}
 .d127v4-fi-hdr{display:flex;align-items:center;gap:6px;padding:3px 8px;background:var(--s2);border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--c127);font-weight:700;}

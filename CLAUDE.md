@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p151` (all currently at p150)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p152` (all currently at p151)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -55,7 +55,53 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p150` (2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
+**Last known:** all files `p151` (2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
+Round C: Daily Output + Funnel + Roster + Lesson Matrix fixes.** Continuation of the p149/p150
+audit (plan: `.claude/plans/nested-sparking-tide.md`). Fixes:
+1. **Timezone bug fixed in two more spots.** `ap127ActualPace()` (feeds Pace Monitor's Actual/Gap)
+   and `buildAP127Roster()`'s date-range start both parsed `today` as local midnight then
+   serialized via `toISOString()` (always UTC) — silently shifting the window back a day east of
+   UTC (Bangkok). Same one-line fix already correct elsewhere in this file (`"T00:00:00Z"` +
+   `setUTCDate`).
+2. **Phase Progress Funnel could show over 100% from retaken lessons.** `doneData` counted every
+   flown record in a phase with no dedup per (student, lesson NUMBER), while `totalSlots` assumed
+   exactly one completion per lesson per student — a retake could push a phase's "Done" segment
+   past its own total. Fixed with the same per-(student,lesson) dedup principle as the p143 Ops
+   Analytics fix. Verified live: all 4 phases now compute to ≤100% (`[100,93,11,0]`), Done+Remaining
+   exactly equals each phase's total slots by construction.
+3. **Lesson Completion Matrix's lead/lag figure had the same smaller-blast-radius bug** — `vsClosest`
+   used the raw `s.done` flight count (which includes retakes) instead of a per-lesson-deduped
+   count. Fixed locally using the `byLesson` grouping already computed in that function (no change
+   to the global `s.done`, which many other unrelated parts of the tab intentionally still use as
+   a raw activity count).
+4. **Roster table now has 2 sticky columns, matching the Lesson Matrix's existing pattern.** The
+   Total (lessons/hours) column had no `position:sticky`, so it scrolled out of view on a wide date
+   range while only the Name column stayed pinned. Now pinned at `left:82px` (66px on mobile),
+   mirroring `.d127v4-lm-vs`.
+5. **Daily Output's "latest closed period" can no longer silently point at a stale period.** With
+   "Hide off days" on and a real idle gap right before today, `gapIdx` previously indexed into the
+   *filtered* period-keys array, which could resolve to "the latest period with any activity" —
+   possibly weeks older than the day/week/month immediately preceding today, contradicting the
+   overlay's own "latest CLOSED period" claim. Now resolves the true calendar-adjacent period first,
+   then looks it up in the filtered view; if that exact period was filtered out, the overlay is
+   suppressed rather than showing a stale comparison (existing `gapIdx>=0` guard now does this
+   correctly).
+6. **Dual/Solo/Simulator palette contrast improved.** Measured perceived luminance had Solo
+   (mustard) and Simulator (the old light violet `#a78bfa`) landing at nearly identical brightness
+   (~160 vs ~160 on a 0-299 scale) — distinguishable mainly by hue alone, a real risk under
+   deuteranopia/protanopia where magenta and violet sit close together. Simulator darkened to
+   `#6d5cd6` (~111), giving a real lightness gap from both Dual and Solo while staying in the same
+   hue family. Verified live: `Chart.getChart(...)`'s Simulator dataset confirms the new hex.
+7. Also removed 2 pieces of dead code (`ap127v4PeriodEnd()`, unused; `.d127v4-heat-group` CSS rule,
+   no matching JS usage) and fixed `ap127FitY()` to skip hidden datasets, so isolating one student
+   in Pace Distribution (solo) actually tightens the Y-axis to just their line instead of still
+   being pulled wide by every other (hidden) student.
+Verified live throughout; zero new console errors beyond the pre-existing local-dev CORS fallback.
+Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only files
+touched: `js/view-cohort-v4.js`, `css/progress.css`. Full write-up: REVAMP.md's p151 entry. Rounds
+D (SYLLABUS strip/Overall Progress polish) and E (lesson-code normalization audit) still pending.)
+p150
+(2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
 Round B: Combined Progress + Race + Cons/Idle + Timeline chart fixes.** Continuation of the audit
 started in p149 (plan: `.claude/plans/nested-sparking-tide.md`). Fixes, all in
 `buildAP127CombinedChart()`/`buildAP127RaceChart()`/`buildAP127ConsIdle()`/`buildAP127Timeline()`:
