@@ -1862,3 +1862,63 @@ blue line sitting right at the bar's own (empty) top rather than floating at an 
 value. Zero console errors beyond the pre-existing local-dev CORS fallback. Original AP127 Detail
 (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file touched:
 `js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump).
+
+### AP127 Detail V4 — Daily Output: gap uses latest CLOSED period, open period shown hollow with projection (2026-08-07, p147)
+
+`js/view-cohort-v4.js`
+
+Two more rounds of same-day feedback on the p146 overlay:
+1. "I think we should calculate the gap by using the latest closed bar not the opening current bar."
+2. "For current opening bar, pls change its appearance to be more distinguish, maybe a hollow bar
+   with an estimate where it may close by projecting from the current already have data for that
+   bar."
+
+**1. Gap uses the latest closed period.** New `openIdx = keys.length-1` and
+`latestIsOpen = atToday && keys[openIdx]===ap127v4PeriodKey(today,period)` — true whenever the
+latest bar is the period today falls inside: a Day bar for today itself, or the Week/Month bar
+today is only partway through. New `gapIdx = latestIsOpen ? openIdx-1 : openIdx` — the target/
+actual/gap overlay (`lbTargetPlugin`) now anchors on `gapIdx`'s bar instead of unconditionally the
+last one. Rationale: comparing a full-period Required figure against a still-forming, partial
+Actual is an apples-to-oranges comparison that makes the gap look artificially worse than reality
+every single day/week/month, right up until the period closes.
+
+**2. Open bar: hollow outline + projected close estimate.** Two new helpers:
+- `ap127v4PeriodEnd(key, period)` — the last calendar date a period key covers (used indirectly by
+  the open/closed determination above).
+- `ap127v4ProjectPeriod(key, period, actualSoFar, today)` — linear extrapolation: `actualSoFar ÷
+  (daysElapsedInPeriod / totalDaysInPeriod)`. Day view returns `actualSoFar` unchanged — a day is
+  this chart's finest granularity, so there's no sub-day signal to extrapolate from, and returning
+  a fabricated number would be dishonest.
+
+Visual treatment, applied to whichever bar dataset(s) are showing (works identically with the
+Dual/Solo/Simulator breakdown on):
+- The open bar's real (solid, actual-so-far) segment(s) get a scriptable white dashed border
+  (`borderColor`/`borderWidth`/`borderDash` as functions of `ctx.dataIndex===openIdx`) instead of
+  the plain fill every closed bar has — reads as "still forming" at a glance.
+- A new "Projected (est.)" dataset, stacked on top of the real data, sized to
+  `max(0, projectedTotal - actualSoFar)` — a hollow bar (`rgba(232,138,255,0.06)` fill, dashed
+  `#e88aff` border) capping the real bar, only present at `openIdx` (zero everywhere else). Its
+  datalabel and tooltip both show the projected TOTAL (`~17.0h`), not the bare remainder value,
+  since "where might this land" is the useful number, not an abstract delta.
+- The open bar's x-axis label gets a "◐" suffix appended (e.g. "03 Aug ◐") as a third, textual cue.
+
+Panel note and legend text updated to explain both changes plainly.
+
+Verified live across all three period views and both breakdown states:
+- **Week view:** Required 243.4h / Actual 26.7h / gap -216.7h correctly anchored on the 27 Jul
+  (closed) bar rather than 03 Aug (open) — the open bar showed a "~17.0h" projected cap,
+  hand-verified against the underlying data: 12.17h actual so far ÷ (5 elapsed days / 7) ≈ 17.04h,
+  matching exactly.
+- **Month view + Dual/Solo/Simulator breakdown together:** Required 1058.5h / Actual 442.8h (July,
+  closed, matching July's own stack-total datalabel exactly) / gap -615.6h; August's open bar
+  showed a "~110.0h" projected cap with the dashed white border correctly applied across its real
+  Dual/Solo segments.
+- Confirmed via direct chart-data inspection (not just visual reading) that the open bar's
+  scriptable border only activates at the correct index (`[0, 1.5]` for `[closedIdx, openIdx]`)
+  and that the label suffix is present.
+
+Zero console errors beyond the pre-existing local-dev CORS fallback (unrelated — the app's live
+data fetch is blocked by CORS when testing from localhost, falls back to the bundled snapshot,
+same on every local test this session). Original AP127 Detail (`js/view-cohort.js`) confirmed
+still byte-identical/untouched. Only file touched: `js/view-cohort-v4.js` (plus the usual
+`index.html` cache-bust bump).

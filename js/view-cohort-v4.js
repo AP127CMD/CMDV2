@@ -153,7 +153,7 @@
         </div>
       </div>
       <div class="d127-body">
-        <div class="d127-note">Bars = batch total per period, including days with no flights by default (toggle to hide them), full history by default (set a custom range above). Blue moving-average line = 7d / 4wk / 3mo. On the latest bar: rose line = today's required pace (same formula as the Pace Monitor's "Per Day/Week/Month" tables above), blue dashed line = that bar's own actual value, bracket = the gap between them. Faint vertical lines mark each week (Day view) or month (Week view). "By Type" splits each bar into Dual / Solo / Simulator lessons. Hover for exact values.</div>
+        <div class="d127-note">Bars = batch total per period, including days with no flights by default (toggle to hide them), full history by default (set a custom range above). Blue moving-average line = 7d / 4wk / 3mo. The still-forming current period (marked ◐) is drawn with a dashed outline, capped by a hollow "~" bar projecting where it might land based on data so far — it's excluded from the target comparison since a partial period isn't a fair fight against a full-period target. Instead, the rose/blue lines + gap bracket compare the latest fully-CLOSED period's own actual against today's required pace (same formula as the Pace Monitor's "Per Day/Week/Month" tables above). Faint vertical lines mark each week (Day view) or month (Week view). "By Type" splits each bar into Dual / Solo / Simulator lessons. Hover for exact values.</div>
         <div class="d127-phase-legend" id="d127v4-lb-legend" style="display:none"></div>
         <div style="position:relative;height:280px"><canvas id="d127v4-lessonbar"></canvas></div>
       </div>
@@ -2043,6 +2043,25 @@ function ap127v4PeriodRange(start,end,period){
   while(d<=endD&&guard<240){out.push(d.toISOString().slice(0,7)+"-01");d.setUTCMonth(d.getUTCMonth()+1);guard++;}
   return out;
 }
+// Last calendar date covered by a given period key — used to tell whether that period has fully
+// elapsed yet ("closed") or is still the one today falls inside ("open"/in-progress).
+function ap127v4PeriodEnd(key,period){
+  if(period==="day")return key;
+  if(period==="week"){const d=new Date(key+"T00:00:00Z");d.setUTCDate(d.getUTCDate()+6);return d.toISOString().slice(0,10);}
+  const d=new Date(key+"T00:00:00Z");d.setUTCMonth(d.getUTCMonth()+1);d.setUTCDate(d.getUTCDate()-1);return d.toISOString().slice(0,10);
+}
+// Simple linear projection for an in-progress period: "if the rest of this period keeps pace with
+// what's logged so far, where would it end up." Day view has no meaningful sub-day data to
+// extrapolate from (a day IS this chart's finest grain), so it returns actualSoFar unchanged —
+// honest rather than inventing a number from nothing.
+function ap127v4ProjectPeriod(key,period,actualSoFar,today){
+  if(period==="day")return actualSoFar;
+  const start=new Date(key+"T00:00:00Z");
+  const elapsedDays=Math.max(1,Math.floor((new Date(today+"T00:00:00Z")-start)/86400000)+1);
+  const totalDays=period==="week"?7:new Date(Date.UTC(start.getUTCFullYear(),start.getUTCMonth()+1,0)).getUTCDate();
+  const frac=Math.min(1,elapsedDays/totalDays);
+  return frac>0?actualSoFar/frac:actualSoFar;
+}
 function buildAP127LessonBar(){
   const all=ap127AsOfStudents();if(!all.length)return;
   const today=ap127AsOf();
@@ -2094,38 +2113,62 @@ function buildAP127LessonBar(){
   const showLabels=keys.length<=45;
   const fmtVal=v=>isHrs?v.toFixed(1)+"h":Math.round(v)+" les";
 
+  // The latest bar is "open" (still forming) whenever it's the period today falls inside — a Day
+  // bar for today, or the Week/Month bar that today is partway through. An open period's total is
+  // inherently partial, so it's excluded from the target/gap comparison (below) and gets its own
+  // distinct visual treatment (hollow dashed outline + a projected "where might this land" cap —
+  // see the bar-dataset construction and lbOpenPlugin further down).
+  const openIdx=keys.length-1;
+  const latestIsOpen=atToday&&keys[openIdx]===ap127v4PeriodKey(today,period);
+
   // AP127 required-pace target — reuses ap127RequiredPace(), the exact formula the Pace Monitor's
   // Per Day/Week/Month tables use (see that function's own comment), so THIS number is provably
-  // identical to Pace Monitor's "Required" figure. "Actual" here is deliberately the latest bar's
-  // own raw value — not Pace Monitor's smoothed rolling-window figure — because this overlay is
-  // meant to answer "how did THIS bar do against target," and a number that doesn't correspond to
-  // anything actually drawn on the chart would be confusing (an earlier version tried using the
-  // same smoothed "Actual" Pace Monitor shows so the gap number matched exactly too, but that
-  // meant the "actual" line floated somewhere away from the bar it was supposedly describing —
-  // this is simpler and matches what's visually on screen, at the cost of the gap number not
-  // being expected to equal Pace Monitor's own gap, which uses that different, smoothed base).
-  // Only drawn when the visible range extends to today AND the latest bar IS today's period (a
-  // custom end date, or "hide off days" hiding today's empty bar, both correctly suppress it —
-  // there's no "current" bar to attach it to).
+  // identical to Pace Monitor's "Required" figure. "Actual" is the latest CLOSED bar's own raw
+  // value (not the still-forming open bar's partial total — comparing a partial period against a
+  // full-period target is misleading, and not the open bar, since a number that doesn't
+  // correspond to what's drawn there would be confusing — see gapIdx below) and not a smoothed
+  // rolling-window figure either (an earlier version tried that specifically so the gap number
+  // matched Pace Monitor's exactly, but that meant the line floated away from any real bar, which
+  // was worse). Only drawn when the visible range extends to today AND there's an actual closed
+  // bar to compare against.
+  const gapIdx=latestIsOpen?openIdx-1:openIdx;
   const reqPace=ap127RequiredPace();
   const target=(reqPace&&atToday)
     ?(period==="day"?(isHrs?reqPace.reqDayHrsB:reqPace.reqDayLesB)
       :period==="week"?(isHrs?reqPace.reqWeekHrsB:reqPace.reqWeekLesB)
       :(isHrs?reqPace.reqMonthHrsB:reqPace.reqMonthLesB))
     :null;
-  const showTarget=target!=null&&atToday&&keys[keys.length-1]===ap127v4PeriodKey(today,period);
-  const actualPace=showTarget?values[keys.length-1]:null;
+  const showTarget=target!=null&&atToday&&gapIdx>=0;
+  const actualPace=showTarget?values[gapIdx]:null;
   const gap=showTarget?(actualPace-target):null;
+
+  // Open-bar projection: linear extrapolation from days-elapsed-so-far within the period (see
+  // ap127v4ProjectPeriod's own comment on why Day view can't meaningfully project further).
+  const projectedTotal=latestIsOpen?ap127v4ProjectPeriod(keys[openIdx],period,values[openIdx],today):null;
+  const projectedRemainder=latestIsOpen?Math.max(0,projectedTotal-values[openIdx]):0;
+  const projectedVals=latestIsOpen?keys.map((_,i)=>i===openIdx?+projectedRemainder.toFixed(2):0):null;
+  if(latestIsOpen)labels[openIdx]=labels[openIdx]+" ◐";
 
   const legendEl=document.getElementById("d127v4-lb-legend");
   if(legendEl){
+    const bits=[];
     if(showTarget){
-      legendEl.style.display="";
-      legendEl.innerHTML=`<span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>Required</span>`
-        +`<span class="d127-pc"><span class="d127-pdot" style="background:#38bdf8;border-radius:2px;width:14px;height:3px"></span>Actual (this bar)</span>`
-        +`<span class="d127-pc" style="color:var(--tx3)">— Required = same calc as the Pace Monitor's Per ${period==="day"?"Day":period==="week"?"Week":"Month"} row above (batch total)</span>`;
-    }else legendEl.style.display="none";
+      bits.push(`<span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>Required</span>`);
+      bits.push(`<span class="d127-pc"><span class="d127-pdot" style="background:#38bdf8;border-radius:2px;width:14px;height:3px"></span>Actual (latest closed ${period})</span>`);
+      bits.push(`<span class="d127-pc" style="color:var(--tx3)">— Required = same calc as the Pace Monitor's Per ${period==="day"?"Day":period==="week"?"Week":"Month"} row above (batch total)</span>`);
+    }
+    if(latestIsOpen){
+      bits.push(`<span class="d127-pc"><span class="d127-pdot" style="background:transparent;border:1.5px dashed #e88aff;border-radius:2px;width:14px;height:3px"></span>◐ = still forming, dashed cap = projected close</span>`);
+    }
+    if(bits.length){legendEl.style.display="";legendEl.innerHTML=bits.join("");}
+    else legendEl.style.display="none";
   }
+
+  // Open bar gets a white dashed outline (instead of the plain solid fill every closed bar has)
+  // so it visually reads as "still forming, not final data" at a glance.
+  const openBorderColor=ctx=>latestIsOpen&&ctx.dataIndex===openIdx?"#ffffff":"transparent";
+  const openBorderWidth=ctx=>latestIsOpen&&ctx.dataIndex===openIdx?1.5:0;
+  const openBorderDash=ctx=>latestIsOpen&&ctx.dataIndex===openIdx?[3,2]:[];
 
   const datasets=[];
   if(breakdown){
@@ -2134,15 +2177,25 @@ function buildAP127LessonBar(){
       anchor:"center",align:"center",color:"#0d1117",font:{family:"JetBrains Mono",size:6.5,weight:"700"},
       formatter:v=>isHrs?v.toFixed(1):v
     });
-    datasets.push({type:"bar",label:"Dual",data:dualVals,backgroundColor:AP127_LESSON_TYPE_COLORS.Dual,stack:"lb",order:3,datalabels:segLbl(dualVals)});
-    datasets.push({type:"bar",label:"Solo",data:soloVals,backgroundColor:AP127_LESSON_TYPE_COLORS.Solo,stack:"lb",order:3,datalabels:segLbl(soloVals)});
-    datasets.push({type:"bar",label:"Simulator",data:simVals,backgroundColor:AP127_LESSON_TYPE_COLORS.Simulator,stack:"lb",order:3,datalabels:{
+    datasets.push({type:"bar",label:"Dual",data:dualVals,backgroundColor:AP127_LESSON_TYPE_COLORS.Dual,borderColor:openBorderColor,borderWidth:openBorderWidth,borderDash:openBorderDash,stack:"lb",order:3,datalabels:segLbl(dualVals)});
+    datasets.push({type:"bar",label:"Solo",data:soloVals,backgroundColor:AP127_LESSON_TYPE_COLORS.Solo,borderColor:openBorderColor,borderWidth:openBorderWidth,borderDash:openBorderDash,stack:"lb",order:3,datalabels:segLbl(soloVals)});
+    datasets.push({type:"bar",label:"Simulator",data:simVals,backgroundColor:AP127_LESSON_TYPE_COLORS.Simulator,borderColor:openBorderColor,borderWidth:openBorderWidth,borderDash:openBorderDash,stack:"lb",order:3,datalabels:{
       display:ctx=>showLabels&&(dualVals[ctx.dataIndex]+soloVals[ctx.dataIndex]+simVals[ctx.dataIndex])>0,
       anchor:"end",align:"top",color:"#c9d1d9",font:{family:"JetBrains Mono",size:7,weight:"700"},
       formatter:(v,ctx)=>{const i=ctx.dataIndex;const t=dualVals[i]+soloVals[i]+simVals[i];return isHrs?t.toFixed(1):t;}
     }});
   }else{
-    datasets.push({type:"bar",label:isHrs?"Hours":"Lessons",data:values,backgroundColor:"rgba(232,138,255,0.55)",borderRadius:2,order:3,stack:"lb"});
+    datasets.push({type:"bar",label:isHrs?"Hours":"Lessons",data:values,backgroundColor:"rgba(232,138,255,0.55)",borderColor:openBorderColor,borderWidth:openBorderWidth,borderDash:openBorderDash,borderRadius:2,order:3,stack:"lb"});
+  }
+  if(latestIsOpen){
+    // Hollow dashed "ghost" cap stacked on top of the open bar's real (partial) data, sized to the
+    // PROJECTED remainder — reads as "here's roughly where this period might close," distinct
+    // from every solid, final bar. Datalabel shows the projected TOTAL (not just the remainder).
+    datasets.push({type:"bar",label:"Projected (est.)",data:projectedVals,backgroundColor:"rgba(232,138,255,0.06)",borderColor:"#e88aff",borderWidth:1.5,borderDash:[4,3],stack:"lb",order:2,datalabels:{
+      display:ctx=>projectedVals[ctx.dataIndex]>0,
+      anchor:"end",align:"top",color:"#e88aff",font:{family:"JetBrains Mono",size:7,weight:"700"},
+      formatter:(v,ctx)=>`~${fmtVal(values[ctx.dataIndex]+v)}`
+    }});
   }
   datasets.push({type:"line",label:`${maWindow}-period moving avg`,data:ma,borderColor:"#38bdf8",borderWidth:2,pointRadius:0,tension:.25,order:1,datalabels:{display:false}});
 
@@ -2178,14 +2231,16 @@ function buildAP127LessonBar(){
     }
   }:null;
 
-  // Target line + actual-vs-target gap bracket, localized to just the latest (current-period) bar
-  // — labels anchor to its LEFT since that bar is always the chart's rightmost, so a right-side
-  // label would run off-canvas.
+  // Target line + actual-vs-target gap bracket, localized to the latest CLOSED bar (gapIdx — one
+  // to the left of the still-open latest bar, when there is one). Labels anchor to the LEFT
+  // regardless, since even when gapIdx isn't the very last bar, the open bar immediately to its
+  // right is typically narrow/close enough that a right-side label risks colliding with it or the
+  // canvas edge — left is always safe.
   const lbTargetPlugin=showTarget?{
     id:"d127v4LBTarget",
     afterDatasetsDraw(chart){
       const{ctx,scales:{y}}=chart;
-      const idx=keys.length-1;
+      const idx=gapIdx;
       const meta=chart.getDatasetMeta(0);
       const bar=meta.data[idx];if(!bar)return;
       const barX=bar.x,halfW=(bar.width||14)/2;
@@ -2194,9 +2249,9 @@ function buildAP127LessonBar(){
       const gapColor=gap>=0?"#4ade80":"#f43f5e";
       const tx=barX-halfW-9;
       ctx.save();
-      // Required (rose, from Pace Monitor's formula) and Actual (blue, this bar's own value)
-      // reference lines — both span just the latest bar's column, each labeled. Since Actual is
-      // the bar's own value, this blue line always sits exactly level with the bar's own top.
+      // Required (rose, from Pace Monitor's formula) and Actual (blue, the latest CLOSED bar's
+      // own value) reference lines — both span just that bar's column, each labeled. Since Actual
+      // is the bar's own value, this blue line always sits exactly level with that bar's own top.
       ctx.strokeStyle="#f43f5e";ctx.lineWidth=2;ctx.setLineDash([4,3]);
       ctx.beginPath();ctx.moveTo(barX-halfW-6,targetY);ctx.lineTo(barX+halfW+6,targetY);ctx.stroke();
       ctx.strokeStyle="#38bdf8";ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
@@ -2216,7 +2271,7 @@ function buildAP127LessonBar(){
     }
   }:null;
 
-  const yMax=Math.max(1,...values,...(showTarget?[target,actualPace]:[]))*1.2;
+  const yMax=Math.max(1,...values,...(showTarget?[target,actualPace]:[]),...(latestIsOpen?[projectedTotal]:[]))*1.2;
   CHARTS.ap127lessonBar=mkC("d127v4-lessonbar",{
     type:"bar",
     data:{labels,datasets},
@@ -2229,7 +2284,10 @@ function buildAP127LessonBar(){
           anchor:"end",align:"top",color:"#8b949e",font:{family:"JetBrains Mono",size:7},
           formatter:v=>isHrs?v.toFixed(1):v
         },
-        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${isHrs?ctx.parsed.y.toFixed(1)+"h":ctx.parsed.y}`}}
+        tooltip:{callbacks:{label:ctx=>{
+          if(ctx.dataset.label==="Projected (est.)")return`Projected total: ~${fmtVal(values[ctx.dataIndex]+ctx.parsed.y)}`;
+          return`${ctx.dataset.label}: ${isHrs?ctx.parsed.y.toFixed(1)+"h":ctx.parsed.y}`;
+        }}}
       },
       scales:{
         x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxRotation:0,autoSkip:true,maxTicksLimit:16},grid:{display:false}},

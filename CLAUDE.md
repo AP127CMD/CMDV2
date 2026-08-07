@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p147` (all currently at p146)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p148` (all currently at p147)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -55,7 +55,33 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p146` (2026-08-07 — **AP127 Detail V4 — Daily Output target overlay:
+**Last known:** all files `p147` (2026-08-07 — **AP127 Detail V4 — Daily Output: gap uses the
+latest CLOSED period, current period shown hollow with a projected close.** User: "I think we
+should calculate the gap by using the latest closed bar not the opening current bar" plus "For
+current opening bar... change its appearance to be more distinguish, maybe a hollow bar with an
+estimate where it may close by projecting from the current already have data for that bar."
+1. **Gap uses the latest closed period.** New `openIdx`/`latestIsOpen` (is the latest bar the
+   period today falls inside — a Day bar for today, or the Week/Month bar today is partway
+   through) and `gapIdx` (= `openIdx-1` when open, else `openIdx`). The Required/Actual/Gap
+   overlay now anchors on `gapIdx`'s bar instead of always the last one — comparing a full-period
+   target against a still-forming partial period was misleading.
+2. **Open bar shown hollow + projected.** New `ap127v4PeriodEnd()`/`ap127v4ProjectPeriod()`
+   helpers; the latter linearly extrapolates from the elapsed-days fraction within the period
+   (Day view returns actualSoFar unchanged — a day is this chart's finest grain, nothing to
+   extrapolate from). The open bar's real (solid) portion gets a scriptable white dashed border
+   (`ctx.dataIndex===openIdx`); a new stacked "Projected (est.)" dataset adds a hollow dashed cap
+   on top sized to the projected remainder, labeled with the projected TOTAL (`~17.0h`, not just
+   the remainder). Works identically with the Dual/Solo/Simulator breakdown on. The x-axis label
+   for the open bar gets a "◐" suffix.
+Verified live: Week view — Required 243.4h/Actual 26.7h/gap -216.7h anchored correctly on the
+27 Jul (closed) bar, not 03 Aug (open, showing "~17.0h" projected — hand-verified: 12.17h actual
+÷ (5/7 days elapsed) ≈ 17.04h, matches exactly); Month + breakdown together — Required 1058.5h /
+Actual 442.8h (Jul, closed, matching its own stack-total datalabel) / gap -615.6h, Aug's open
+bar showing "~110.0h" projected cap with a dashed white border on its real Dual/Solo segments.
+Zero console errors beyond the pre-existing local-dev CORS fallback. Original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file touched:
+`js/view-cohort-v4.js`. Full write-up: REVAMP.md's p147 entry.) p146
+(2026-08-07 — **AP127 Detail V4 — Daily Output target overlay:
 "Actual" fixed to the bar's own value.** User questioned p145's "Actual" line the moment they saw
 it: "How the actual (blue dash line) is calculated? It should not cal actual I think." p145 had
 made "Actual" the same smoothed rolling-window figure Pace Monitor uses (trailing 7d÷7 for Day
