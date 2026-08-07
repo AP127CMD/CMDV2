@@ -2213,3 +2213,76 @@ byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progr
 usual `index.html` cache-bust bump, p150→p151). **Rounds D (SYLLABUS strip/Overall Progress
 polish) and E (lesson-code normalization audit) are still pending** — full 26-item catalog in
 `.claude/plans/nested-sparking-tide.md`.
+
+### AP127 Detail V4 — full stats/table/chart audit, Round D: SYLLABUS strip + Overall Progress polish (2026-08-07, p152)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+Continuation of the audit begun in p149 (method there). Round D covers the remaining Tier-3 polish
+items for the SYLLABUS strip and Overall Progress Bar View.
+
+**1. Narrow phase segments no longer silently ellipsis-clip their label to nothing.** The 2-lesson
+"ME Sim" segment (`AP127_BAR_SEGMENTS`, `lo:91,hi:92`) renders at roughly 2% of the strip's width
+at default zoom — its name + hour-range label was getting clipped by `text-overflow:ellipsis` down
+to nothing visible, with no signal to the viewer that a segment even exists there. This can't be
+solved in pure CSS: segments are flex-basis percentages of a container whose real pixel width
+isn't known until layout runs, so a container-query-style CSS rule isn't available for this case.
+New `ap127SetSyllabusStripHtml(stripEl, html)` sets the strip's innerHTML, then schedules a
+`requestAnimationFrame` pass that measures each `.d127v4-syl-phase` block's actual `clientWidth`
+and toggles a `.d127v4-syl-phase-narrow` class (hides the — now genuinely unreadable — text; the
+existing hover `title` tooltip and click-to-modal still work) on any block under 34px. Both places
+that render the strip (`buildAP127OverallChart()`'s initial mount, `ap127SyncSyllabusStrip()` on
+every zoom/pan) now route through this helper instead of setting `.innerHTML` directly.
+**Verified live** two ways: (1) confirmed the logic itself is correct by manually re-running the
+exact measurement code in the console; (2) confirmed the actual live code path fires correctly
+after a genuine interaction — triggered a real `+` zoom click (`ap127OverallZoomV4(1.25)`), which
+narrowed "Phase I" down to 16px, and confirmed it correctly picked up `d127v4-syl-phase-narrow`.
+(A cold-page-load check initially came back `narrow:false` despite an 19px-wide "ME Sim" block —
+traced to the test harness's background/inactive tab throttling `requestAnimationFrame`, not a
+real bug; the interaction-triggered check above rules that out conclusively.)
+
+**2. Milestone icons within 2 lessons of each other no longer visually merge.** The two GH/VFR-XC
+checkrides (L54/55), the Solo/Instrument pair (L14/15), and the IFR-XC-checkride/Multi-Engine pair
+(L90/91 — which also happens to land right on the bold SE→ME phase divider) previously rendered as
+indistinguishable icon clusters at default zoom. Proximity is now computed on a lesson-number-
+*sorted copy* of the currently-visible milestone list (the underlying `kps` array from
+`ap127KeyPoints()` isn't itself lesson-sorted — checkrides are appended after the type-based
+first-matches, so array-adjacent items aren't reliably lesson-adjacent), then the *later* item in
+each close pair (gap ≤2 lessons) gets a new `.d127v4-syl-kp-alt` CSS class that shifts its icon and
+tick line down within the 56px-tall strip so both stay legible side by side. The rendered HTML
+still preserves each milestone's original array index for `onclick="openAP127MilestoneModalV4(i)"`
+(which reads `AP127_OVERALL_KPS` in that same original, unsorted order), so click targets stay
+correct even though the *proximity* calculation uses a re-sorted view.
+
+**Caught and fixed a real bug in the first version of this fix, during live verification (not
+shipped blind).** The initial implementation compared each milestone only against whatever
+happened to be the immediately-preceding element in the raw (unsorted) `kps` array, using
+`(lesson - prevLesson) <= 2` — with no `Math.abs()`. Any negative difference automatically passes
+a bare `<= 2` check, so e.g. processing order `...Multi-Engine(91), CheckrideGH(54)...` computed
+`54 - 91 = -37`, which is `<= 2` → **wrongly flagged as "close"**, while genuinely adjacent pairs
+that weren't next to each other in the raw array (like Checkride-IFR-XC L90 next to Multi-Engine
+L91) were **missed entirely**, since the check only ever looked at strict array-order neighbors.
+Live-testing the DOM output (`title`/`classList` per rendered icon) caught this immediately —
+"Checkride GH L54" was flagged `alt:true` despite being 37 lessons from anything, which made no
+sense against the panel. Rewritten to sort a copy by lesson number first, walk that sorted copy
+with a proper `Math.abs`-free (inherently non-negative, since sorted ascending) `gap <= 2` check,
+and map the resulting "needs alt" decision back onto the original array indices for rendering.
+Re-verified: exactly the 4 expected items now carry `alt:true` — Instrument(L15, next to Solo L14),
+VFR-XC(L55, next to GH L54), Sim(L56, chains onto VFR-XC L55 — a 3-in-a-row cluster, correctly
+caught too), and Multi-Engine(L91, next to Checkride-IFR-XC L90) — nothing else.
+
+**3. Overall Progress bar-end text color now states what it's measuring against.** The per-SP
+current/next-lesson label at each bar's end (`currentLabelPlugin`) is colored green ("at/ahead")
+or rose ("behind") based on standing vs. the AP127 batch-wide **Target** schedule — a different
+reference line than "Plan" (the curriculum's own `planned_date`s, the reference used everywhere
+else in this tab, e.g. Combined Progress vs Plan / Batch Lead-Lag) — but the panel's legend never
+said which one the color tracks, risking a viewer assuming it's Plan like everywhere else. Added
+two new legend chips ("● text = at/ahead of target" / "● text = behind target", green/rose dots)
+with an explanatory hover tooltip, next to the existing phase-color and AP127-target-line chips.
+
+Verified live throughout (see individual items above for specific repro/verification steps); zero
+new console errors beyond the pre-existing local-dev CORS fallback. Original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched. Only files touched:
+`js/view-cohort-v4.js`, `css/progress.css` (plus the usual `index.html` cache-bust bump,
+p151→p152). **Round E (lesson-code normalization audit) is still pending** — full 26-item catalog
+in `.claude/plans/nested-sparking-tide.md`.

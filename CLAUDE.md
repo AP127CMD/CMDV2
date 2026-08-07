@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p152` (all currently at p151)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p153` (all currently at p152)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -55,7 +55,48 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p151` (2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
+**Last known:** all files `p152` (2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
+Round D: SYLLABUS strip + Overall Progress polish.** Continuation of the p149-p151 audit (plan:
+`.claude/plans/nested-sparking-tide.md`). Fixes, all in `ap127SyllabusStrip()`/new
+`ap127SetSyllabusStripHtml()`/`buildAP127OverallChart()`:
+1. **Narrow phase segments (e.g. "ME Sim", 2 lessons ≈2% of strip width) no longer silently
+   ellipsis-clip their label to nothing.** New `ap127SetSyllabusStripHtml(stripEl,html)` sets the
+   strip's HTML then does a `requestAnimationFrame` pass measuring each `.d127v4-syl-phase`
+   block's actual rendered pixel width (can't be done in pure CSS — these are flex-basis
+   percentages of a container whose real px width isn't known until layout runs) and adds a
+   `.d127v4-syl-phase-narrow` class (hides the now-unreadable text; hover tooltip/click-to-modal
+   still work) to any block under 34px. Both render call sites (initial mount,
+   `ap127SyncSyllabusStrip()` on every zoom/pan) now route through this helper. Verified live via
+   a real zoom interaction (not just cold load, which can have `requestAnimationFrame` throttled
+   in a background/inactive tab): zoomed until "Phase I" clipped to 16px, confirmed it correctly
+   got `narrow:true`.
+2. **Milestone icons that land within 2 lessons of each other no longer visually merge.** The two
+   GH/VFR-XC checkrides (L54/55), Solo/Instrument (L14/15), and IFR-XC-checkride/Multi-Engine
+   (L90/91, which also lands on the bold SE→ME phase divider) previously rendered as
+   indistinguishable clusters. Proximity is computed on a lesson-number-sorted COPY of the visible
+   milestone list (the underlying `kps` array isn't itself lesson-sorted — checkrides are appended
+   after the type-based first-matches), then the later item in each close pair gets a new
+   `.d127v4-syl-kp-alt` class (CSS) that shifts its icon+tick down within the strip so both stay
+   legible; original array indices are preserved so `openAP127MilestoneModalV4(i)` still opens the
+   right detail. **Caught and fixed a real bug in the first version of this fix during
+   verification** — it compared each item only to whatever happened to precede it in the
+   (unsorted) array with no `Math.abs()`, so e.g. Multi-Engine(91)→CheckrideGH(54) evaluated
+   `54-91=-37 <= 2` as true (any negative number passes a bare `<=2` check), wrongly flagging
+   unrelated distant milestones while being blind to true adjacent pairs that weren't array-
+   adjacent (like L90/91). Verified live post-fix: exactly the intended pairs are flagged
+   (`Instrument L15`, `VFR-XC L55`, `Sim L56` — chains onto 55 — and `Multi-Engine L91`), nothing
+   else.
+3. **Overall Progress bar-end text color (green=at/ahead, rose=behind) now states its own
+   reference.** The color reflects standing vs. the AP127 batch-wide TARGET schedule — a different
+   reference than "Plan" (the curriculum's own dates, used everywhere else in this tab, e.g.
+   Combined Progress vs Plan) — but nothing in the panel said so, risking the color being read as
+   tracking Plan instead. Added two legend chips ("text = at/ahead of target" / "text = behind
+   target") with an explanatory tooltip.
+Verified live throughout; zero new console errors beyond the pre-existing local-dev CORS fallback.
+Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only files
+touched: `js/view-cohort-v4.js`, `css/progress.css`. Full write-up: REVAMP.md's p152 entry. Round
+E (lesson-code normalization audit) still pending.) p151
+(2026-08-07 — **AP127 Detail V4 — full stats/table/chart audit,
 Round C: Daily Output + Funnel + Roster + Lesson Matrix fixes.** Continuation of the p149/p150
 audit (plan: `.claude/plans/nested-sparking-tide.md`). Fixes:
 1. **Timezone bug fixed in two more spots.** `ap127ActualPace()` (feeds Pace Monitor's Actual/Gap)

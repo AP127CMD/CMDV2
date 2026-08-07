@@ -1426,12 +1426,25 @@ function ap127SyllabusStrip(cur,totalLessons,viewMin,viewMax){
       <div class="d127v4-syl-phase-m">L${seg.lo}–${seg.hi} · ${seg.hrs}h</div>
     </div>`;
   }).filter(Boolean).join("");
-  const kpHtml=kps.map((k,i)=>{
-    const lesson=k.idx+1;
-    if(lesson<viewMin||lesson>viewMax)return"";
+  // Alternate an icon down a row when it lands within 2 lessons of another VISIBLE one — e.g. the
+  // two GH/VFR-XC checkrides at L54/55, or a Checkride/Multi-Engine pair landing right on the bold
+  // SE→ME phase divider (~L90/91) — without this they visually merge into one indistinguishable
+  // cluster at default zoom. .d127v4-syl-kp-alt (CSS) shifts icon+tick down within the strip.
+  // `kps` isn't sorted by lesson number (checkrides are appended after the type-based
+  // first-matches), so proximity is determined on a lesson-sorted COPY; the original array index
+  // `i` is preserved for openAP127MilestoneModalV4(i), which reads AP127_OVERALL_KPS in the
+  // original (unsorted) order.
+  const visibleKps=kps.map((k,i)=>({k,i,lesson:k.idx+1})).filter(x=>x.lesson>=viewMin&&x.lesson<=viewMax);
+  const altIdxSet=new Set();
+  const byLessonAsc=[...visibleKps].sort((a,b)=>a.lesson-b.lesson);
+  for(let j=1;j<byLessonAsc.length;j++){
+    if(byLessonAsc[j].lesson-byLessonAsc[j-1].lesson<=2)altIdxSet.add(byLessonAsc[j].i);
+  }
+  const kpHtml=visibleKps.map(({k,i,lesson})=>{
     const leftPct=Math.max(1,Math.min(99,(lesson-viewMin)/rangeSpan*100));
     const isCR=k.label.startsWith("Checkride");
-    return `<div class="d127v4-syl-kp${isCR?" d127v4-syl-kp-cr":""}" style="left:${leftPct}%" title="${escHtml(k.label)} · Lesson ${lesson} — click to expand" onclick="openAP127MilestoneModalV4(${i})">
+    const alt=altIdxSet.has(i);
+    return `<div class="d127v4-syl-kp${isCR?" d127v4-syl-kp-cr":""}${alt?" d127v4-syl-kp-alt":""}" style="left:${leftPct}%" title="${escHtml(k.label)} · Lesson ${lesson} — click to expand" onclick="openAP127MilestoneModalV4(${i})">
       <span class="d127v4-syl-kp-tick"></span>
       <span class="d127v4-syl-kp-ic">${ap127KeyPointIconSvg(k.label,13)}</span>
     </div>`;
@@ -1462,6 +1475,21 @@ function ap127SyllabusStrip(cur,totalLessons,viewMin,viewMax){
     </div>
   </div>`;
 }
+// Sets the SYLLABUS strip's HTML, then measures each phase block's actual rendered width and adds
+// a "narrow" class to any that are too thin for their name+hour label to be legible — e.g. the
+// 2-lesson "ME Sim" segment (~2% of the strip at default zoom) previously let the label silently
+// ellipsis-clip to nothing, with no signal to the viewer that a segment even has a name. Can't be
+// done in pure CSS since these are flex-basis percentages of a container whose real pixel width
+// isn't known until layout runs — hence the rAF measurement pass after every (re)render.
+function ap127SetSyllabusStripHtml(stripEl,html){
+  if(!stripEl)return;
+  stripEl.innerHTML=html;
+  requestAnimationFrame(()=>{
+    stripEl.querySelectorAll(".d127v4-syl-phase").forEach(el=>{
+      el.classList.toggle("d127v4-syl-phase-narrow",el.clientWidth<34);
+    });
+  });
+}
 // Re-renders the SYLLABUS strip from the Overall Progress chart's CURRENT visible x-range —
 // called after every zoom/pan/reset (wheel, pinch, drag-pan via the zoom-plugin callbacks; the
 // +/-/Reset buttons via explicit calls in ap127OverallZoom/ap127OverallResetZoom, since relying
@@ -1472,7 +1500,7 @@ function ap127SyncSyllabusStrip(){
   const stripEl=document.getElementById("d127v4-syllabus-strip");
   if(!chart||!stripEl||!G)return;
   const xs=chart.scales.x;if(!xs)return;
-  stripEl.innerHTML=ap127SyllabusStrip(G.cur127||[],AP127_OVERALL_TOTAL,xs.min,xs.max);
+  ap127SetSyllabusStripHtml(stripEl,ap127SyllabusStrip(G.cur127||[],AP127_OVERALL_TOTAL,xs.min,xs.max));
 }
 // Click-to-detail modal for a SYLLABUS phase block. Shared across all AP127_BAR_SEGMENTS entries —
 // Phase IV's 4 sub-segments (IFR/ME × Sim/Real) all point at the same phaseIdx (3) and open one
@@ -1550,7 +1578,7 @@ function buildAP127OverallChart(all,curriculum,maxDate){
   const labels=sorted.map(s=>ap127ShortName(s.name));
 
   const stripEl=document.getElementById("d127v4-syllabus-strip");
-  if(stripEl)stripEl.innerHTML=ap127SyllabusStrip(cur,totalLessons,0,totalLessons);
+  ap127SetSyllabusStripHtml(stripEl,ap127SyllabusStrip(cur,totalLessons,0,totalLessons));
 
   // AP127 Targets: today's (or the As-Of date's) interpolated target lesson — every SP is expected
   // to have reached at least this lesson. Used to color each SP's current/next-lesson label
@@ -1594,9 +1622,16 @@ function buildAP127OverallChart(all,curriculum,maxDate){
   };
   const legend=document.getElementById("d127v4-overall-legend");
   if(legend){
+    // The two extra chips at the end spell out what currentLabelPlugin's green/rose bar-end text
+    // color means — it's vs. the AP127 TARGET (the batch-wide pacing schedule), a different
+    // reference than "Plan" (the curriculum's own planned_date schedule, used everywhere else in
+    // this tab, e.g. Combined Progress vs Plan) — without this, green/rose text reads as generic
+    // "good/bad" with no stated reference, easily mistaken for tracking Plan instead.
     legend.innerHTML=AP127_BAR_SEGMENTS.map(d=>`<span class="d127-pc" title="${escHtml(d.title)}"><span class="d127-pdot" style="background:${d.c}"></span>${d.label}</span>`).join("")
       +`<span class="d127-pc" style="margin-left:10px"><span class="d127-pdot" style="background:#ec4899;border-radius:2px;width:14px;height:3px"></span>SE→ME changeover</span>`
-      +`<span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>AP127 target</span>`;
+      +`<span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>AP127 target</span>`
+      +`<span class="d127-pc" title="Bar-end lesson text color = vs AP127 Target, not vs Plan"><span class="d127-pdot" style="background:#4ade80;border-radius:50%;width:8px;height:8px"></span>text = at/ahead of target</span>`
+      +`<span class="d127-pc" title="Bar-end lesson text color = vs AP127 Target, not vs Plan"><span class="d127-pdot" style="background:#f43f5e;border-radius:50%;width:8px;height:8px"></span>text = behind target</span>`;
   }
   CHARTS.ap127overall=mkC("d127v4-overall",{
     type:"bar",
