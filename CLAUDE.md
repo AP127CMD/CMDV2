@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p146` (all currently at p145)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p147` (all currently at p146)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -55,7 +55,23 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p145` (2026-08-07 — **AP127 Detail V4 — Daily Output chart: date
+**Last known:** all files `p146` (2026-08-07 — **AP127 Detail V4 — Daily Output target overlay:
+"Actual" fixed to the bar's own value.** User questioned p145's "Actual" line the moment they saw
+it: "How the actual (blue dash line) is calculated? It should not cal actual I think." p145 had
+made "Actual" the same smoothed rolling-window figure Pace Monitor uses (trailing 7d÷7 for Day
+etc.) specifically so the gap number would exactly equal Pace Monitor's — but that meant the blue
+line floated at a height that didn't correspond to anything actually drawn on the chart, which
+reads as wrong/confusing on a bar chart (a number with no visible bar backing it). Fixed by making
+"Actual" simply the latest bar's own raw value (`values[keys.length-1]`) — the blue line now
+always sits exactly level with the bar's own top, and the gap bracket visually reads as "this
+bar vs required." The Required/target number is UNCHANGED and still provably identical to Pace
+Monitor's (still calls the shared `ap127RequiredPace()`) — only the Actual side changed. Legend
+and panel note text corrected to stop claiming both numbers cross-check Pace Monitor (only
+Required does now). Verified live: today's bar was 0 (no flights logged yet in this snapshot),
+overlay correctly showed "Actual 0.0h" / "Required 34.8h" / "-34.8h gap" — the blue line sitting
+right at the bar's own (empty) top, not floating at some unrelated smoothed value. Only file
+touched: `js/view-cohort-v4.js`. Full write-up: REVAMP.md's p146 entry.) p145
+(2026-08-07 — **AP127 Detail V4 — Daily Output chart: date
 range, target/gap overlay, month/week separators, Dual/Solo/Simulator breakdown.** Four
 improvements to the "Daily Output · Lessons & Hours" chart:
 1. **Date range.** New start/end date inputs (default: full history, earliest flight → today).

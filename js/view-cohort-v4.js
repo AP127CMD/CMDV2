@@ -153,7 +153,7 @@
         </div>
       </div>
       <div class="d127-body">
-        <div class="d127-note">Bars = batch total per period, including days with no flights by default (toggle to hide them), full history by default (set a custom range above). Blue line = moving average (7d / 4wk / 3mo). Rose line + bracket on the latest bar = today's required pace vs actual, from the same formula as the Pace Monitor's "Per Day/Week/Month" tables above. Faint vertical lines mark each week (Day view) or month (Week view). "By Type" splits each bar into Dual / Solo / Simulator lessons. Hover for exact values.</div>
+        <div class="d127-note">Bars = batch total per period, including days with no flights by default (toggle to hide them), full history by default (set a custom range above). Blue moving-average line = 7d / 4wk / 3mo. On the latest bar: rose line = today's required pace (same formula as the Pace Monitor's "Per Day/Week/Month" tables above), blue dashed line = that bar's own actual value, bracket = the gap between them. Faint vertical lines mark each week (Day view) or month (Week view). "By Type" splits each bar into Dual / Solo / Simulator lessons. Hover for exact values.</div>
         <div class="d127-phase-legend" id="d127v4-lb-legend" style="display:none"></div>
         <div style="position:relative;height:280px"><canvas id="d127v4-lessonbar"></canvas></div>
       </div>
@@ -2094,28 +2094,27 @@ function buildAP127LessonBar(){
   const showLabels=keys.length<=45;
   const fmtVal=v=>isHrs?v.toFixed(1)+"h":Math.round(v)+" les";
 
-  // AP127 required-pace target AND actual-pace reference — both reuse the exact formulas the
-  // Pace Monitor's Per Day/Week/Month tables use (ap127RequiredPace/ap127ActualPace, see their
-  // own comments), so both numbers on this overlay are provably identical to Pace Monitor's, not
-  // lookalikes computed independently. Deliberately NOT the latest bar's own raw value for
-  // "actual" — Pace Monitor smooths over a period-appropriate rolling window for a steadier
-  // signal (e.g. Day = trailing 7d ÷ 7), and using that same smoothed figure here is what makes
-  // the gap number cross-check exactly. Only drawn when the visible range extends to today AND
-  // the latest bar IS today's period (a custom end date, or "hide off days" hiding today's empty
-  // bar, both correctly suppress it — there's no "current" bar to attach it to).
+  // AP127 required-pace target — reuses ap127RequiredPace(), the exact formula the Pace Monitor's
+  // Per Day/Week/Month tables use (see that function's own comment), so THIS number is provably
+  // identical to Pace Monitor's "Required" figure. "Actual" here is deliberately the latest bar's
+  // own raw value — not Pace Monitor's smoothed rolling-window figure — because this overlay is
+  // meant to answer "how did THIS bar do against target," and a number that doesn't correspond to
+  // anything actually drawn on the chart would be confusing (an earlier version tried using the
+  // same smoothed "Actual" Pace Monitor shows so the gap number matched exactly too, but that
+  // meant the "actual" line floated somewhere away from the bar it was supposedly describing —
+  // this is simpler and matches what's visually on screen, at the cost of the gap number not
+  // being expected to equal Pace Monitor's own gap, which uses that different, smoothed base).
+  // Only drawn when the visible range extends to today AND the latest bar IS today's period (a
+  // custom end date, or "hide off days" hiding today's empty bar, both correctly suppress it —
+  // there's no "current" bar to attach it to).
   const reqPace=ap127RequiredPace();
-  const actPace=ap127ActualPace();
   const target=(reqPace&&atToday)
     ?(period==="day"?(isHrs?reqPace.reqDayHrsB:reqPace.reqDayLesB)
       :period==="week"?(isHrs?reqPace.reqWeekHrsB:reqPace.reqWeekLesB)
       :(isHrs?reqPace.reqMonthHrsB:reqPace.reqMonthLesB))
     :null;
-  const actualPace=(actPace&&atToday)
-    ?(period==="day"?(isHrs?actPace.actDayHrsB:actPace.actDayLesB)
-      :period==="week"?(isHrs?actPace.actWeekHrsB:actPace.actWeekLesB)
-      :(isHrs?actPace.actMonthHrsB:actPace.actMonthLesB))
-    :null;
   const showTarget=target!=null&&atToday&&keys[keys.length-1]===ap127v4PeriodKey(today,period);
+  const actualPace=showTarget?values[keys.length-1]:null;
   const gap=showTarget?(actualPace-target):null;
 
   const legendEl=document.getElementById("d127v4-lb-legend");
@@ -2123,8 +2122,8 @@ function buildAP127LessonBar(){
     if(showTarget){
       legendEl.style.display="";
       legendEl.innerHTML=`<span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>Required</span>`
-        +`<span class="d127-pc"><span class="d127-pdot" style="background:#38bdf8;border-radius:2px;width:14px;height:3px"></span>Actual (rolling avg)</span>`
-        +`<span class="d127-pc" style="color:var(--tx3)">— both from the same calc as the Pace Monitor's Per ${period==="day"?"Day":period==="week"?"Week":"Month"} row above (batch total)</span>`;
+        +`<span class="d127-pc"><span class="d127-pdot" style="background:#38bdf8;border-radius:2px;width:14px;height:3px"></span>Actual (this bar)</span>`
+        +`<span class="d127-pc" style="color:var(--tx3)">— Required = same calc as the Pace Monitor's Per ${period==="day"?"Day":period==="week"?"Week":"Month"} row above (batch total)</span>`;
     }else legendEl.style.display="none";
   }
 
@@ -2195,8 +2194,9 @@ function buildAP127LessonBar(){
       const gapColor=gap>=0?"#4ade80":"#f43f5e";
       const tx=barX-halfW-9;
       ctx.save();
-      // Required (rose) and Actual (blue) reference lines — both span just the latest bar's
-      // column, each labeled, at the exact heights the Pace Monitor table shows for this period.
+      // Required (rose, from Pace Monitor's formula) and Actual (blue, this bar's own value)
+      // reference lines — both span just the latest bar's column, each labeled. Since Actual is
+      // the bar's own value, this blue line always sits exactly level with the bar's own top.
       ctx.strokeStyle="#f43f5e";ctx.lineWidth=2;ctx.setLineDash([4,3]);
       ctx.beginPath();ctx.moveTo(barX-halfW-6,targetY);ctx.lineTo(barX+halfW+6,targetY);ctx.stroke();
       ctx.strokeStyle="#38bdf8";ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
@@ -2205,8 +2205,8 @@ function buildAP127LessonBar(){
       ctx.font="700 9px JetBrains Mono, monospace";ctx.textAlign="right";ctx.textBaseline="middle";
       ctx.fillStyle="#f43f5e";ctx.fillText(`Required ${fmtVal(target)}`,tx,targetY);
       ctx.fillStyle="#38bdf8";ctx.fillText(`Actual ${fmtVal(actualPace)}`,tx,actualY);
-      // Vertical gap bracket between the two reference lines (not the raw bar — see the comment
-      // above showTarget/gap for why the smoothed "Actual" figure is used here instead).
+      // Vertical gap bracket between the two reference lines (Actual sits at the bar's own top,
+      // so this also visually reads as "bar top vs required pace").
       ctx.strokeStyle=gapColor;ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(barX,actualY);ctx.lineTo(barX,targetY);ctx.stroke();
       ctx.beginPath();ctx.moveTo(barX-4,actualY);ctx.lineTo(barX+4,actualY);ctx.moveTo(barX-4,targetY);ctx.lineTo(barX+4,targetY);ctx.stroke();

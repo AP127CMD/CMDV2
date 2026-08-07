@@ -1830,3 +1830,35 @@ with correct stack totals); zero console errors beyond the pre-existing local-de
 (unrelated to this change); original AP127 Detail (`js/view-cohort.js`) confirmed still
 byte-identical/untouched. Only file touched: `js/view-cohort-v4.js` (plus the usual `index.html`
 cache-bust bump).
+
+### AP127 Detail V4 — Daily Output target overlay: "Actual" fixed to the bar's own value (2026-08-07, p146)
+
+`js/view-cohort-v4.js`
+
+User questioned p145's overlay the moment they saw it live: "How the actual (blue dash line) is
+calculated? It should not cal actual I think."
+
+p145 deliberately made "Actual" the same smoothed rolling-window figure the Pace Monitor table
+uses (Day = trailing 7d ÷ 7, Week = trailing 14d ÷ 2, Month = trailing 30d directly) — the
+reasoning at the time was to make the gap NUMBER exactly equal Pace Monitor's own gap. In practice
+that backfired: it meant the blue "Actual" line floated at a height that didn't correspond to
+anything actually drawn on the chart — a bar chart where a labeled reference line doesn't match
+its own bar reads as a bug, not a feature, regardless of how it was computed.
+
+Fixed by making "Actual" simply the latest bar's own raw value (`values[keys.length-1]`), removing
+the `ap127ActualPace()` call from `buildAP127LessonBar()` entirely (the function itself stays —
+`renderAP127Pace()` still uses it, unaffected). The blue "Actual" line now always sits exactly
+level with the bar's own top; the gap bracket connects that to the Required line directly, so it
+visually reads as "this bar vs required pace" — exactly what's on screen, no hidden smoothing.
+
+The Required/target side is UNCHANGED — still calls `ap127RequiredPace()`, still provably
+identical to the Pace Monitor table's own Required figure. Only Actual changed. Updated the
+legend (`Required` / `Actual (this bar)`) and the panel's note text to stop claiming both numbers
+cross-check Pace Monitor — only Required does now, honestly reflected in the UI copy.
+
+Verified live: reloaded with today's bar showing 0 hours (no flights logged yet in this test
+snapshot) — the overlay correctly showed "Actual 0.0h" / "Required 34.8h" / "-34.8h gap", with the
+blue line sitting right at the bar's own (empty) top rather than floating at an unrelated smoothed
+value. Zero console errors beyond the pre-existing local-dev CORS fallback. Original AP127 Detail
+(`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file touched:
+`js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump).
