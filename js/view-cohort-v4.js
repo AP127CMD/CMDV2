@@ -134,7 +134,7 @@
     </div>
     <div class="d127-panel">
       <div class="d127-h" style="flex-wrap:wrap;gap:6px">
-        <span class="d127-t">Daily Output · Lessons &amp; Hours</span>
+        <span class="d127-t">Daily Output · Lessons &amp; Hours<button class="d127-info-btn" title="Click for an explanation of this chart" onclick="ap127ToggleLBInfoV4()">ⓘ</button></span>
         <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
           <button class="cpv-btn lb-unit sel" data-u="hours" onclick="setLBUnitV4('hours')">Hours</button>
           <button class="cpv-btn lb-unit" data-u="lessons" onclick="setLBUnitV4('lessons')">Lessons</button>
@@ -153,7 +153,8 @@
         </div>
       </div>
       <div class="d127-body">
-        <div class="d127-note">Bars = batch total per period, including days with no flights by default (toggle to hide them), full history by default (set a custom range above). Blue moving-average line = 7d / 4wk / 3mo. The still-forming current period (marked ◐) is drawn with a dashed outline, capped by a hollow "~" bar projecting where it might land based on data so far — it's excluded from the target comparison since a partial period isn't a fair fight against a full-period target. Instead, the rose/blue lines + gap bracket compare the latest fully-CLOSED period's own actual against today's required pace (same formula as the Pace Monitor's "Per Day/Week/Month" tables above). Faint vertical lines mark each week (Day view) or month (Week view). "By Type" splits each bar into Dual / Solo / Simulator lessons. Hover for exact values.</div>
+        <div class="d127-note" id="d127v4-lb-note" style="display:none">Bars = batch total per period, including days with no flights by default (toggle to hide them), full history by default (set a custom range above). Blue moving-average line = 7d / 4wk / 3mo. The still-forming current period (marked ◐) is drawn with a dashed outline, capped by a hollow "~" bar projecting where it might land based on data so far — it's excluded from the target comparison since a partial period isn't a fair fight against a full-period target. Instead, the rose/blue lines + gap bracket compare the latest fully-CLOSED period's own actual against today's required pace (same formula as the Pace Monitor's "Per Day/Week/Month" tables above). Faint vertical lines mark each week (Day view) or month (Week view). "By Type" splits each bar into Dual / Solo / Simulator lessons. Hover for exact values.</div>
+        <div class="d127v4-lb-kpis" id="d127v4-lb-kpis"></div>
         <div class="d127-phase-legend" id="d127v4-lb-legend" style="display:none"></div>
         <div style="position:relative;height:280px"><canvas id="d127v4-lessonbar"></canvas></div>
       </div>
@@ -2169,6 +2170,12 @@ function ap127ToggleLBBreakdown(){
   document.querySelectorAll(".lb-breakdown").forEach(b=>b.classList.toggle("sel",AP127V4_LB_BREAKDOWN));
   buildAP127LessonBar();
 }
+// The panel's explanation paragraph is hidden by default behind the ⓘ button in the header —
+// same content, just not taking up space until someone actually wants it.
+function ap127ToggleLBInfo(){
+  const el=document.getElementById("d127v4-lb-note");
+  if(el)el.style.display=el.style.display==="none"?"":"none";
+}
 function ap127v4WeekStart(ds){const d=new Date(ds+"T00:00:00Z");const dow=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-dow);return d.toISOString().slice(0,10);}
 function ap127v4PeriodKey(ds,period){
   if(period==="day")return ds;
@@ -2229,11 +2236,12 @@ function buildAP127LessonBar(){
     const key=ap127v4PeriodKey(f.date,period);
     const v=isHrs?(lessonsMap[f.lesson]||ap127FlightMins(f)||0)/60:1;
     byPeriod[key]=(byPeriod[key]||0)+v;
-    if(breakdown){
-      const t=ap127LessonType(f.lesson);
-      const bucket=byPeriodType[key]=byPeriodType[key]||{Dual:0,Solo:0,Simulator:0};
-      bucket[t]+=v;
-    }
+    // Always accumulated (not gated behind the "By Type" bar-view toggle) — the KPI summary row
+    // below needs Dual/Solo/Simulator totals regardless of whether the stacked breakdown is
+    // currently shown on the bars themselves.
+    const t=ap127LessonType(f.lesson);
+    const bucket=byPeriodType[key]=byPeriodType[key]||{Dual:0,Solo:0,Simulator:0};
+    bucket[t]+=v;
   }));
   const allKeys=ap127v4PeriodRange(rangeStart,rangeEnd,period);
   const keys=AP127V4_LB_SHOWALL?allKeys:allKeys.filter(k=>byPeriod[k]>0);
@@ -2252,6 +2260,24 @@ function buildAP127LessonBar(){
   const labels=keys.map(fmtLbl);
   const showLabels=keys.length<=45;
   const fmtVal=v=>isHrs?v.toFixed(1)+"h":Math.round(v)+" les";
+
+  // Compact summary row (Total / Dual / Solo / Simulator) for whatever's currently visible —
+  // same date range / unit / "Hide off days" filter as the bars themselves, independent of
+  // whether the "By Type" stacked view is toggled on.
+  const kpiEl=document.getElementById("d127v4-lb-kpis");
+  if(kpiEl){
+    const totalSum=values.reduce((a,v)=>a+v,0);
+    const dualSum=dualVals.reduce((a,v)=>a+v,0);
+    const soloSum=soloVals.reduce((a,v)=>a+v,0);
+    const simSum=simVals.reduce((a,v)=>a+v,0);
+    const pct=v=>totalSum>0?Math.round(v/totalSum*100)+"%":"—";
+    const kpi=(label,val,sub,color)=>`<div class="cpv-kpi"><div class="cpv-kl">${label}</div><div class="cpv-kv" style="color:${color}">${val}</div><div class="cpv-ks">${sub}</div></div>`;
+    kpiEl.innerHTML=
+      kpi("Total",fmtVal(totalSum),`${keys.length} ${period}${keys.length===1?"":"s"}`,"var(--c127)")+
+      kpi("Dual",fmtVal(dualSum),pct(dualSum),AP127_LESSON_TYPE_COLORS.Dual)+
+      kpi("Solo",fmtVal(soloSum),pct(soloSum),AP127_LESSON_TYPE_COLORS.Solo)+
+      kpi("Simulator",fmtVal(simSum),pct(simSum),AP127_LESSON_TYPE_COLORS.Simulator);
+  }
 
   // The latest bar is "open" (still forming) whenever it's the period today falls inside — a Day
   // bar for today, or the Week/Month bar that today is partway through. An open period's total is
@@ -2889,6 +2915,7 @@ function opsAugment(students, curriculum) {
     ap127SetLBRangeV4: ap127SetLBRange,
     ap127ResetLBRangeV4: ap127ResetLBRange,
     ap127ToggleLBBreakdownV4: ap127ToggleLBBreakdown,
+    ap127ToggleLBInfoV4: ap127ToggleLBInfo,
     buildAP127RosterV4: buildAP127Roster,
     CHARTS_V4: CHARTS,
   });

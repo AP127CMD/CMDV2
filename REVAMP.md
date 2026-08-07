@@ -2361,3 +2361,47 @@ correctly bright while every other instructor row (no AP-127 flights that day) d
 Toggled focus off — confirmed full brightness restored everywhere (no regression). Zero new console
 errors (only the pre-existing, already-documented local-dev CORS fallback). Only file touched:
 `js/view-gantt.js`.
+
+### AP127 Detail V4 — Daily Output: explanation behind ⓘ icon, new summary KPI row (2026-08-07, p154)
+
+`js/view-cohort-v4.js`, `css/progress.css`
+
+User: "Hide the explanation in an i icon" + "Add summary KPI card, not too big: Total, Total duo,
+Total solo, Total sim." (Note: this session's audit work had reached p152; a concurrent session's
+Gantt fix landed on `main` as p153 in between, so this change correctly took p154, the next real
+available token.)
+
+**1. Explanation collapsed behind a ⓘ button.** The panel's long explanation paragraph
+(`#d127v4-lb-note`) previously rendered inline, always visible, ahead of the chart. It now starts
+`display:none` and toggles open/closed via a new small round ⓘ button placed right next to the
+panel title, wired to new `ap127ToggleLBInfo()`/`ap127ToggleLBInfoV4`. Same text as before — it's
+just not taking up vertical space by default anymore.
+
+**2. New compact 4-card summary row (Total / Dual / Solo / Simulator).** Added directly above the
+chart, reusing the existing `.cpv-kpi` component (already used by Combined Progress and Pace
+Distribution's KPI rows) inside a new `.d127v4-lb-kpis` container — a 4-column grid (2-column
+below 900px, matching `.cpv-kpis`'s existing breakpoint). Per the "not too big" ask, the reused
+card's value font is shrunk from the usual 20px to 16px via a scoped override
+(`.d127v4-lb-kpis .cpv-kv{font-size:16px}`) and padding tightened. The row reflects the SAME
+currently-visible range/unit/"Hide off days" filter as the bars themselves (not a separate,
+independently-computed figure) — Total's subtitle shows the period count (e.g. "110 days"),
+Dual/Solo/Simulator's subtitles show each type's % share of Total.
+
+**Required one small change to the underlying calc, not just the UI:** `buildAP127LessonBar()`
+only accumulated the Dual/Solo/Simulator per-period breakdown (`byPeriodType`) when the "By Type"
+stacked-bar toggle (`breakdown`) was on — reasonable when that breakdown only ever fed the bars
+themselves, but the new KPI row needs those totals unconditionally, regardless of whether "By
+Type" happens to be toggled on. Removed the `if(breakdown)` gate around that accumulation; it now
+always runs (trivial extra cost — a few additions per flight in a loop that already runs once per
+render).
+
+**Verified live**, cross-checked against the page's own existing headline numbers rather than just
+eyeballing plausibility: switched to Lessons mode and confirmed Dual 637 + Solo 295 + Simulator 0
+= 932, exactly matching the "932 lessons done" figure shown in the tab's top meta line; switched
+back to Hours mode and confirmed the 68% / 32% / 0% split sums to 100%; confirmed the four cards
+update correctly across every Unit (Hours/Lessons) and Period (Day/Week/Month) combination tested;
+confirmed the ⓘ toggle correctly shows/hides the note (`display:none` ↔ `display:block`) with no
+layout breakage, screenshotted both states. Zero new console errors beyond the pre-existing
+local-dev CORS fallback. Original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progress.css` (plus the
+usual `index.html` cache-bust bump, p153→p154).

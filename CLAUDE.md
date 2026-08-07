@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p153` (all currently at p152)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p155` (all currently at p154)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -64,7 +64,33 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p153` (2026-08-07 — **Schedule Gantt — AP-127 FOCUS dim fixed to be
+**Last known:** all files `p154` (2026-08-07 — **AP127 Detail V4 — Daily Output: explanation
+hidden behind an ⓘ icon, new Total/Dual/Solo/Simulator summary row.** User: "Hide the explanation
+in an i icon" + "Add summary KPI card, not too big: Total, Total duo, Total solo, Total sim."
+1. **Explanation collapsed behind a ⓘ button.** The panel's long explanation paragraph
+   (`#d127v4-lb-note`) now starts `display:none`, toggled by a small round ⓘ button next to the
+   panel title (new `ap127ToggleLBInfo()`/`ap127ToggleLBInfoV4`) — same text, just not taking up
+   space until someone wants it.
+2. **New compact 4-card summary row** (Total / Dual / Solo / Simulator) above the chart, reusing
+   the existing `.cpv-kpi` component (shrunk slightly — 16px value font vs the usual 20px, per
+   "not too big") in a new `.d127v4-lb-kpis` 4-column grid (2-column below 900px). Reflects the
+   SAME currently-visible range/unit/"Hide off days" filter as the bars themselves — Total's
+   subtitle shows the period count (e.g. "110 days"), Dual/Solo/Simulator's subtitles show % share
+   of Total. Required removing the `if(breakdown)` gate around the Dual/Solo/Simulator
+   accumulation in `buildAP127LessonBar()` so these totals are always computed, not only when the
+   "By Type" stacked-bar view is toggled on.
+Verified live: KPI math cross-checked exactly against the page's own headline figures — Lessons
+mode showed Dual 637 + Solo 295 + Simulator 0 = 932, matching "932 lessons done" shown elsewhere
+on the same page; Hours mode showed 68%/32%/0% split summing correctly; confirmed the cards update
+correctly across unit (Hours/Lessons) and period (Day/Week/Month) toggles; confirmed the ⓘ toggle
+shows/hides the note with no layout breakage. Zero new console errors beyond the pre-existing
+local-dev CORS fallback. Original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched. Only files touched: `js/view-cohort-v4.js`, `css/progress.css`. Full
+write-up: REVAMP.md's p154 entry.
+**Note: p153 was used by a concurrent session's Schedule Gantt fix (see below) — this session's
+audit work had reached p152; that Gantt fix landed on `main` in between, so this Daily Output
+change correctly took the next real available token, p154, not p153.**) p153
+(2026-08-07 — **Schedule Gantt — AP-127 FOCUS dim fixed to be
 per-flight, not per-row.** User-reported: "the AP127 quick button seem to a bit off. When it
 active it should dim all other than AP127 SP but I found some other than AP127 still not dim."
 Root cause (found via systematic debugging, confirmed against the correct pattern already used by
