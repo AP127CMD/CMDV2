@@ -144,10 +144,17 @@
           <button class="cpv-btn lb-period" data-p="month" onclick="setLBPeriodV4('month')">Month</button>
           <span style="width:1px;height:14px;background:var(--bd);display:inline-block;margin:0 2px"></span>
           <button class="cpv-btn lb-showall" onclick="setLBShowAllV4()" title="Toggle whether periods with zero flights are shown">Hide off days</button>
+          <button class="cpv-btn lb-breakdown" onclick="ap127ToggleLBBreakdownV4()" title="Split each bar into Dual / Solo / Simulator lessons">By Type</button>
+          <span style="width:1px;height:14px;background:var(--bd);display:inline-block;margin:0 2px"></span>
+          <input type="date" id="d127v4-lb-start" class="d127-wsel" style="padding:5px 6px" title="Range start (blank = earliest flight)" onchange="ap127SetLBRangeV4('start',this.value)">
+          <span style="color:var(--tx3);font-size:10px">–</span>
+          <input type="date" id="d127v4-lb-end" class="d127-wsel" style="padding:5px 6px" title="Range end (blank = today)" onchange="ap127SetLBRangeV4('end',this.value)">
+          <button class="d127-reset" title="Reset to full range" onclick="ap127ResetLBRangeV4()">⟳ Full range</button>
         </div>
       </div>
       <div class="d127-body">
-        <div class="d127-note">Bars = batch total per period, including days with no flights by default. Blue line = moving average (7d / 4wk / 3mo depending on view). Hover for exact values.</div>
+        <div class="d127-note">Bars = batch total per period, including days with no flights by default (toggle to hide them), full history by default (set a custom range above). Blue line = moving average (7d / 4wk / 3mo). Rose line + bracket on the latest bar = today's required pace vs actual, from the same formula as the Pace Monitor's "Per Day/Week/Month" tables above. Faint vertical lines mark each week (Day view) or month (Week view). "By Type" splits each bar into Dual / Solo / Simulator lessons. Hover for exact values.</div>
+        <div class="d127-phase-legend" id="d127v4-lb-legend" style="display:none"></div>
         <div style="position:relative;height:280px"><canvas id="d127v4-lessonbar"></canvas></div>
       </div>
     </div>
@@ -363,6 +370,26 @@ function ap127SyllabusPhase(code){
   return AP127_SYLLABUS_PHASES.find(p=>n>=p.lo&&n<=p.hi)||AP127_PHASE_OTHER;
 }
 function ap127IdleLineColor(d){if(d<=2)return"#e6edf3";if(d<=5)return"#fbbf24";return"#ff6b6b";}
+// Lesson TYPE (Dual / Solo / Simulator) — a different axis than syllabus phase, used by the Daily
+// Output chart's breakdown toggle. Every code starts with a fixed leading "C", then an optional
+// "M" (multi-engine), then the letter that actually carries Dual/Solo/SPIC meaning ("D","S","SP")
+// per the syllabus's own lessonCodeKey; "(SIM)" anywhere in the code overrides to Simulator
+// regardless of Dual/Solo, since that's a different device, not a different instruction style.
+// SPIC ("SP...") buckets into Solo — both mean flying without an instructor on board, which is
+// the distinction that matters for this 3-way split. Verified against every code pattern seen in
+// the curriculum (CDGL→Dual, CSGL/CSPGL→Solo, CDIF(SIM)/CMDIF(SIM)→Simulator, CMDGL→Dual,
+// CMSPXI→Solo).
+const AP127_LESSON_TYPE_COLORS={Dual:"#60a5fa",Solo:"#facc15",Simulator:"#a78bfa"};
+function ap127LessonType(code){
+  const c=String(code||"").trim();
+  if(/\(SIM\)/i.test(c))return"Simulator";
+  const body=c.replace(/\(SIM\)/i,"").replace(/\s*\d+\s*$/,"");
+  const rest=body.replace(/^C/i,"").replace(/^M/i,"");
+  if(/^SP/i.test(rest))return"Solo";
+  if(/^S/i.test(rest))return"Solo";
+  if(/^D/i.test(rest))return"Dual";
+  return"Dual";
+}
 function ap127ShortName(n){const p=n.trim().split(/\s+/);return p.length<2?n:p[0]+" "+p[p.length-1][0]+".";}
 function ap127FmtDate(ds){if(!ds)return"-";if(ds==="TBC")return"TBC";try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}catch{return ds;}}
 function ap127ShortDate(ds){if(!ds)return"-";if(ds==="TBC")return"TBC";try{return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}catch{return ds;}}
@@ -426,6 +453,51 @@ function ap127RowsDebounced(){
 function ap127RankClass(rank,total){if(rank<=3)return"bad";if(rank<=Math.ceil(total*.4))return"mid";return"ok";}
 
 // ── Pace Monitor v2 — current situation vs target, at a glance ──
+// Shared "required batch pace" calc — the single source of truth for reqDay/Week/MonthHrsB/LesB,
+// used by BOTH the Pace Monitor table (renderAP127Pace) and the Daily Output chart's target-line
+// overlay (buildAP127LessonBar), so the two can never independently drift the way this tab's
+// several competing "hours done" formulas once did before being unified (see ap127Hours()'s own
+// comment). Returns null only when there are no students at all; when the plan end date/remaining
+// days can't be determined, the req* fields come back null but remHrsB/remLesB/n are still valid.
+function ap127RequiredPace(){
+  const all=ap127AsOfStudents();if(!all.length)return null;
+  const cur=G.cur127||[];
+  const today=ap127AsOf();
+  const n=all.length;
+  const currHrs=ap127CurriculumHours();
+  const currLes=cur.length||(all[0]?.total||0);
+  const lessonsMap={};cur.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
+  const fHrsOf=f=>(lessonsMap[f.lesson]||ap127FlightMins(f))/60;
+  const totalHrsDone=all.reduce((a,s)=>a+(s.flown||[]).reduce((b,f)=>b+fHrsOf(f),0),0);
+  const totalLesDone=all.reduce((a,s)=>a+(s.done||0),0);
+  const remHrsB=Math.max((currHrs*n)-totalHrsDone,0);
+  const remLesB=Math.max((currLes*n)-totalLesDone,0);
+  const planEndDate=cur.map(c=>c.planned_date).filter(Boolean).sort().at(-1)||"";
+  const daysRem=planEndDate?Math.max(ap127DateDiff(planEndDate,today),0):null;
+  if(daysRem===null||daysRem<=0)return{n,remHrsB,remLesB,daysRem,planEndDate,reqDayHrsB:null,reqDayLesB:null,reqWeekHrsB:null,reqWeekLesB:null,reqMonthHrsB:null,reqMonthLesB:null};
+  const reqDayHrsB=remHrsB/daysRem,reqDayLesB=remLesB/daysRem;
+  return{n,remHrsB,remLesB,daysRem,planEndDate,reqDayHrsB,reqDayLesB,reqWeekHrsB:reqDayHrsB*7,reqWeekLesB:reqDayLesB*7,reqMonthHrsB:reqDayHrsB*30.44,reqMonthLesB:reqDayLesB*30.44};
+}
+// Shared "actual batch pace" calc — the exact same period-appropriate rolling window Pace Monitor
+// uses (Day = trailing 7d ÷ 7, Week = trailing 14d ÷ 2, Month = trailing 30d directly), paired
+// with ap127RequiredPace() so the Daily Output chart's target/gap overlay shows numbers that are
+// PROVABLY identical to the Pace Monitor table's — not a lookalike computed independently, which
+// is exactly the class of bug this tab had before (see ap127Hours()'s own comment on that).
+function ap127ActualPace(){
+  const all=ap127AsOfStudents();if(!all.length)return null;
+  const cur=G.cur127||[];
+  const today=ap127AsOf();
+  const lessonsMap={};cur.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
+  const fHrsOf=f=>(lessonsMap[f.lesson]||ap127FlightMins(f))/60;
+  const over=days=>{
+    const start=(()=>{const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-days);return d.toISOString().slice(0,10);})();
+    let hrs=0,les=0;
+    all.forEach(s=>{const wf=(s.flown||[]).filter(f=>f.date&&f.date>=start&&f.date<=today);les+=wf.length;hrs+=wf.reduce((a,f)=>a+fHrsOf(f),0);});
+    return{hrs,les};
+  };
+  const w7=over(7),w14=over(14),w30=over(30);
+  return{actDayHrsB:w7.hrs/7,actDayLesB:w7.les/7,actWeekHrsB:w14.hrs/2,actWeekLesB:w14.les/2,actMonthHrsB:w30.hrs,actMonthLesB:w30.les};
+}
 function renderAP127Pace(){
   if(!G||!G.ap127)return;
   const all=ap127AsOfStudents();const n=all.length;if(!n)return;
@@ -442,28 +514,20 @@ function renderAP127Pace(){
   const totalHrsDone=all.reduce((a,s)=>a+(s.flown||[]).reduce((b,f)=>b+fHrsOf(f),0),0);
   const totalLesDone=all.reduce((a,s)=>a+(s.done||0),0);
 
-  // Actual pace is measured with a period-appropriate rolling window (wider window = steadier
-  // signal for the coarser period), then normalized to a per-period RATE: the trailing-30d total
-  // is used directly as the monthly rate (30d ≈ 1 month), the trailing-14d total is halved to a
-  // weekly rate, and the trailing-7d total is divided by 7 to a daily rate.
-  const actualOverWindow=days=>{
-    const start=(()=>{const d=new Date(today+"T00:00:00");d.setDate(d.getDate()-days);return d.toISOString().slice(0,10);})();
-    let hrs=0,les=0;
-    all.forEach(s=>{const wf=(s.flown||[]).filter(f=>f.date&&f.date>=start&&f.date<=today);les+=wf.length;hrs+=wf.reduce((a,f)=>a+fHrsOf(f),0);});
-    return{hrs,les};
-  };
-  const w7=actualOverWindow(7),w14=actualOverWindow(14),w30=actualOverWindow(30);
-  const actDayHrsB=w7.hrs/7,       actDayLesB=w7.les/7;
-  const actWeekHrsB=w14.hrs/2,     actWeekLesB=w14.les/2;
-  const actMonthHrsB=w30.hrs,      actMonthLesB=w30.les;
+  // Actual pace: same period-appropriate rolling window ap127ActualPace() computes (wider window
+  // = steadier signal for the coarser period) — see that function's comment for the exact windows.
+  const actPace=ap127ActualPace();
+  const actDayHrsB=actPace?actPace.actDayHrsB:0,       actDayLesB=actPace?actPace.actDayLesB:0;
+  const actWeekHrsB=actPace?actPace.actWeekHrsB:0,     actWeekLesB=actPace?actPace.actWeekLesB:0;
+  const actMonthHrsB=actPace?actPace.actMonthHrsB:0,   actMonthLesB=actPace?actPace.actMonthLesB:0;
 
-  const remHrsB=Math.max((currHrs*n)-totalHrsDone,0);
-  const remLesB=Math.max((currLes*n)-totalLesDone,0);
-  const daysRem=planEndDate?Math.max(ap127DateDiff(planEndDate,today),0):null;
-  const hasReq=daysRem!==null&&daysRem>0;
-  const reqDayHrsB=hasReq?remHrsB/daysRem:null,     reqDayLesB=hasReq?remLesB/daysRem:null;
-  const reqWeekHrsB=hasReq?reqDayHrsB*7:null,       reqWeekLesB=hasReq?reqDayLesB*7:null;
-  const reqMonthHrsB=hasReq?reqDayHrsB*30.44:null,  reqMonthLesB=hasReq?reqDayLesB*30.44:null;
+  const reqPace=ap127RequiredPace();
+  const hasReq=!!(reqPace&&reqPace.reqDayHrsB!=null);
+  const daysRem=reqPace?reqPace.daysRem:null;
+  const remHrsB=reqPace?reqPace.remHrsB:0,          remLesB=reqPace?reqPace.remLesB:0;
+  const reqDayHrsB=hasReq?reqPace.reqDayHrsB:null,     reqDayLesB=hasReq?reqPace.reqDayLesB:null;
+  const reqWeekHrsB=hasReq?reqPace.reqWeekHrsB:null,   reqWeekLesB=hasReq?reqPace.reqWeekLesB:null;
+  const reqMonthHrsB=hasReq?reqPace.reqMonthHrsB:null, reqMonthLesB=hasReq?reqPace.reqMonthLesB:null;
 
   const gHrWkBatch=hasReq?actWeekHrsB-reqWeekHrsB:null;
 
@@ -1933,11 +1997,29 @@ function buildAP127PaceBand(all,asOf){
 let AP127V4_LB_UNIT="hours";
 let AP127V4_LB_PERIOD="day";
 let AP127V4_LB_SHOWALL=true; // include off-periods (zero flights) by default — toggle to hide them
+let AP127V4_LB_START=null; // custom range start ("YYYY-MM-DD"), null = earliest flight (full range default)
+let AP127V4_LB_END=null;   // custom range end, null = today
+let AP127V4_LB_BREAKDOWN=false; // split each bar into Dual/Solo/Simulator lessons
 function setLBUnit(u){AP127V4_LB_UNIT=u;document.querySelectorAll(".lb-unit").forEach(b=>b.classList.toggle("sel",b.dataset.u===u));buildAP127LessonBar();}
 function setLBPeriod(p){AP127V4_LB_PERIOD=p;document.querySelectorAll(".lb-period").forEach(b=>b.classList.toggle("sel",b.dataset.p===p));buildAP127LessonBar();}
 function setLBShowAll(){
   AP127V4_LB_SHOWALL=!AP127V4_LB_SHOWALL;
   document.querySelectorAll(".lb-showall").forEach(b=>b.classList.toggle("sel",!AP127V4_LB_SHOWALL));
+  buildAP127LessonBar();
+}
+function ap127SetLBRange(which,val){
+  if(which==="start")AP127V4_LB_START=val||null;else AP127V4_LB_END=val||null;
+  buildAP127LessonBar();
+}
+function ap127ResetLBRange(){
+  AP127V4_LB_START=null;AP127V4_LB_END=null;
+  const s=document.getElementById("d127v4-lb-start");if(s)s.value="";
+  const e=document.getElementById("d127v4-lb-end");if(e)e.value="";
+  buildAP127LessonBar();
+}
+function ap127ToggleLBBreakdown(){
+  AP127V4_LB_BREAKDOWN=!AP127V4_LB_BREAKDOWN;
+  document.querySelectorAll(".lb-breakdown").forEach(b=>b.classList.toggle("sel",AP127V4_LB_BREAKDOWN));
   buildAP127LessonBar();
 }
 function ap127v4WeekStart(ds){const d=new Date(ds+"T00:00:00Z");const dow=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-dow);return d.toISOString().slice(0,10);}
@@ -1968,20 +2050,39 @@ function buildAP127LessonBar(){
   const lessonsMap={};cur.forEach(c=>{lessonsMap[c.lesson]=c.planned_mins||0;});
   const isHrs=AP127V4_LB_UNIT==="hours";
   const period=AP127V4_LB_PERIOD;
-  const byPeriod={};
-  let firstDate=null;
+  const breakdown=AP127V4_LB_BREAKDOWN;
+
+  let firstFlownDate=null;
+  all.forEach(s=>(s.flown||[]).forEach(f=>{if(f.date&&f.date<=today&&(firstFlownDate===null||f.date<firstFlownDate))firstFlownDate=f.date;}));
+  if(firstFlownDate===null)return;
+  // Date range: defaults to full history (earliest flight → today); a custom start/end from the
+  // panel's date inputs narrows it. End is clamped to never exceed today (no data past it anyway);
+  // start is honored even if before any real flight (an intentionally wide "expected range" view
+  // just renders leading zero bars, which is a legitimate thing to want to see).
+  let rangeStart=AP127V4_LB_START||firstFlownDate;
+  let rangeEnd=(AP127V4_LB_END&&AP127V4_LB_END<today)?AP127V4_LB_END:today;
+  if(rangeStart>rangeEnd)rangeStart=rangeEnd;
+  const atToday=rangeEnd===today;
+
+  const byPeriod={},byPeriodType={};
   all.forEach(s=>(s.flown||[]).forEach(f=>{
-    if(!f.date||f.date>today)return;
-    if(firstDate===null||f.date<firstDate)firstDate=f.date;
+    if(!f.date||f.date<rangeStart||f.date>rangeEnd)return;
     const key=ap127v4PeriodKey(f.date,period);
     const v=isHrs?(lessonsMap[f.lesson]||ap127FlightMins(f)||0)/60:1;
     byPeriod[key]=(byPeriod[key]||0)+v;
+    if(breakdown){
+      const t=ap127LessonType(f.lesson);
+      const bucket=byPeriodType[key]=byPeriodType[key]||{Dual:0,Solo:0,Simulator:0};
+      bucket[t]+=v;
+    }
   }));
-  if(firstDate===null)return;
-  const allKeys=ap127v4PeriodRange(firstDate,today,period);
+  const allKeys=ap127v4PeriodRange(rangeStart,rangeEnd,period);
   const keys=AP127V4_LB_SHOWALL?allKeys:allKeys.filter(k=>byPeriod[k]>0);
   if(!keys.length)return;
   const values=keys.map(k=>+((byPeriod[k]||0).toFixed(2)));
+  const dualVals=keys.map(k=>+((byPeriodType[k]?.Dual||0).toFixed(2)));
+  const soloVals=keys.map(k=>+((byPeriodType[k]?.Solo||0).toFixed(2)));
+  const simVals=keys.map(k=>+((byPeriodType[k]?.Simulator||0).toFixed(2)));
   const maWindow=period==="day"?7:period==="week"?4:3;
   const ma=values.map((_,i)=>{
     const lo=Math.max(0,i-maWindow+1);
@@ -1991,28 +2092,151 @@ function buildAP127LessonBar(){
   const fmtLbl=k=>period==="month"?new Date(k+"T00:00:00").toLocaleDateString("en-GB",{month:"short",year:"2-digit"}):ap127ShortDate(k);
   const labels=keys.map(fmtLbl);
   const showLabels=keys.length<=45;
+  const fmtVal=v=>isHrs?v.toFixed(1)+"h":Math.round(v)+" les";
+
+  // AP127 required-pace target AND actual-pace reference — both reuse the exact formulas the
+  // Pace Monitor's Per Day/Week/Month tables use (ap127RequiredPace/ap127ActualPace, see their
+  // own comments), so both numbers on this overlay are provably identical to Pace Monitor's, not
+  // lookalikes computed independently. Deliberately NOT the latest bar's own raw value for
+  // "actual" — Pace Monitor smooths over a period-appropriate rolling window for a steadier
+  // signal (e.g. Day = trailing 7d ÷ 7), and using that same smoothed figure here is what makes
+  // the gap number cross-check exactly. Only drawn when the visible range extends to today AND
+  // the latest bar IS today's period (a custom end date, or "hide off days" hiding today's empty
+  // bar, both correctly suppress it — there's no "current" bar to attach it to).
+  const reqPace=ap127RequiredPace();
+  const actPace=ap127ActualPace();
+  const target=(reqPace&&atToday)
+    ?(period==="day"?(isHrs?reqPace.reqDayHrsB:reqPace.reqDayLesB)
+      :period==="week"?(isHrs?reqPace.reqWeekHrsB:reqPace.reqWeekLesB)
+      :(isHrs?reqPace.reqMonthHrsB:reqPace.reqMonthLesB))
+    :null;
+  const actualPace=(actPace&&atToday)
+    ?(period==="day"?(isHrs?actPace.actDayHrsB:actPace.actDayLesB)
+      :period==="week"?(isHrs?actPace.actWeekHrsB:actPace.actWeekLesB)
+      :(isHrs?actPace.actMonthHrsB:actPace.actMonthLesB))
+    :null;
+  const showTarget=target!=null&&atToday&&keys[keys.length-1]===ap127v4PeriodKey(today,period);
+  const gap=showTarget?(actualPace-target):null;
+
+  const legendEl=document.getElementById("d127v4-lb-legend");
+  if(legendEl){
+    if(showTarget){
+      legendEl.style.display="";
+      legendEl.innerHTML=`<span class="d127-pc"><span class="d127-pdot" style="background:#f43f5e;border-radius:2px;width:14px;height:3px"></span>Required</span>`
+        +`<span class="d127-pc"><span class="d127-pdot" style="background:#38bdf8;border-radius:2px;width:14px;height:3px"></span>Actual (rolling avg)</span>`
+        +`<span class="d127-pc" style="color:var(--tx3)">— both from the same calc as the Pace Monitor's Per ${period==="day"?"Day":period==="week"?"Week":"Month"} row above (batch total)</span>`;
+    }else legendEl.style.display="none";
+  }
+
+  const datasets=[];
+  if(breakdown){
+    const segLbl=(vals,color)=>({
+      display:ctx=>showLabels&&vals[ctx.dataIndex]>0,
+      anchor:"center",align:"center",color:"#0d1117",font:{family:"JetBrains Mono",size:6.5,weight:"700"},
+      formatter:v=>isHrs?v.toFixed(1):v
+    });
+    datasets.push({type:"bar",label:"Dual",data:dualVals,backgroundColor:AP127_LESSON_TYPE_COLORS.Dual,stack:"lb",order:3,datalabels:segLbl(dualVals)});
+    datasets.push({type:"bar",label:"Solo",data:soloVals,backgroundColor:AP127_LESSON_TYPE_COLORS.Solo,stack:"lb",order:3,datalabels:segLbl(soloVals)});
+    datasets.push({type:"bar",label:"Simulator",data:simVals,backgroundColor:AP127_LESSON_TYPE_COLORS.Simulator,stack:"lb",order:3,datalabels:{
+      display:ctx=>showLabels&&(dualVals[ctx.dataIndex]+soloVals[ctx.dataIndex]+simVals[ctx.dataIndex])>0,
+      anchor:"end",align:"top",color:"#c9d1d9",font:{family:"JetBrains Mono",size:7,weight:"700"},
+      formatter:(v,ctx)=>{const i=ctx.dataIndex;const t=dualVals[i]+soloVals[i]+simVals[i];return isHrs?t.toFixed(1):t;}
+    }});
+  }else{
+    datasets.push({type:"bar",label:isHrs?"Hours":"Lessons",data:values,backgroundColor:"rgba(232,138,255,0.55)",borderRadius:2,order:3,stack:"lb"});
+  }
+  datasets.push({type:"line",label:`${maWindow}-period moving avg`,data:ma,borderColor:"#38bdf8",borderWidth:2,pointRadius:0,tension:.25,order:1,datalabels:{display:false}});
+
+  // Vertical separators: week boundaries (Mondays) in Day view, month boundaries in Week view —
+  // Month view needs none since each bar already IS a month.
+  const lbSepPlugin=(period==="day"||period==="week")?{
+    id:"d127v4LBSep",
+    afterDatasetsDraw(chart){
+      const{ctx,scales:{y}}=chart;
+      const meta=chart.getDatasetMeta(0);
+      ctx.save();
+      keys.forEach((k,i)=>{
+        if(i===0)return;
+        let isBoundary=false,label="";
+        if(period==="day"){
+          isBoundary=new Date(k+"T12:00:00Z").getUTCDay()===1;
+        }else{
+          isBoundary=k.slice(0,7)!==keys[i-1].slice(0,7);
+          if(isBoundary)label=new Date(k+"T12:00:00Z").toLocaleDateString("en-GB",{month:"short"});
+        }
+        if(!isBoundary)return;
+        const bar=meta.data[i];if(!bar)return;
+        const lineX=bar.x-(bar.width||10)/2-1;
+        ctx.strokeStyle="rgba(255,255,255,0.16)";ctx.lineWidth=1;ctx.setLineDash([2,2]);
+        ctx.beginPath();ctx.moveTo(lineX,y.top);ctx.lineTo(lineX,y.bottom);ctx.stroke();
+        ctx.setLineDash([]);
+        if(label){
+          ctx.font="700 8px JetBrains Mono, monospace";ctx.fillStyle="#6e7681";ctx.textAlign="left";ctx.textBaseline="top";
+          ctx.fillText(label,lineX+3,y.top+2);
+        }
+      });
+      ctx.restore();
+    }
+  }:null;
+
+  // Target line + actual-vs-target gap bracket, localized to just the latest (current-period) bar
+  // — labels anchor to its LEFT since that bar is always the chart's rightmost, so a right-side
+  // label would run off-canvas.
+  const lbTargetPlugin=showTarget?{
+    id:"d127v4LBTarget",
+    afterDatasetsDraw(chart){
+      const{ctx,scales:{y}}=chart;
+      const idx=keys.length-1;
+      const meta=chart.getDatasetMeta(0);
+      const bar=meta.data[idx];if(!bar)return;
+      const barX=bar.x,halfW=(bar.width||14)/2;
+      const targetY=y.getPixelForValue(target);
+      const actualY=y.getPixelForValue(actualPace);
+      const gapColor=gap>=0?"#4ade80":"#f43f5e";
+      const tx=barX-halfW-9;
+      ctx.save();
+      // Required (rose) and Actual (blue) reference lines — both span just the latest bar's
+      // column, each labeled, at the exact heights the Pace Monitor table shows for this period.
+      ctx.strokeStyle="#f43f5e";ctx.lineWidth=2;ctx.setLineDash([4,3]);
+      ctx.beginPath();ctx.moveTo(barX-halfW-6,targetY);ctx.lineTo(barX+halfW+6,targetY);ctx.stroke();
+      ctx.strokeStyle="#38bdf8";ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
+      ctx.beginPath();ctx.moveTo(barX-halfW-6,actualY);ctx.lineTo(barX+halfW+6,actualY);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font="700 9px JetBrains Mono, monospace";ctx.textAlign="right";ctx.textBaseline="middle";
+      ctx.fillStyle="#f43f5e";ctx.fillText(`Required ${fmtVal(target)}`,tx,targetY);
+      ctx.fillStyle="#38bdf8";ctx.fillText(`Actual ${fmtVal(actualPace)}`,tx,actualY);
+      // Vertical gap bracket between the two reference lines (not the raw bar — see the comment
+      // above showTarget/gap for why the smoothed "Actual" figure is used here instead).
+      ctx.strokeStyle=gapColor;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(barX,actualY);ctx.lineTo(barX,targetY);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(barX-4,actualY);ctx.lineTo(barX+4,actualY);ctx.moveTo(barX-4,targetY);ctx.lineTo(barX+4,targetY);ctx.stroke();
+      ctx.font="700 9px JetBrains Mono, monospace";ctx.fillStyle=gapColor;ctx.textAlign="right";ctx.textBaseline="middle";
+      ctx.fillText(`${gap>=0?"+":""}${fmtVal(gap)} gap`,tx,(actualY+targetY)/2);
+      ctx.restore();
+    }
+  }:null;
+
+  const yMax=Math.max(1,...values,...(showTarget?[target,actualPace]:[]))*1.2;
   CHARTS.ap127lessonBar=mkC("d127v4-lessonbar",{
     type:"bar",
-    data:{labels,datasets:[
-      {type:"bar",label:isHrs?"Hours":"Lessons",data:values,backgroundColor:"rgba(232,138,255,0.55)",borderRadius:2,order:2},
-      {type:"line",label:`${maWindow}-period moving avg`,data:ma,borderColor:"#38bdf8",borderWidth:2,pointRadius:0,tension:.25,order:1},
-    ]},
+    data:{labels,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
       plugins:{
         legend:{display:true,labels:{color:"#8b949e",font:{family:"JetBrains Mono",size:9},boxWidth:14}},
         datalabels:{
-          display:ctx=>showLabels&&ctx.dataset.type==="bar"&&ctx.dataset.data[ctx.dataIndex]>0,
+          display:ctx=>showLabels&&!breakdown&&ctx.dataset.type==="bar"&&ctx.dataset.data[ctx.dataIndex]>0,
           anchor:"end",align:"top",color:"#8b949e",font:{family:"JetBrains Mono",size:7},
           formatter:v=>isHrs?v.toFixed(1):v
         },
         tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${isHrs?ctx.parsed.y.toFixed(1)+"h":ctx.parsed.y}`}}
       },
       scales:{
-        x:{ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxRotation:0,autoSkip:true,maxTicksLimit:16},grid:{display:false}},
-        y:{beginAtZero:true,ticks:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",callback:v=>isHrs?v.toFixed(0)+"h":v},grid:{color:"#21262d"}}
+        x:{stacked:true,ticks:{font:{family:"JetBrains Mono",size:8},color:"#6e7681",maxRotation:0,autoSkip:true,maxTicksLimit:16},grid:{display:false}},
+        y:{stacked:true,beginAtZero:true,suggestedMax:yMax,ticks:{font:{family:"JetBrains Mono",size:9},color:"#8b949e",callback:v=>isHrs?v.toFixed(0)+"h":v},grid:{color:"#21262d"}}
       }
-    }
+    },
+    plugins:[lbSepPlugin,lbTargetPlugin].filter(Boolean)
   });
 }
 
@@ -2428,6 +2652,9 @@ function opsAugment(students, curriculum) {
     setLBUnitV4: setLBUnit,
     setLBPeriodV4: setLBPeriod,
     setLBShowAllV4: setLBShowAll,
+    ap127SetLBRangeV4: ap127SetLBRange,
+    ap127ResetLBRangeV4: ap127ResetLBRange,
+    ap127ToggleLBBreakdownV4: ap127ToggleLBBreakdown,
     buildAP127RosterV4: buildAP127Roster,
     CHARTS_V4: CHARTS,
   });

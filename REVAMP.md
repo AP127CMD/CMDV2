@@ -1768,3 +1768,65 @@ Verified live throughout: zero console errors, Block/Actual mode confirmed uncha
 applied there), mobile 390px checked (Batch Summary + Lesson Sequence Check panels scroll within
 their own containers, no page-level overflow), `js/view-program.js` (School Perf./School Analysis)
 confirmed untouched. Design: `docs/superpowers/specs/2026-08-05-ops-analytics-effective-hours-fix-design.md`.
+
+### AP127 Detail V4 — Daily Output chart: date range, target/gap overlay, separators, type breakdown (2026-08-07, p145)
+
+`js/view-cohort-v4.js`
+
+User request: improve the "Daily Output" chart with (1) a date-range setting defaulting to full
+range, (2) a target line + gap indicator at the latest bar matching the Pace Monitor's numbers
+exactly ("should be same number... pls cross check it"), (3) vertical separators for each
+month/week, (4) a toggle to break each bar down by lesson type (Dual/Solo/Simulator).
+
+**1. Date range.** New `AP127V4_LB_START`/`AP127V4_LB_END` state (both `null` by default = full
+range), two date inputs in the panel header, `ap127SetLBRange()`/`ap127ResetLBRange()` handlers.
+`rangeStart`/`rangeEnd` computed from these (falling back to the earliest flight date / today),
+end clamped to never exceed today. Both the flight-accumulation filter and the
+`ap127v4PeriodRange()` call now use this range instead of always `firstDate..today`.
+
+**2. Target/actual/gap overlay, provably cross-checked against Pace Monitor.** This was the part
+most likely to silently drift, given this tab's history of exactly that bug class (see the
+mid-session hours-consistency fix). Rather than re-deriving the Pace Monitor's Required/Actual
+formulas independently, factored them out of `renderAP127Pace()` into two shared functions:
+- `ap127RequiredPace()` — remaining hours/lessons ÷ days-to-plan-end, at day/week/month grain.
+- `ap127ActualPace()` — the same period-appropriate rolling window Pace Monitor already used
+  (Day = trailing 7d ÷ 7, Week = trailing 14d ÷ 2, Month = trailing 30d directly).
+`renderAP127Pace()` itself now calls both instead of computing them inline — one source of truth,
+verified live by literal number match: Pace Monitor's "28 SP · Batch Total" Day row showed
+Required 34.8h / Actual 4.83h / Gap -29.9h; the Daily Output chart's overlay on the same page load
+showed "Required 34.8h" / "Actual 4.8h" / "-29.9h gap" — exact match, confirmed again after
+switching to Week view (Required 243.4h vs Pace Monitor's 243h, rounding-consistent).
+
+The overlay draws two dashed reference lines (rose = Required, blue = Actual) spanning just the
+latest bar's column, each labeled, plus a vertical bracket with the gap number between them —
+deliberately using the smoothed "Actual" figure (not the latest bar's own raw value) as the
+bracket's lower/upper bound, specifically so the gap number is provably identical to Pace
+Monitor's rather than a lookalike; the bar itself is left showing its raw per-period value,
+unchanged, since that's still useful for spotting day-to-day variance. Only shown when the visible
+range extends to today AND the latest bar is genuinely today's period (a custom end date, or "hide
+off days" hiding an empty today, both correctly suppress it).
+
+**3. Separators.** New `lbSepPlugin` (afterDatasetsDraw canvas plugin): a faint vertical line at
+each Monday in Day view, or each month boundary (with a month label) in Week view. Month view
+needs none — every bar already is a month.
+
+**4. Dual/Solo/Simulator breakdown toggle.** New `ap127LessonType(code)` classifier, placed next
+to `ap127SyllabusPhase()` since it's a different axis (lesson TYPE vs syllabus PHASE): strips the
+code's leading "C" and optional "M" (multi-engine marker), then reads the next letter per the
+syllabus's own lessonCodeKey (D=Dual, S=Solo, SP=SPIC) — "(SIM)" anywhere in the code overrides to
+Simulator regardless of Dual/Solo, and SPIC buckets into Solo (both mean flying without an
+instructor, the distinction that matters for this 3-way split). Verified against every code
+pattern in the curriculum data (CDGL→Dual, CSGL/CSPGL→Solo, CDIF(SIM)/CMDIF(SIM)→Simulator,
+CMDGL→Dual, CMSPXI→Solo). "By Type" toggle (`ap127ToggleLBBreakdownV4`) switches the single bar
+dataset into 3 stacked datasets (distinct colors, `AP127_LESSON_TYPE_COLORS`), each with its own
+centered per-segment datalabel; the topmost (Simulator) dataset's datalabel is overridden to show
+the STACK TOTAL instead of its own value, positioned above the whole bar — computed via Chart.js
+datalabels' `formatter` summing all three arrays at that index, no ghost dataset needed.
+
+Verified live: all four features individually confirmed (date range narrows/resets correctly,
+target/gap numbers exact-match Pace Monitor in both Day and Week view, separators render with
+correct month labels in Week view, breakdown mode shows correctly stacked/colored/labeled bars
+with correct stack totals); zero console errors beyond the pre-existing local-dev CORS fallback
+(unrelated to this change); original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched. Only file touched: `js/view-cohort-v4.js` (plus the usual `index.html`
+cache-bust bump).

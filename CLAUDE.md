@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p144` (all currently at p143)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p146` (all currently at p145)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -55,7 +55,31 @@ grep -o '?v=p[0-9]*' index.html | sort -u                                   # al
 grep -E 'view-overview|shell\.js|view-watchdog|view-cf-usage|view-crosscheck' index.html  # Babel vs plain per file
 git log --oneline | grep -v "chore: refresh data" | head -6                 # last real changes
 ```
-**Last known:** all files `p143` (2026-08-05 — **Ops Analytics — effective-hours counting fix +
+**Last known:** all files `p145` (2026-08-07 — **AP127 Detail V4 — Daily Output chart: date
+range, target/gap overlay, month/week separators, Dual/Solo/Simulator breakdown.** Four
+improvements to the "Daily Output · Lessons & Hours" chart:
+1. **Date range.** New start/end date inputs (default: full history, earliest flight → today).
+   Custom range clips both the accumulation and the generated period-key range; end is clamped to
+   never exceed today.
+2. **Target/actual/gap overlay, cross-checked against Pace Monitor.** New shared helpers
+   `ap127RequiredPace()` and `ap127ActualPace()` — the Pace Monitor table's own Required/Actual
+   formulas, factored out so both it and this chart read identical numbers (verified live: Pace
+   Monitor's Day row showed Req 34.8h / Act 4.83h / Gap -29.9h; the chart's overlay showed the
+   exact same three numbers). Drawn only on the latest bar, only when it's genuinely today's
+   period. The "actual" reference is the SAME rolling-window figure Pace Monitor uses (7d/day,
+   14d-halved/week, 30d/month) — not the bar's own raw value — specifically so the gap number
+   provably matches; the raw bar itself is left untouched, still showing per-period variance.
+3. **Separators.** Faint vertical lines at each week boundary (Day view) or month boundary (Week
+   view), with a month label in Week view.
+4. **Dual/Solo/Simulator breakdown toggle.** New `ap127LessonType(code)` classifier (leading "C",
+   optional "M" for multi-engine, then the letter that carries Dual/Solo/SPIC meaning per the
+   syllabus's own code key; "(SIM)" anywhere overrides to Simulator; SPIC buckets into Solo — both
+   mean flying without an instructor). "By Type" splits each bar into 3 stacked, distinctly
+   colored segments, each with its own datalabel, plus a total-of-stack label on top.
+Verified live: zero console errors beyond the pre-existing local-dev CORS fallback (unrelated,
+happens on every local test in this session); original AP127 Detail (`js/view-cohort.js`)
+confirmed still byte-identical/untouched. Files touched: `js/view-cohort-v4.js` only. Full
+write-up: REVAMP.md's p145 entry.) p143 (2026-08-05 — **Ops Analytics — effective-hours counting fix +
 lesson sequence check.** Follow-up to the previous day's Cross-Check "Monthly OPS ⇄ PROG"
 diagnostic, which had found (but deliberately not fixed) that multi-leg Ops Portal bookings
 double-credit curriculum hours. User set a hard rule: a curriculum lesson's effective hours count
