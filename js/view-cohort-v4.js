@@ -13,7 +13,7 @@
     <div class="d127-title">
       <h1>AP<b>127</b> PROGRESS <span>V4</span></h1>
       <div class="d127-subtitle" id="d127v4-subtitle">Progress retrieved from CATC FTC records and master plan — redesigned view</div>
-      <div class="d127v4-hours-badge" title="Every &quot;hours&quot; figure on this tab (KPI card, Pace Monitor, Progress Ranking, Combined Progress vs Plan, Batch Lead/Lag History, Individual Lead/Lag vs Plan, Actual vs Planned, Daily Output, Roster) uses each lesson's STANDARD/PLANNED duration from the curriculum — not the flight's actual logged clock time. A flight only falls back to its actual logged duration if its lesson code isn't found in the curriculum at all (rare). This keeps &quot;hours done&quot; directly comparable to &quot;hours planned,&quot; since both are built from the same standard durations, at the cost of not reflecting real day-to-day block-time variance (weather holds, extra circuits, etc).">
+      <div class="d127v4-hours-badge" title="Every &quot;hours&quot; figure on this tab (KPI card, Pace Monitor, Progress Ranking, Combined Progress vs Plan, Batch Lagging History, Individual Lead/Lag vs Plan, Actual vs Planned, Daily Output, Roster) uses each lesson's STANDARD/PLANNED duration from the curriculum — not the flight's actual logged clock time. A flight only falls back to its actual logged duration if its lesson code isn't found in the curriculum at all (rare). This keeps &quot;hours done&quot; directly comparable to &quot;hours planned,&quot; since both are built from the same standard durations, at the cost of not reflecting real day-to-day block-time variance (weather holds, extra circuits, etc).">
         <span class="d127v4-hours-badge-dot"></span>HOURS = EFFECTIVE <span class="d127v4-hours-badge-sub">(standard duration per lesson, not actual logged time)</span>
       </div>
     </div>
@@ -120,14 +120,14 @@
     </div>
     <div class="d127-panel">
       <div class="d127-h" style="flex-wrap:wrap;gap:6px">
-        <span class="d127-t">Batch Lead/Lag History</span>
+        <span class="d127-t">Batch Lagging History</span>
         <div style="display:flex;gap:6px;align-items:center">
           <button class="cpv-btn hist-batch-mode-v4 sel" data-m="hours"   onclick="setHistBatchModeV4('hours')">Hours</button>
           <button class="cpv-btn hist-batch-mode-v4"     data-m="lessons" onclick="setHistBatchModeV4('lessons')">Lessons</button>
         </div>
       </div>
       <div class="d127-body">
-        <div class="d127-note">Batch-wide cumulative actual − planned. Above zero = ahead of curriculum schedule; below = behind. Zero line = on plan.</div>
+        <div class="d127-note">Batch-wide cumulative lag behind curriculum schedule (planned − actual, floored at zero) over time. Flat at zero = on plan or ahead; the higher the line, the further behind.</div>
         <div class="cpv-kpis" id="hist-batch-kpis-v4"></div>
         <div style="position:relative;height:220px"><canvas id="d127v4-hist-batch"></canvas></div>
       </div>
@@ -409,7 +409,7 @@ function ap127FlightMins(f){return f.actual_mins||f.mins||0;}
 // lesson code wins, falling back to the flight's own logged duration only if the code isn't in the
 // curriculum map. This is what the KPI card and Progress Ranking table have always used (inherited
 // unchanged from the original AP127 Detail tab's own ap127Hours()). Several charts added across
-// earlier V4 rounds (Actual vs Planned, Combined Progress's chart line, Batch Lead/Lag History,
+// earlier V4 rounds (Actual vs Planned, Combined Progress's chart line, Batch Lagging History,
 // Individual Lead/Lag vs Plan, Daily Output, Roster) had independently reinvented this per-flight
 // sum with the fallback order REVERSED (actual-first) or with no fallback at all — same real flights,
 // a different number, because standard and actual durations aren't always identical. Every one of
@@ -1882,37 +1882,42 @@ function buildAP127HistBatch(){
     const v=isHrs?(c.planned_mins||0)*n/60:n;
     planByDate[c.planned_date]=(planByDate[c.planned_date]||0)+v;
   });
+  // Lag-only view: this chart's whole purpose is tracking how far behind schedule the batch is,
+  // and the batch is realistically always behind (never meaningfully ahead), so a signed
+  // lead/lag line spent almost all its time in negative territory with the "ahead" half of the
+  // scale doing nothing. Flipped per explicit request: y = max(0, planned − actual) — floored at
+  // zero, so a day the batch is on-plan OR ahead reads as flat zero, not a dip below the axis.
   let rAct=0,rPlan=0;
-  const deltas=[];
+  const lags=[];
   const batchData=labels.map(d=>{
     rAct+=(actualByDate[d]||0);
     rPlan+=(planByDate[d]||0);
-    const delta=+(rAct-rPlan).toFixed(2);
-    deltas.push(delta);
-    return{x:d,y:delta};
+    const lag=Math.max(0,+(rPlan-rAct).toFixed(2));
+    lags.push(lag);
+    return{x:d,y:lag};
   });
-  const nowDelta=deltas.at(-1)||0;
-  const bestDelta=Math.max(...deltas);
-  const worstDelta=Math.min(...deltas);
-  const fmt=v=>(v>=0?'+':'')+(isHrs?v.toFixed(1)+'h':Math.round(v)+' les');
+  const nowLag=lags.at(-1)||0;
+  const worstLag=Math.max(...lags);
+  const bestLag=Math.min(...lags);
+  const fmt=v=>isHrs?v.toFixed(1)+'h':Math.round(v)+' les';
   const kpiEl=document.getElementById('hist-batch-kpis-v4');
   if(kpiEl)kpiEl.innerHTML=[
-    {l:'Now',  v:fmt(nowDelta),   c:nowDelta>=0?'var(--done)':'#ef4444', s:'vs plan today'},
-    {l:'Best', v:fmt(bestDelta),  c:'var(--done)',                        s:'peak lead ever'},
-    {l:'Worst',v:fmt(worstDelta), c:'#ff6b6b',                           s:'peak lag ever'},
+    {l:'Now',       v:nowLag>0?fmt(nowLag):'On plan',   c:nowLag>0?'#ef4444':'var(--done)', s:'behind schedule today'},
+    {l:'Best',      v:fmt(bestLag),                      c:bestLag>0?'var(--tx)':'var(--done)', s:'closest to plan ever'},
+    {l:'Worst',     v:fmt(worstLag),                     c:'#ef4444',                        s:'peak lag ever'},
   ].map(k=>`<div class="cpv-kpi"><div class="cpv-kl">${k.l}</div><div class="cpv-kv" style="color:${k.c}">${k.v}</div><div class="cpv-ks">${k.s}</div></div>`).join('');
   CHARTS.ap127histBatch=mkC('d127v4-hist-batch',{
     type:'line',
     data:{datasets:[{
-      label:'Batch Δ',
+      label:'Batch Lag',
       data:batchData,
-      borderColor:'#e88aff',
+      borderColor:'#ef4444',
       borderWidth:2,
       pointRadius:0,
       pointHoverRadius:4,
-      pointHoverBackgroundColor:'#e88aff',
+      pointHoverBackgroundColor:'#ef4444',
       tension:0.15,
-      fill:{target:{value:0},above:'rgba(74,222,128,0.12)',below:'rgba(239,68,68,0.12)'}
+      fill:{target:{value:0},above:'rgba(239,68,68,0.14)'}
     }]},
     options:{
       responsive:true,maintainAspectRatio:false,
@@ -1923,14 +1928,14 @@ function buildAP127HistBatch(){
         legend:{display:false},
         tooltip:{callbacks:{
           title:ctx=>{const r=ctx[0]?.raw;return r?ap127FmtDate(r.x):'';},
-          label:ctx=>{const v=ctx.raw?.y;if(v==null)return null;return`Batch Δ: ${isHrs?v.toFixed(1)+'h':Math.round(v)+' les'}`;}
+          label:ctx=>{const v=ctx.raw?.y;if(v==null)return null;return v>0?`Lag: ${isHrs?v.toFixed(1)+'h':Math.round(v)+' les'} behind`:'On plan or ahead';}
         }}
       },
       scales:{
         x:{type:'time',time:{unit:'month',displayFormats:{day:'d MMM',week:'d MMM',month:'MMM yy'}},
           ticks:{font:{family:'JetBrains Mono',size:8},color:'#6e7681',maxTicksLimit:14,source:'auto'},
           grid:{color:'#21262d'}},
-        y:{ticks:{font:{family:'JetBrains Mono',size:9},color:'#8b949e',callback:v=>isHrs?v.toFixed(0)+'h':v},
+        y:{beginAtZero:true,ticks:{font:{family:'JetBrains Mono',size:9},color:'#8b949e',callback:v=>isHrs?v.toFixed(0)+'h':v},
           grid:{color:'#21262d'}}
       }
     }

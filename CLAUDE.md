@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p162` (all currently at p161)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p163` (all currently at p162)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -64,7 +64,29 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p161` (2026-08-08 — same-day follow-up: **audited every other CMDV2
+**Last known:** all files `p162` (2026-08-08 — **AP127 Detail V4 — "Batch Lead/Lag History"
+redesigned into "Batch Lagging History": flipped to a lag-only view, floored at zero.** User: "Now
+I want to redesign the BATCH LEAD/LAG HISTORY chart. Due to it always lagging. I want to change to
+Batch lagging chart. The Y axis show lag hour/lesson in positive. (Basically flip the current
+one). If the progress is lead plan it will be be zero on the chart." Since the batch is
+realistically always behind (never meaningfully ahead), the old signed lead/lag line spent almost
+all its time in negative territory with the "ahead" half of the scale doing nothing.
+`buildAP127HistBatch()`'s per-date value changed from `delta = actual − planned` (signed, could go
+either way) to `lag = Math.max(0, planned − actual)` (always ≥0) — a day the batch is on-plan or
+ahead now reads as flat zero instead of dipping below the axis. Y-axis given `beginAtZero:true`;
+line/fill recolored solid red (`#ef4444`, was magenta with a green/red split fill) since the whole
+chart is now "how bad is it," not a two-directional comparison; KPI cards relabeled from Now/Best/
+Worst (peak lead / peak lag) to Now (current lag, or "On plan" if zero)/Best (lowest lag ever
+reached)/Worst (peak lag ever) — dropped the +/− sign formatting since values are never negative.
+Panel renamed "Batch Lead/Lag History" → "Batch Lagging History" throughout (panel title, the
+top-of-tab "HOURS = EFFECTIVE" badge's chart-name list, an internal code comment). The other,
+separate "Individual Lead/Lag vs Plan" chart (per-SP, still genuinely bidirectional since
+individual students DO sometimes run ahead) was intentionally left untouched — out of scope, user
+asked specifically about the batch chart. Verified live: Hours mode showed "949.0h behind schedule
+today" / "28.0h closest to plan ever" / "958.1h peak lag ever" with an entirely red, always-
+positive line growing from 0h to ~950h; switched to Lessons mode and confirmed the equivalent
+values (409/28/581 les), all still positive; zero new console errors. Only file touched:
+`js/view-cohort-v4.js`. Full write-up: REVAMP.md's p162 entry.) p161 (2026-08-08 — same-day follow-up: **audited every other CMDV2
 tab/sub-tab for the p160 rounding-verification gap.** User: "Pls also check all other tab and
 sub-tab in CMD V2 about this precision problem." Swept every `js/view-*.js` file — confirmed no
 real accumulation bug anywhere (every hour total sums raw values, `.toFixed()` only at final

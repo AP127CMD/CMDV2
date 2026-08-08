@@ -2598,3 +2598,51 @@ the unchanged-URL `?v=p160` scripts that masked the first verification attempt):
 Student Activity roster tooltip for AKARAVIT K. now reads "1.33h" (was "1.3h"); PM Roster board's
 tooltip for the same student now reads "2.17h" (was "2.2h"). Zero new console errors (only the
 pre-existing local-dev CORS fallback). Files touched: `js/view-summary.js`, `js/view-roster.js`.
+
+### AP127 Detail V4 — "Batch Lead/Lag History" → "Batch Lagging History": flipped to lag-only, floored at zero (2026-08-08, p162)
+
+`js/view-cohort-v4.js`
+
+User: "Now I want to redesign the BATCH LEAD/LAG HISTORY chart. Due to it always lagging. I want
+to change to Batch lagging chart. The Y axis show lag hour/lesson in positive. (Basically flip the
+current one). If the progress is lead plan it will be be zero on the chart."
+
+**Why:** the batch is realistically always behind schedule — a signed lead/lag line spent almost
+all its history in negative territory, with the "ahead of plan" half of the y-axis essentially
+unused dead space. A lag-only, always-positive framing is a better fit for what this chart is
+actually used for (tracking how far behind, not whether-ahead-or-behind).
+
+**What changed, in `buildAP127HistBatch()`:**
+1. Per-date value flipped from `delta = cumulative_actual − cumulative_planned` (signed, `+` when
+   ahead / `−` when behind) to `lag = Math.max(0, cumulative_planned − cumulative_actual)` — always
+   ≥0. A day the batch is on-plan or genuinely ahead now reads as flat zero rather than a dip below
+   the x-axis, per the explicit "if the progress is lead plan it will be zero on the chart"
+   instruction.
+2. Y-axis given `beginAtZero:true` so 0 is always the visible floor.
+3. Line + fill recolored solid red/rose (`#ef4444`, was the tab's signature magenta with a two-tone
+   green-above/red-below-zero fill) — the old two-tone fill made sense for a bidirectional value;
+   a lag-only chart is "how bad is it," so a single red fill under the curve reads correctly.
+4. Tooltip changed from `Batch Δ: ±Xh` to `Lag: Xh behind` (or `On plan or ahead` at zero).
+5. KPI cards relabeled: `Now`/`Best`/`Worst` kept as headings, but `Best` now means "lowest lag
+   ever reached" (was "peak lead ever") and the +/− sign prefix was dropped from all three (values
+   are never negative now); `Now` shows `"On plan"` in the done-color when lag is exactly 0 rather
+   than `"+0.0h"`.
+6. Panel renamed "Batch Lead/Lag History" → "Batch Lagging History" everywhere it's referenced:
+   the panel's own `<span class="d127-t">`, the top-of-tab "HOURS = EFFECTIVE" badge's tooltip
+   (which lists every chart using the standard-duration hours convention by name), and one internal
+   code comment.
+7. Panel note text rewritten to describe the new floored-at-zero semantics instead of the old
+   above/below-zero framing.
+
+**Explicitly out of scope, left untouched:** the separate "Individual Lead/Lag vs Plan" chart
+(per-SP, `buildAP127HistSolo()`) — individual students genuinely do run ahead of plan sometimes,
+so a bidirectional view is still the right shape there; the user's request was specifically about
+the *batch* chart.
+
+Verified live: Hours mode showed "949.0h behind schedule today" / "28.0h closest to plan ever" /
+"958.1h peak lag ever" with an entirely red, monotonically-shaped, always-positive line growing
+from 0h to ~950h across the batch's history (screenshot confirmed no segment dips below the
+x-axis); switched to Lessons mode and confirmed proportionally consistent values (409 / 28 / 581
+les), still all positive; zero new console errors beyond the pre-existing local-dev CORS fallback.
+Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched. Only file
+touched: `js/view-cohort-v4.js` (plus the usual `index.html` cache-bust bump, p161→p162).
