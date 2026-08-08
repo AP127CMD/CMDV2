@@ -165,6 +165,11 @@
   }
 
   function uFmtH(h) { return (!h || h < 0.04) ? '—' : h.toFixed(1) + 'h'; }
+  // Precise variant (2dp) for surfaces where a user manually adds up individual
+  // flights against a shown total (hover tooltips, drawer breakdown) — the 1dp
+  // uFmtH() rounds short (e.g. 15/20min) flights hard enough that hand-summing
+  // the displayed numbers visibly disagrees with the (already-precise) total.
+  function uFmtHPrecise(h) { return (!h || h < 0.005) ? '—' : h.toFixed(2) + 'h'; }
 
   function uBuildCurMap() {
     const G = window.NGT_CACHE;
@@ -692,7 +697,7 @@
                                   <td key={d}
                                     onClick={() => handleCellClick(ac.normTail, ac.tail, d, dayFlights.length > 0)}
                                     title={h > 0
-                                      ? `${ac.tail} · ${uFmtDate(d)} · ${uFmtH(h)}${hasPending ? ' (incl. pending)' : ''}`
+                                      ? `${ac.tail} · ${uFmtDate(d)} · ${uFmtHPrecise(h)}${hasPending ? ' (incl. pending)' : ''}`
                                       : ac.isMaint ? `${ac.tail}: In maintenance` : `${ac.tail} · ${uFmtDate(d)}: Idle`}
                                     style={{
                                       width: CELL_W, height: CELL_H, padding: 0, textAlign: 'center', verticalAlign: 'middle',
@@ -744,10 +749,10 @@
             {/* Totals summary */}
             <div style={{ flexShrink: 0, padding: '8px 16px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {[
-                { label: 'This day', val: uFmtH(drawerData.dayH),    col: 'var(--highlight)' },
-                { label: `Wk ${uFmtDate(drawerData.wkStart)}`,       val: uFmtH(drawerData.weekH), col: 'var(--ink-1)' },
-                { label: new Date(drawer.date + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }), val: uFmtH(drawerData.monthH), col: 'var(--ink-1)' },
-                { label: `${uFmtDate(from)}–${uFmtDate(to)}`,       val: uFmtH(drawerData.periodH), col: 'var(--ink-2)' },
+                { label: 'This day', val: uFmtHPrecise(drawerData.dayH),    col: 'var(--highlight)' },
+                { label: `Wk ${uFmtDate(drawerData.wkStart)}`,       val: uFmtHPrecise(drawerData.weekH), col: 'var(--ink-1)' },
+                { label: new Date(drawer.date + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }), val: uFmtHPrecise(drawerData.monthH), col: 'var(--ink-1)' },
+                { label: `${uFmtDate(from)}–${uFmtDate(to)}`,       val: uFmtHPrecise(drawerData.periodH), col: 'var(--ink-2)' },
               ].map(({ label, val, col }) => (
                 <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 6, padding: '5px 10px', textAlign: 'center' }}>
                   <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: col, lineHeight: 1 }}>{val}</div>
@@ -771,7 +776,7 @@
                         <span className="mono" style={{ fontSize: 11, color: 'var(--ink-2)', fontWeight: 600 }}>{f.start || '?'}–{f.end || '?'}</span>
                         <span className="mono uc" style={{ fontSize: 9, fontWeight: 700, color: stCol, border: `1px solid ${stCol}`, borderRadius: 3, padding: '1px 5px' }}>{f.status}</span>
                         {f._usedFallback && <span className="mono" style={{ fontSize: 8, color: 'var(--col-pending)' }}>~blk</span>}
-                        <span className="mono" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--highlight)', fontWeight: 700 }}>{uFmtH(f._h)}</span>
+                        <span className="mono" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--highlight)', fontWeight: 700 }}>{uFmtHPrecise(f._h)}</span>
                       </div>
                       <div className="mono" style={{ fontSize: 10, color: 'var(--ink-2)', marginBottom: 2 }}>
                         <span style={{ color: 'var(--ink-3)' }}>Student: </span>{f.student || '—'}
@@ -785,7 +790,7 @@
                       </div>
                       {metric === 'airborne' && f._airborne > 0 && (
                         <div className="mono" style={{ fontSize: 9, color: 'var(--ink-4,#555)', marginTop: 3 }}>
-                          Block {uFmtH(f._block)} · Airborne {uFmtH(f._airborne)}
+                          Block {uFmtHPrecise(f._block)} · Airborne {uFmtHPrecise(f._airborne)}
                         </div>
                       )}
                     </div>
@@ -1235,7 +1240,7 @@
                                 return (
                                   <td key={d}
                                     onClick={() => handleCellClick(person, d, dayFlights.length > 0)}
-                                    title={h > 0 ? `${person} · ${uFmtDate(d)} · ${uFmtH(h)}${hasPend ? ' (incl. pending)' : ''}` : `${person} · ${uFmtDate(d)}: No flights`}
+                                    title={h > 0 ? `${person} · ${uFmtDate(d)} · ${uFmtHPrecise(h)}${hasPend ? ' (incl. pending)' : ''}` : `${person} · ${uFmtDate(d)}: No flights`}
                                     style={{
                                       width: CELL_W, height: 22, padding: 0, textAlign: 'center', verticalAlign: 'middle',
                                       background: cellBg, border: cellBrd, borderRadius: 2,
@@ -1281,10 +1286,10 @@
             </div>
             <div style={{ flexShrink: 0, padding: '8px 16px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {[
-                { label: 'This day', val: uFmtH(drawerData.dayH), col: 'var(--highlight)' },
-                { label: `Wk ${uFmtDate(drawerData.wkStart)}`,   val: uFmtH(drawerData.weekH),   col: 'var(--ink-1)' },
-                { label: new Date(drawer.date + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }), val: uFmtH(drawerData.monthH), col: 'var(--ink-1)' },
-                { label: `${uFmtDate(from)}–${uFmtDate(to)}`,   val: uFmtH(drawerData.periodH), col: 'var(--ink-2)' },
+                { label: 'This day', val: uFmtHPrecise(drawerData.dayH), col: 'var(--highlight)' },
+                { label: `Wk ${uFmtDate(drawerData.wkStart)}`,   val: uFmtHPrecise(drawerData.weekH),   col: 'var(--ink-1)' },
+                { label: new Date(drawer.date + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }), val: uFmtHPrecise(drawerData.monthH), col: 'var(--ink-1)' },
+                { label: `${uFmtDate(from)}–${uFmtDate(to)}`,   val: uFmtHPrecise(drawerData.periodH), col: 'var(--ink-2)' },
               ].map(({ label, val, col }) => (
                 <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 6, padding: '5px 10px', textAlign: 'center' }}>
                   <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: col, lineHeight: 1 }}>{val}</div>
@@ -1307,7 +1312,7 @@
                         <span className="mono" style={{ fontSize: 11, color: 'var(--ink-2)', fontWeight: 600 }}>{f.start || '?'}–{f.end || '?'}</span>
                         <span className="mono uc" style={{ fontSize: 9, fontWeight: 700, color: stCol, border: `1px solid ${stCol}`, borderRadius: 3, padding: '1px 5px' }}>{f.status}</span>
                         {f._usedFallback && <span className="mono" style={{ fontSize: 8, color: 'var(--col-pending)' }}>~blk</span>}
-                        <span className="mono" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--highlight)', fontWeight: 700 }}>{uFmtH(f._h)}</span>
+                        <span className="mono" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--highlight)', fontWeight: 700 }}>{uFmtHPrecise(f._h)}</span>
                       </div>
                       {mode === 'fi'
                         ? <div className="mono" style={{ fontSize: 10, color: 'var(--ink-2)', marginBottom: 2 }}><span style={{ color: 'var(--ink-3)' }}>Student: </span>{f.student || '—'}</div>
@@ -1322,7 +1327,7 @@
                         {f.lesson && <span>Lesson: <span style={{ color: 'var(--ink-2)' }}>{f.lesson}</span></span>}
                       </div>
                       {metric === 'airborne' && f._airborne > 0 && (
-                        <div className="mono" style={{ fontSize: 9, color: 'var(--ink-4,#555)', marginTop: 3 }}>Block {uFmtH(f._block)} · Airborne {uFmtH(f._airborne)}</div>
+                        <div className="mono" style={{ fontSize: 9, color: 'var(--ink-4,#555)', marginTop: 3 }}>Block {uFmtHPrecise(f._block)} · Airborne {uFmtHPrecise(f._airborne)}</div>
                       )}
                     </div>
                   );

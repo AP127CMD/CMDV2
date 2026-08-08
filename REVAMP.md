@@ -2521,3 +2521,37 @@ single already-known "Ops booking still Pending" case (student Prem Ponvilai, al
 categorized in the Reconciliation Ledger, not a new bug). Ops Analytics' 90D view now correctly
 shows sim hours for AP-124 (18.0h) which showed none before. Zero console errors. Only file
 touched: `js/shared.js`.
+
+## p160 (2026-08-08 — Aircraft Status / SP Stat & FI Stat — precise-value drilldown, root-cause
+investigation of a reported "rounding causes totals to be off" bug)
+
+User (SP Stat sub-tab): "When flight time is 15 or 20 minutes these rounded as 0.3hr and it add
+up cause the total calculation way off." Investigated via `superpowers:systematic-debugging`
+before changing anything.
+
+**Root cause found: the total/summation math was already correct — no bug there.** Every total in
+`PersonStatTab`/`UtilizationTab` (`personTotals`, `dayTotals`, `kpi.totalHours`, group/type totals)
+is built by summing each flight's raw `durMin/60` float; `.toFixed(1)` is applied only once, at the
+final render step, never fed back into further arithmetic. Verified live against the deployed site
+before touching code: student SIRIKIAT B. (30d window) has several sub-hour flights: hand-summing
+the *displayed* 1-decimal day cells gives 7.9h, but the app's own Total correctly shows **7.8h** —
+which matches the true precise sum (7.75h → toFixed(1)), not the rounded-cell sum. So the visible
+Total was never wrong.
+
+**Real bug: no way to verify that by hand.** The day-cells AND their hover tooltips both rounded to
+1 decimal, so a 15-min flight and a 45-min flight could render as the same "0.3h"/"0.8h", and
+hovering a cell for "the exact number" returned the *same* rounded number — zero additional
+precision, so a user had no way to reconcile a total against its line items, reasonably reading
+that as broken math. Fixed by adding `uFmtHPrecise()` (2dp) and routing it through every
+manual-verification surface: cell hover tooltips (`title` attr) and the click-to-open drawer
+(day/week/month/period summary tiles + each individual flight's block/airborne hours), in both
+`UtilizationTab` and `PersonStatTab` (covers Utilization, FI Stat, SP Stat — all share this code).
+Left the compact heatmap cells and headline KPI/Load-Distribution numbers at 1 decimal, matching
+this app's convention everywhere else for "at a glance" hour figures — only the drilldown surfaces
+changed.
+
+Verified live (local static server): SIRIKIAT B.'s 21 Jul cell tooltip now reads "0.75h" (was
+"0.8h"); opening that cell's drawer shows This Day 0.75h / Wk 1.75h / Jul 2026 5.50h / period
+7.75h, each figure now hand-verifiable against the single 08:30–09:15 flight line item beneath it
+(also 0.75h) — no more silent rounding gap. Zero new console errors (only the pre-existing
+local-dev CORS fallback). Only file touched: `js/view-aircraft.js`. Cache-bust bumped to p160.

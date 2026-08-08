@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p160` (all currently at p159)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p161` (all currently at p160)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -64,7 +64,25 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p159` (2026-08-08 — **Ops Analytics — SIM hours fixed: upstream
+**Last known:** all files `p160` (2026-08-08 — **Aircraft Status SP Stat/FI Stat/Utilization —
+precise-value drilldown fix for a reported "rounding causes totals to be off" bug.** User: "When
+flight time is 15 or 20 minutes these rounded as 0.3hr and it add up cause the total calculation
+way off." Investigated via `superpowers:systematic-debugging` before touching code — **found the
+summation math was already fully correct**: every total (`personTotals`/`dayTotals`/
+`kpi.totalHours`/group totals) sums each flight's raw `durMin/60` float, `.toFixed(1)` applied only
+once at final render, never fed back into further math. Verified live before the fix: SIRIKIAT B.
+(30d) — hand-summing the displayed 1-decimal day cells gives 7.9h, but the app's own Total already
+correctly showed 7.8h (= true 7.75h, not the rounded-cell sum). **Real bug: no way to verify that
+by hand** — cell hover tooltips also rounded to 1 decimal, so hovering "for the exact number" gave
+back the same rounded number, zero extra precision. Fixed with new `uFmtHPrecise()` (2dp) routed
+through every manual-verification surface — cell tooltips + the click-to-open drawer (summary
+tiles + each flight's line item) — in both `UtilizationTab` and `PersonStatTab` (covers
+Utilization/FI Stat/SP Stat, same shared code). Compact heatmap cells and headline KPI numbers
+deliberately left at 1 decimal, matching the rest of the app. Verified live: SIRIKIAT B.'s 21 Jul
+cell tooltip now reads "0.75h" (was "0.8h"); its drawer shows This Day 0.75h / Wk 1.75h / Jul 2026
+5.50h / period 7.75h, each hand-verifiable against the single 0.75h flight line item beneath it.
+Zero new console errors. Only file touched: `js/view-aircraft.js`. Full write-up: REVAMP.md's p160
+entry.) p159 (2026-08-08 — **Ops Analytics — SIM hours fixed: upstream
 `isSim` flag was wrong for ≈67% of sim flights.** User: "In OPS ANALYTICS, hour of SIM look off,
 check that too." Traced from the Cross-Check Monthly Ledger's own "Sim-tag mismatch" diagnostic
 (previously flagged but unresolved): AP-126 June showed 0 Ops-flagged sim flights against
