@@ -171,6 +171,25 @@ window.FLIGHT_DATA.flights.forEach(f => {
   const canon = AP_LESSON_CODE_ALIASES[base.toUpperCase()];
   if (canon) f.lesson = canon + suffix;
 });
+// Fix a real, large upstream data bug: `f.isSim` is wrong for any flight whose
+// aircraft `type` uses the underscore simulator convention ("DA40_SIM",
+// "DA42_SIM", "R44_SIM") — only the parenthetical convention ("DA40 (SIM)" etc.)
+// was ever recognized upstream, so every underscore-typed flight's `isSim` came
+// through `false`. Confirmed live 2026-08-08 directly against the raw
+// flight-data.js: 481 of 713 simulator flights (≈67%, both conventions genuinely
+// present side by side in the same feed) were mis-flagged this way — e.g. one
+// whole month (AP-126, June 2026) showed 0 Ops-Analytics sim hours against
+// Progress's 100 logged sim lessons that month, entirely because of this. The
+// Aircraft Status tab's own `uIsSim()` (js/view-aircraft.js) already works
+// around it locally with a plain `/SIM/i` substring test on `type` — same fix,
+// applied once here so every view that reads `f.isSim` directly (Ops Analytics'
+// KPI/composition/charts, the Cross-Check sim-tag diagnostic, etc.) benefits
+// with no per-view change. `tail` (e.g. "HS-TPO (SIM)") is checked too as a
+// belt-and-suspenders fallback — confirmed live it agrees with `type` on all
+// but 4 of 713 sim flights.
+window.FLIGHT_DATA.flights.forEach(f => {
+  if (/sim/i.test(f.type || '') || /\(sim\)/i.test(f.tail || '')) f.isSim = true;
+});
 const FLIGHTS     = window.FLIGHT_DATA.flights;
 const INSTRUCTORS = window.FLIGHT_DATA.instructors;
 const RESOURCES   = window.FLIGHT_DATA.resources;

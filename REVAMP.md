@@ -2485,3 +2485,39 @@ per-booking, only hours are deduped); `js/view-program.js` (School Perf./School 
 confirmed untouched; ledger expand/collapse exercised at both category and line-item level;
 mobile 390px checked (panel + expanded breakdown both scroll correctly, no horizontal overflow).
 Design: `docs/superpowers/specs/2026-08-05-ops-prog-exact-reconciliation-design.md`.
+
+### Ops Analytics — SIM hours fixed: upstream `isSim` flag wrong for ~67% of sim flights (2026-08-08, p159)
+
+`js/shared.js`
+
+User: "In OPS ANALYTICS, hour of SIM look off, check that too." Investigation started from the
+Cross-Check Monthly Ledger's own "Sim-tag mismatch" diagnostic (flagged the previous round as a
+known, unresolved gap): AP-126 June showed Progress logging 100 sim lessons that month against
+**0** Ops-Analytics-flagged sim flights — not a rounding difference, a whole month invisible.
+
+Root cause, confirmed directly against the raw `flight-data.js`: the Ops Portal feed uses **two
+different aircraft-type spellings for the same simulator devices** — `"DA40 (SIM)"`/`"DA42
+(SIM)"`/`"R44 (SIM)"` (parenthetical) and `"DA40_SIM"`/`"DA42_SIM"`/`"R44_SIM"` (underscore), both
+genuinely present side by side in the live feed. Whatever upstream logic sets each flight's
+`isSim` boolean only ever recognized the parenthetical spelling — every underscore-typed flight's
+`isSim` came through `false`. Quantified: **481 of 713 simulator flights in the entire dataset
+(≈67%) were mis-flagged.** The underscore convention is concentrated in one window (2026-06-08 to
+2026-07-10), which is why it went unnoticed in the *default* 30-day Ops Analytics view (that
+window had already rolled mostly out of "last 30 days" by the time this was reported) but showed
+up starkly in June's Cross-Check ledger. Confirmed the Aircraft Status tab was never affected —
+its own `uIsSim()` (`js/view-aircraft.js:125`) already does a robust `/SIM/i` substring test on
+`type` rather than trusting the raw flag; Ops Analytics, the Cross-Check sim-tag diagnostic, and
+anywhere else reading `f.isSim` directly inherited the bug.
+
+Fixed the same way as the student-name and lesson-code alias bugs (p131, p158): a one-time,
+load-time normalization pass in `js/shared.js`, `f.isSim = true` whenever `/sim/i.test(f.type)` or
+`/\(sim\)/i.test(f.tail)` (the latter checked as a belt-and-suspenders fallback — confirmed live it
+agrees with `type` on all but 4 of 713 sim flights) — so every downstream view benefits with no
+per-view change, same as the established pattern in this file.
+
+Verified live: Cross-Check's sim-tag mismatch dropped from AP-126 June 0-vs-100 (Δ100) / July
+134-vs-235 (Δ101) to June 99-vs-100 (Δ1) / July 231-vs-235 (Δ4) — the tiny remainder traced to a
+single already-known "Ops booking still Pending" case (student Prem Ponvilai, already correctly
+categorized in the Reconciliation Ledger, not a new bug). Ops Analytics' 90D view now correctly
+shows sim hours for AP-124 (18.0h) which showed none before. Zero console errors. Only file
+touched: `js/shared.js`.

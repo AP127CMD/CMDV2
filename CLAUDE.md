@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p159` (all currently at p158)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p160` (all currently at p159)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -64,7 +64,25 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p158` (2026-08-05 — **OPS ⇄ PROG exact reconciliation — root-caused
+**Last known:** all files `p159` (2026-08-08 — **Ops Analytics — SIM hours fixed: upstream
+`isSim` flag was wrong for ≈67% of sim flights.** User: "In OPS ANALYTICS, hour of SIM look off,
+check that too." Traced from the Cross-Check Monthly Ledger's own "Sim-tag mismatch" diagnostic
+(previously flagged but unresolved): AP-126 June showed 0 Ops-flagged sim flights against
+Progress's 100 logged sim lessons that month. Root cause confirmed directly against raw
+`flight-data.js`: the Ops Portal feed spells the same simulator devices two different ways —
+`"DA40 (SIM)"` (parenthetical, correctly flagged) and `"DA40_SIM"` (underscore, **always** flagged
+`isSim:false` upstream, same for DA42/R44) — 481 of 713 sim flights dataset-wide (≈67%) mis-flagged,
+concentrated in one window (2026-06-08 to 2026-07-10) that had already rolled out of the default
+30-day view, which is why it read as "just the last 30 days look fine" until the Cross-Check
+ledger's June/July rows exposed it starkly. Confirmed Aircraft Status was never affected — its own
+`uIsSim()` already does a robust `/SIM/i` substring test rather than trusting the raw flag; every
+other view reading `f.isSim` directly (Ops Analytics, Cross-Check) inherited the bug. Fixed with a
+one-time load-time normalization in `js/shared.js` (same pattern as the p131/p158 alias fixes):
+`f.isSim = true` whenever `/sim/i.test(type)` or `/\(sim\)/i.test(tail)`. Verified live: sim-tag
+mismatch dropped from June Δ100/July Δ101 to June Δ1/July Δ4 (the tiny remainder is one
+already-known "Ops booking still Pending" case, not a new bug); Ops Analytics' 90D view now
+correctly shows AP-124 sim hours (18.0h) that were previously invisible; zero console errors. Only
+file touched: `js/shared.js`.) p158 (2026-08-05 — **OPS ⇄ PROG exact reconciliation — root-caused
 every remaining hour of Δ.** Follow-up to the same day's earlier fix (p143, effective-hours dedup +
 lesson sequence check). User: "All should be match exactly... go through all detail as much as you
 need... If still cannot make it the same then show me in the way that we can pin point all the
