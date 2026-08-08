@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p161` (all currently at p160)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p162` (all currently at p161)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -64,7 +64,20 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p160` (2026-08-08 — **Aircraft Status SP Stat/FI Stat/Utilization —
+**Last known:** all files `p161` (2026-08-08 — same-day follow-up: **audited every other CMDV2
+tab/sub-tab for the p160 rounding-verification gap.** User: "Pls also check all other tab and
+sub-tab in CMD V2 about this precision problem." Swept every `js/view-*.js` file — confirmed no
+real accumulation bug anywhere (every hour total sums raw values, `.toFixed()` only at final
+render). Found and fixed 2 more instances of the exact p160 gap (precise total, but tooltip capped
+at 1dp with no way to verify it by hand): `js/view-summary.js`'s Ops Analytics `RosterHeatmap`
+(Student/Instructor Activity) and `js/view-roster.js`'s PM Roster board — both cell tooltips now
+`.toFixed(2)`. Checked clean: Cross-Check's Reconciliation Ledger (already 2dp + residual check,
+better than the standard); AP127 Detail/V4 Roster (uses exact `hm()` minute formatting, not
+decimal hours at all); Gantt/Board/Daily/Calendar (tooltips show raw start–end times or the exact
+`f.duration` string; click-through opens the shared exact `Drawer()`); remaining `view-program.js`/
+`shell.js` 1dp figures are aggregate KPI tiles, not itemized per-flight lists. Verified live:
+Ops Analytics roster tooltip now reads "1.33h" (was "1.3h"); PM Roster tooltip reads "2.17h" (was
+"2.2h"). Zero new console errors. Full write-up: REVAMP.md's p161 entry.) p160 (2026-08-08 — **Aircraft Status SP Stat/FI Stat/Utilization —
 precise-value drilldown fix for a reported "rounding causes totals to be off" bug.** User: "When
 flight time is 15 or 20 minutes these rounded as 0.3hr and it add up cause the total calculation
 way off." Investigated via `superpowers:systematic-debugging` before touching code — **found the

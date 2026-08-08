@@ -2555,3 +2555,46 @@ Verified live (local static server): SIRIKIAT B.'s 21 Jul cell tooltip now reads
 7.75h, each figure now hand-verifiable against the single 08:30–09:15 flight line item beneath it
 (also 0.75h) — no more silent rounding gap. Zero new console errors (only the pre-existing
 local-dev CORS fallback). Only file touched: `js/view-aircraft.js`. Cache-bust bumped to p160.
+
+## p161 (2026-08-08 — same-day follow-up: audited every other CMDV2 tab/sub-tab for the p160
+rounding-verification gap)
+
+User: "Pls also check all other tab and sub-tab in CMD V2 about this precision problem." Swept
+every `js/view-*.js` file (22 files) for the same failure shape as p160: a per-flight/per-day hour
+value shown ONLY at 1 decimal in a surface a user would use to manually verify a total (hover
+tooltip, click-through breakdown), with no more precise view available.
+
+**Confirmed no real accumulation bug anywhere** — every hour total in every view sums raw
+`durMin/60` (or equivalent) with `.toFixed()` applied once at final render; grepped every
+`reduce()`+`toFixed` combination in the codebase and confirmed each rounds only the terminal
+output, never an intermediate value that gets summed again.
+
+**Found and fixed 2 more instances of the exact p160 gap** (both: row/cell total was already an
+accurate precise sum, only the tooltip lacked the precision to verify it by hand):
+- `js/view-summary.js` — Ops Analytics' `RosterHeatmap` (Student Activity / Instructor Activity):
+  cell tooltip `v.toFixed(1)` → `v.toFixed(2)`.
+- `js/view-roster.js` — PM Roster board: cell tooltip `cell.hours.toFixed(1)` → `.toFixed(2)`.
+
+**Checked clean, no change needed** (already exact or intentionally coarse-and-acceptable):
+- `js/view-crosscheck.js` + `crosscheck-monthly.js` (Cross-Check "Monthly OPS ⇄ PROG" ledger) —
+  already BETTER than 2dp: itemized lines are `.toFixed(2)`, with an explicit residual and "✓
+  fully explained" check (built in p158, see that entry).
+- `js/view-cohort.js` / `view-cohort-v4.js` (AP127 Detail / V4 Roster) — per-day cell tooltips use
+  `hm()`, an exact `H h MMm` minute-based formatter, not a rounded decimal at all.
+- `js/view-gantt.js`, `js/view-board.js`, `js/view-daily.js`, `js/view-calendar.js` — per-flight
+  tooltips/rows show the raw `f.start`–`f.end` time or the exact `f.duration` string, never a
+  rounded decimal; clicking opens the shared exact `Drawer()` (`js/shared.js`, shows
+  `Math.floor(f.durMin/60)}h {f.durMin%60}m` — exact to the minute).
+- `js/view-program.js`, `js/shell.js` — remaining 1-decimal hour figures are day/period-aggregate
+  KPI tiles or Chart.js tooltips (whole-batch totals), not itemized per-flight lists a user would
+  hand-sum — same category as the headline KPI numbers p160 deliberately left alone.
+- `js/view-weekly.js`, `js/view-schedule.js`, `js/view-ap127-targets.js`,
+  `js/crosscheck-monthly.js`, `js/ap127-targets-data.js`, `js/view-watchdog.js`,
+  `js/view-tutorial.js`, `js/view-cf-usage.js`, `js/view-autoslotfinder.js`, `js/view-overview.js`
+  — no hour-total rounding present, or only percentage/count figures (not the affected pattern).
+
+Verified live (local static server, cache-bust bumped to p161 to defeat browser HTTP caching of
+the unchanged-URL `?v=p160` scripts that masked the first verification attempt): Ops Analytics'
+Student Activity roster tooltip for AKARAVIT K. now reads "1.33h" (was "1.3h"); PM Roster board's
+tooltip for the same student now reads "2.17h" (was "2.2h"). Zero new console errors (only the
+pre-existing local-dev CORS fallback). Files touched: `js/view-summary.js`, `js/view-roster.js`.

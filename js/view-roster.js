@@ -317,7 +317,7 @@ function RosterBoard() {
                         title={
                           onLeaveToday
                             ? `${key} · ${d} · ON LEAVE${n ? ` · ${n} FLT` : ''}`
-                            : n > 0 ? `${key} · ${d} · ${n} FLT · ${(cell.hours).toFixed(1)}h` : undefined
+                            : n > 0 ? `${key} · ${d} · ${n} FLT · ${(cell.hours).toFixed(2)}h` : undefined
                         }
                         style={{
                           width:CELL_W, height:ROW_H, textAlign:'center', verticalAlign:'middle',

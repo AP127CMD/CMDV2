@@ -614,7 +614,7 @@
                       if (d === today) cellBorder = '1px solid var(--highlight)';
                       return (
                         <td key={d} onClick={() => onCellClick(row, d)}
-                          title={v > 0 ? `${row} · ${d} · ${v.toFixed(1)}h` : `${row} · ${d}: —`}
+                          title={v > 0 ? `${row} · ${d} · ${v.toFixed(2)}h` : `${row} · ${d}: —`}
                           style={{ width: CELL_W, height: CELL_H, padding: 0, background: cellBg, border: cellBorder, borderRadius: 2, cursor: v > 0 ? 'pointer' : 'default' }}/>
                       );
                     })}
