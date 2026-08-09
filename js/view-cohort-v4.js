@@ -16,6 +16,7 @@
       <div class="d127v4-hours-badge" title="Every &quot;hours&quot; figure on this tab (KPI card, Pace Monitor, Progress Ranking, Combined Progress vs Plan, Batch Lagging History, Individual Lead/Lag vs Plan, Actual vs Planned, Daily Output, Roster) uses each lesson's STANDARD/PLANNED duration from the curriculum — not the flight's actual logged clock time. A flight only falls back to its actual logged duration if its lesson code isn't found in the curriculum at all (rare). This keeps &quot;hours done&quot; directly comparable to &quot;hours planned,&quot; since both are built from the same standard durations, at the cost of not reflecting real day-to-day block-time variance (weather holds, extra circuits, etc).">
         <span class="d127v4-hours-badge-dot"></span>HOURS = EFFECTIVE <span class="d127v4-hours-badge-sub">(standard duration per lesson, not actual logged time)</span>
       </div>
+      <button class="d127-reset" id="d127v4-export-btn" style="margin-top:8px;margin-left:8px;vertical-align:top" title="Export this tab's current data as a PDF report — builds a document in memory, does not change anything on screen" onclick="ap127ExportPDFV4()">⬇ Export PDF</button>
     </div>
     <div class="d127v4-sticky">
       <div id="tt-banner-v4" style="display:none;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:5px;padding:6px 10px;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#f59e0b">
@@ -2876,6 +2877,311 @@ function opsAugment(students, curriculum) {
   return { students: out, syncCount, opsAt: (window.FLIGHT_DATA && window.FLIGHT_DATA.fetchedAt) || null };
 }
 
+// ── PDF export — "Export PDF" button, snaps the tab's current state ──────────
+// Deliberately reads the ALREADY-RENDERED DOM (KPI cards, Pace Monitor tables, Progress Ranking
+// rows, chart canvases via Chart.js's own toBase64Image()) rather than recomputing anything from
+// G/ap127AsOfStudents() independently — that guarantees the PDF is byte-for-byte what's on screen
+// at the moment of export (including any active search filter, sort, time-travel As-Of date, or
+// custom Daily Output range), with zero risk of a second, drifted copy of the app's formulas. Runs
+// entirely client-side against an in-memory jsPDF document; nothing on the live page is touched or
+// changed, except a brief, read-only html2canvas screenshot of the Roster/Lesson Matrix (they're
+// plain DOM tables, not Chart.js canvases, so they can't use the same image-export trick).
+// Libraries: jsPDF + jspdf-autotable + html2canvas, all loaded via CDN in index.html.
+async function ap127ExportPDF(){
+  if(!window.jspdf||!window.jspdf.jsPDF){toast("PDF library failed to load — check your connection","er");return;}
+  const btn=document.getElementById("d127v4-export-btn");
+  const origLabel=btn?btn.textContent:"";
+  if(btn){btn.disabled=true;btn.textContent="⏳ Generating…";}
+  toast("Generating PDF report…");
+  try{
+    const { jsPDF }=window.jspdf;
+    const doc=new jsPDF({unit:"pt",format:"letter"});
+    const MARGIN=44;
+    const INK=[13,17,23],RED=[220,38,38],GREEN=[22,163,74],GREY=[110,118,129],MAGENTA=[192,79,214],LGREY=[229,231,235],PANEL=[248,249,251];
+    const today=ap127AsOf();
+    const isLive=!COHORT_AS_OF;
+    let page=1;
+
+    const pageDims=()=>{const s=doc.internal.pageSize;return{w:s.getWidth(),h:s.getHeight()};};
+    const footer=()=>{
+      const{w,h}=pageDims();
+      doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(...GREY);
+      doc.text("AP127 Progress Report"+(isLive?" — LIVE":" — time-travel as of "+ap127FmtDate(today)),MARGIN,h-24);
+      doc.text("Page "+page,w-MARGIN,h-24,{align:"right"});
+      doc.setDrawColor(...LGREY);doc.line(MARGIN,h-34,w-MARGIN,h-34);
+    };
+    const newPage=(landscape)=>{footer();doc.addPage("letter",landscape?"landscape":"portrait");page++;};
+    const sectionTitle=(t,y)=>{doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...MAGENTA);doc.text(t,MARGIN,y);return y+16;};
+    const kpiRow=(y,cards,w0)=>{
+      const{w}=pageDims();const cw=(w-2*MARGIN)/cards.length;
+      cards.forEach((c,i)=>{
+        const x=MARGIN+i*cw;
+        doc.setDrawColor(...LGREY);doc.setFillColor(...PANEL);
+        doc.roundedRect(x+2,y,cw-8,58,3,3,"FD");
+        doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(...GREY);
+        doc.text(c.l,x+cw/2-4,y+16,{align:"center"});
+        doc.setFont("helvetica","bold");doc.setFontSize(15);doc.setTextColor(...(c.c||INK));
+        doc.text(c.v,x+cw/2-4,y+35,{align:"center"});
+        doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+        doc.text(c.s,x+cw/2-4,y+48,{align:"center",maxWidth:cw-14});
+      });
+      return y+70;
+    };
+    // Chart.js's own PNG export — crisp (reads the canvas's actual, already-devicePixelRatio-scaled
+    // bitmap), always in sync with whatever's currently drawn (zoom/pan state, active toggles).
+    const addChartImage=(chartKey,y,maxW,maxH)=>{
+      const chart=CHARTS[chartKey];if(!chart)return y;
+      const img=chart.toBase64Image("image/png",1);
+      const iw=chart.canvas.width,ih=chart.canvas.height;
+      const scale=Math.min(maxW/iw,maxH/ih);
+      const w=iw*scale,h=ih*scale;
+      // "MEDIUM" engages jsPDF's own PNG re-compression — its default embed is near-uncompressed
+      // (confirmed via `pdfimages -list`, which showed every chart image at 100% storage ratio,
+      // ~9 chart images alone bloating an early build of this feature to 21MB+). Chart backgrounds
+      // are transparent (Chart.js's default), so this stays PNG rather than JPEG to preserve that.
+      doc.addImage(img,"PNG",MARGIN,y,w,h,undefined,"MEDIUM");
+      return y+h+10;
+    };
+    const noteText=(t,y,w)=>{
+      doc.setFont("helvetica","italic");doc.setFontSize(8.5);doc.setTextColor(...GREY);
+      const lines=doc.splitTextToSize(t,w||(pageDims().w-2*MARGIN));
+      doc.text(lines,MARGIN,y);
+      return y+lines.length*10+6;
+    };
+    // .innerText (not .textContent) — respects rendered line breaks (many cells here are two lines
+    // via <br>, e.g. "SE<br>TYPE" or "Month<br>(30d)"; .textContent has no concept of layout and
+    // would run them together as "SETYPE"/"Month(30d)" with zero separating space).
+    const txt=(el)=>(el?.innerText||el?.textContent||"").replace(/\s+/g," ").trim();
+    // Reads an already-rendered HTML table's rows into a plain string[][] — used for every table in
+    // this export (Progress Ranking, Pace Monitor, Watchlist) so the PDF can never disagree with
+    // what's on screen; jspdf-autotable renders them as real, selectable text, not a screenshot.
+    const readTable=(sel)=>Array.from(document.querySelectorAll(sel)).map(tr=>
+      Array.from(tr.children).map(td=>txt(td)));
+
+    const all=ap127AsOfStudents();
+    const n=all.length;
+    const curriculum=G.cur127||[];
+    const curriculumHrs=ap127CurriculumHours();
+
+    // ---------------------------------------------------------------- COVER + BATCH SUMMARY
+    doc.setFont("helvetica","bold");doc.setFontSize(22);doc.setTextColor(...INK);
+    doc.text("AP127 PROGRESS REPORT",MARGIN,80);
+    doc.setFont("helvetica","normal");doc.setFontSize(11);doc.setTextColor(...GREY);
+    doc.text("Batch AP-127 · CATC CPL/IR Integrated Course · Snapshot export",MARGIN,98);
+    let y=130;
+    doc.setFontSize(9.5);
+    [["Report generated",new Date().toISOString().slice(0,16).replace("T"," ")+" UTC"],
+     ["Data as of",isLive?ap127FmtDate(today)+" (live)":ap127FmtDate(today)+" (time travel)"],
+     ["Students",n+" SP"],
+     ["Curriculum",`${curriculum.length} lessons · ${curriculumHrs.toFixed(0)}h`]].forEach(([k,v])=>{
+      doc.setFont("helvetica","bold");doc.setTextColor(...GREY);doc.text(k,MARGIN,y);
+      doc.setFont("helvetica","normal");doc.setTextColor(...INK);doc.text(String(v),MARGIN+130,y);
+      y+=16;
+    });
+    y+=16;
+    y=sectionTitle("Batch Summary",y);
+    const gt=(id)=>document.getElementById(id)?.textContent?.trim()||"—";
+    const hrsNeg=gt("d127v4-k-hrs").trim().startsWith("-");
+    const lesNeg=gt("d127v4-k-les").trim().startsWith("-");
+    y=kpiRow(y,[
+      {l:"BATCH PROGRESS",v:gt("d127v4-k-prg"),s:gt("d127v4-k-prg-s")},
+      {l:"STUDENTS",v:gt("d127v4-k-stu"),s:gt("d127v4-k-stu-s")},
+      {l:"HRS DONE / PLAN",v:gt("d127v4-k-hrs"),s:gt("d127v4-k-hrs-s"),c:hrsNeg?RED:GREEN},
+      {l:"LESSONS DONE / PLAN",v:gt("d127v4-k-les"),s:gt("d127v4-k-les-s"),c:lesNeg?RED:GREEN},
+    ]);
+    y=noteText(gt("d127v4-meta"),y+8);
+
+    // ---------------------------------------------------------------- PACE MONITOR
+    y=sectionTitle("Pace Monitor · Situation vs Target",y+10);
+    const paceCards=Array.from(document.querySelectorAll("#d127v4-pace-body .d127v4-card")).map(c=>({
+      l:c.querySelector(".d127-kl")?.textContent.trim(),
+      v:c.querySelector(".d127-kv")?.textContent.trim(),
+      s:c.querySelector(".d127-ks")?.textContent.trim(),
+    }));
+    if(paceCards.length)y=kpiRow(y,paceCards.map(c=>({...c,c:/^-|^0$/.test(c.v)&&c.l==="At Risk"?RED:undefined})));
+    const paceTables=document.querySelectorAll("#d127v4-pace-body .d127v4-pace-tbl-wrap");
+    paceTables.forEach(wrap=>{
+      const title=txt(wrap.querySelector(".d127v4-sec-lbl"));
+      const rows=Array.from(wrap.querySelectorAll("tbody tr")).map(tr=>
+        Array.from(tr.children).map(td=>txt(td)));
+      doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...INK);doc.text(title,MARGIN,y+10);
+      doc.autoTable({
+        startY:y+16,margin:{left:MARGIN,right:MARGIN},
+        head:[["Period","Req (h)","Act (h)","Gap (h)","Req (les)","Act (les)","Gap (les)"]],
+        body:rows,styles:{fontSize:8,cellPadding:4},headStyles:{fillColor:INK,textColor:255},
+        columnStyles:{0:{fontStyle:"bold"}},
+      });
+      y=doc.lastAutoTable.finalY+14;
+    });
+    const actionMsg=txt(document.querySelector("#d127v4-pace-body .d127v4-action-banner"));
+    if(actionMsg){
+      const{w}=pageDims();
+      const lines=doc.splitTextToSize(actionMsg,w-2*MARGIN-20);
+      const bh=lines.length*11+16;
+      doc.setFillColor(254,242,242);doc.setDrawColor(...RED);doc.roundedRect(MARGIN,y,w-2*MARGIN,bh,3,3,"FD");
+      doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(...INK);
+      doc.text(lines,MARGIN+10,y+16);
+    }
+
+    // ---------------------------------------------------------------- DAILY OUTPUT + BATCH LAGGING
+    newPage(false);y=60;
+    y=sectionTitle("Daily Output · Lessons & Hours",y);
+    const lbEl=document.getElementById("d127v4-lb-kpis");
+    if(lbEl){
+      const chunks=lbEl.innerText.trim().split("\n");
+      const cards=[];
+      for(let i=0;i<chunks.length;i+=3)cards.push({l:chunks[i],v:chunks[i+1],s:chunks[i+2]});
+      if(cards.length)y=kpiRow(y,cards);
+    }
+    y+=6;
+    y=addChartImage("ap127lessonBar",y,pageDims().w-2*MARGIN,300);
+    y=noteText("Bars = batch total per period. Required (rose line) = same calc as the Pace Monitor's Per Day/Week/Month row above.",y);
+
+    y=sectionTitle("Batch Lagging History",y+10);
+    y=addChartImage("ap127histBatch",y,pageDims().w-2*MARGIN,220);
+
+    // ---------------------------------------------------------------- COMBINED PROGRESS + FUNNEL
+    newPage(false);y=60;
+    y=sectionTitle("Combined Progress vs Plan",y);
+    y=addChartImage("ap127combined",y,pageDims().w-2*MARGIN,320);
+
+    y=sectionTitle("Phase Progress Funnel",y+10);
+    y=addChartImage("ap127funnel",y,pageDims().w-2*MARGIN,190);
+
+    // ---------------------------------------------------------------- PACE DISTRIBUTION + INDIVIDUAL LEAD/LAG
+    newPage(false);y=60;
+    y=sectionTitle("Pace Distribution",y);
+    y=addChartImage("ap127band",y,pageDims().w-2*MARGIN,260);
+
+    y=sectionTitle("Individual Lead/Lag vs Plan",y+10);
+    y=addChartImage("ap127histSolo",y,pageDims().w-2*MARGIN,260);
+
+    // ---------------------------------------------------------------- ACTUAL VS PLANNED + CONS/IDLE
+    newPage(false);y=60;
+    y=sectionTitle("Actual vs Planned",y);
+    y=addChartImage("ap127race",y,pageDims().w-2*MARGIN,300);
+
+    y=sectionTitle("Consecutive & Idle Streaks",y+10);
+    y=addChartImage("ap127consIdle",y,pageDims().w-2*MARGIN,260);
+
+    // ---------------------------------------------------------------- WATCHLIST
+    newPage(false);y=60;
+    y=sectionTitle("Needs Attention (Watchlist)",y);
+    const watchRows=Array.from(document.querySelectorAll("#d127v4-watchlist .d127v4-watch-item")).map(it=>[
+      it.querySelector(".d127v4-watch-name")?.textContent.trim()||"",
+      it.querySelector(".d127v4-watch-badge")?.textContent.trim()||"",
+      it.querySelector(".d127v4-watch-sub")?.textContent.trim()||"",
+    ]);
+    if(watchRows.length){
+      doc.autoTable({
+        startY:y,margin:{left:MARGIN,right:MARGIN},
+        head:[["Student","Idle","Hrs Δ"]],body:watchRows,
+        styles:{fontSize:9,cellPadding:4},headStyles:{fillColor:INK,textColor:255},
+      });
+      y=doc.lastAutoTable.finalY+10;
+    } else {
+      y=noteText("No students idle >5d or significantly behind plan.",y);
+    }
+
+    // ---------------------------------------------------------------- FLIGHT TIMELINE (landscape, can be tall)
+    newPage(true);y=60;
+    y=sectionTitle("Flight Timeline vs Progress",y);
+    addChartImage("ap127timeline",y,pageDims().w-2*MARGIN,pageDims().h-y-50);
+
+    // ---------------------------------------------------------------- OVERALL PROGRESS (landscape)
+    newPage(true);y=60;
+    y=sectionTitle("Overall Progress Bar View — all "+n+" SP",y);
+    addChartImage("ap127overall",y,pageDims().w-2*MARGIN,pageDims().h-y-50);
+
+    // ---------------------------------------------------------------- PROGRESS RANKING (landscape table)
+    newPage(true);y=60;
+    y=sectionTitle("Progress Ranking — full table ("+n+" SP)",y);
+    const rankHead=Array.from(document.querySelectorAll(".d127-table thead th")).map(th=>txt(th));
+    const rankRows=readTable("#d127v4-rows tr");
+    doc.autoTable({
+      startY:y,margin:{left:MARGIN,right:MARGIN},
+      head:[rankHead],body:rankRows,
+      styles:{fontSize:7,cellPadding:3},headStyles:{fillColor:INK,textColor:255,fontSize:7.5},
+      didParseCell:(data)=>{
+        if(data.row.index===0&&data.section==="body")data.cell.styles.fillColor=[243,232,255];
+      },
+    });
+
+    // ---------------------------------------------------------------- ROSTER + LESSON MATRIX (html2canvas)
+    // html2canvas 1.4.1's own CSS color parser doesn't understand modern color functions
+    // (color-mix()/oklch()) — this codebase's Lesson Matrix footer row uses exactly that
+    // (`color-mix(in oklch, var(--c127) X%, transparent)` for its batch-%-complete shading) and
+    // html2canvas throws "Attempting to parse an unsupported color function" the moment it hits
+    // it. Worked around by screenshotting a TEMPORARY, off-screen CLONE — not the live element —
+    // with every color-mix()-using node's background swapped for the plain rgb() the browser
+    // already resolved it to (read via getComputedStyle on the still-mounted original, which
+    // resolves color-mix/oklch to a concrete color same as it does for on-screen rendering).
+    // html2canvas only ever sees the clone, so this never touches or affects anything visible.
+    if(window.html2canvas){
+      const cloneForCanvas=(realEl)=>{
+        const clone=realEl.cloneNode(true);
+        const realNodes=realEl.querySelectorAll('[style*="color-mix"]');
+        const cloneNodes=clone.querySelectorAll('[style*="color-mix"]');
+        realNodes.forEach((real,i)=>{
+          if(cloneNodes[i])cloneNodes[i].style.background=getComputedStyle(real).backgroundColor;
+        });
+        clone.style.position="fixed";clone.style.top="-99999px";clone.style.left="0";
+        clone.style.background=getComputedStyle(realEl).backgroundColor||getComputedStyle(document.body).backgroundColor;
+        document.body.appendChild(clone);
+        return clone;
+      };
+      // Belt-and-braces: this app's theme system defines its base palette as oklch() (css/theme.css
+      // :root vars) and uses color-mix(in oklch,...) throughout multiple stylesheets, not just the
+      // one inline case cloneForCanvas patches — a full fix would mean rewriting the capture target's
+      // entire computed style tree, out of scope for this pass. If html2canvas still can't render a
+      // given panel despite the clone patch, fall back to a plain data table (Name + its one real
+      // summary column — the heatmap's day/lesson cells carry no text, only color, so they're not
+      // worth dumping) rather than letting the whole export fail.
+      const shot=async(elId,title,nameSel,valSel,valLabel)=>{
+        const el=document.getElementById(elId);if(!el)return;
+        newPage(true);y=60;
+        y=sectionTitle(title,y);
+        toast("Capturing "+title+"…");
+        try{
+          const clone=cloneForCanvas(el);
+          let canvas;
+          try{
+            canvas=await window.html2canvas(clone,{scale:1.5,backgroundColor:getComputedStyle(document.body).backgroundColor||"#0d1117"});
+          }finally{
+            clone.remove();
+          }
+          const img=canvas.toDataURL("image/png");
+          const{w:pw,h:ph}=pageDims();
+          const scale=Math.min((pw-2*MARGIN)/canvas.width,(ph-y-50)/canvas.height,1);
+          doc.addImage(img,"PNG",MARGIN,y,canvas.width*scale,canvas.height*scale,undefined,"MEDIUM");
+        }catch(err){
+          console.warn("ap127ExportPDF: html2canvas capture failed for #"+elId+", falling back to a text table:",err);
+          y=noteText("Full-color screenshot capture isn't available in this environment (the in-browser screenshot library can't render some of this app's CSS colors) — showing the underlying data as a text table instead.",y);
+          const rows=Array.from(el.querySelectorAll("tbody tr, tfoot tr")).map(tr=>{
+            const nameCell=tr.querySelector(nameSel),valCell=tr.querySelector(valSel);
+            return nameCell?[txt(nameCell),valCell?txt(valCell):""]:null;
+          }).filter(Boolean);
+          if(rows.length){
+            doc.autoTable({startY:y+4,margin:{left:MARGIN,right:MARGIN},head:[["Name",valLabel]],body:rows,
+              styles:{fontSize:8,cellPadding:3},headStyles:{fillColor:INK,textColor:255}});
+          }
+        }
+      };
+      await shot("d127v4-heat","Roster — Day-by-Day Activity Heatmap",".d127v4-heat-name",".d127v4-heat-total","Total (les · hrs)");
+      await shot("d127v4-lesson-matrix","Lesson Completion Matrix",".d127v4-lm-name",".d127v4-lm-vs","vs Target");
+    }
+
+    footer();
+    doc.save(`AP127_Progress_Report_${today}.pdf`);
+    toast("PDF report downloaded");
+  }catch(e){
+    console.error("ap127ExportPDF failed:",e);
+    toast("PDF export failed — see console for details","er");
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=origLabel||"⬇ Export PDF";}
+  }
+}
+
   const { useRef, useEffect } = React;
   function CohortViewV4() {
     const d = window.useData();
@@ -2922,6 +3228,7 @@ function opsAugment(students, curriculum) {
     ap127ToggleLBBreakdownV4: ap127ToggleLBBreakdown,
     ap127ToggleLBInfoV4: ap127ToggleLBInfo,
     buildAP127RosterV4: buildAP127Roster,
+    ap127ExportPDFV4: ap127ExportPDF,
     CHARTS_V4: CHARTS,
   });
 })();

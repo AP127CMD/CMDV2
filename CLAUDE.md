@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p163` (all currently at p162)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p164` (all currently at p163)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -64,7 +64,69 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p162` (2026-08-08 — **AP127 Detail V4 — "Batch Lead/Lag History"
+**Last known:** all files `p163` (2026-08-09 — **AP127 Detail V4 — new "Export PDF" button:
+snaps the tab's current state into a downloadable PDF report.** User: "No I want this tab export
+function. To snap the current state as pdf. It should include all data in the page with proper
+layout. But this should not effect the current look of the page. Pls design and propose to me with
+example of today report." First delivered a design proposal + a hand-built example PDF (reportlab,
+built from live-scraped data) for review; user picked "Screenshot via html2canvas" for how the
+Roster/Lesson Matrix heatmaps should be handled, then the real in-app feature was built.
+
+**Architecture:** entirely client-side — jsPDF + jspdf-autotable + html2canvas, all loaded via CDN
+in `index.html` (no ?v= pin, matching how Chart.js/React are loaded — external libraries, not this
+project's own versioned code). New `ap127ExportPDF()` deliberately reads the ALREADY-RENDERED DOM
+(KPI cards, Pace Monitor tables, Progress Ranking rows via `.innerText`, chart canvases via Chart.js's
+own `toBase64Image()`) rather than recomputing anything independently — guarantees the PDF is
+byte-for-byte what's on screen (any active search filter, sort, time-travel As-Of date, custom Daily
+Output range) with zero risk of a second, drifted copy of the app's formulas. New "⬇ Export PDF"
+button added to the tab's title bar next to the existing "HOURS = EFFECTIVE" badge — purely
+additive, zero change to any existing element's position/behavior. Report covers ALL of the tab's
+data: cover + Batch Summary, Pace Monitor (cards + both Req/Act/Gap tables + action banner), Daily
+Output (KPIs + chart), Batch Lagging History, Combined Progress vs Plan, Phase Progress Funnel,
+Pace Distribution, Individual Lead/Lag vs Plan, Actual vs Planned, Consecutive & Idle Streaks,
+Watchlist, Flight Timeline (landscape), Overall Progress (landscape), full Progress Ranking table
+(landscape, all 28 SP + all 13 columns), Roster heatmap, Lesson Completion Matrix.
+
+**Real bug found and fixed during live testing (not shipped blind):** html2canvas 1.4.1 can't parse
+this app's `oklch()`/`color-mix(in oklch,...)` CSS — used pervasively in the theme system
+(`css/theme.css`'s `:root` palette vars), not just one isolated spot — so a direct screenshot of the
+Roster/Lesson Matrix threw `"Attempting to parse an unsupported color function oklch"` and aborted
+the WHOLE export. Mitigated two ways: (1) `cloneForCanvas()` screenshots a temporary, off-screen
+CLONE (not the live element) with any `color-mix()`-using inline style swapped for the plain
+`rgb()` the browser already resolved it to; (2) since that alone didn't fully solve it (the failure
+is deeper than one inline case), wrapped each heatmap capture in its own try/catch — on failure it
+falls back to a real data table (Name + the one column that actually carries text, e.g. Roster's
+Total or Lesson Matrix's vs-Target — the heatmap's day/lesson cells carry no text, only color, so
+dumping them isn't useful) with a note explaining why. The export as a whole never fails because of
+this; verified live both ways (forced-clone success path AND the real fallback path, both produce a
+valid PDF).
+
+**Second bug found and fixed during verification:** jsPDF's default PNG image embedding is
+near-uncompressed (confirmed via `pdfimages -list` — every embedded chart image showed 100% storage
+ratio, no compression at all) — an early full-export test came out to 21.5MB from ~9 chart images
+alone. Fixed by passing jsPDF's `"MEDIUM"` compression option to every `addImage()` call (stays PNG,
+not JPEG, to preserve the charts' transparent backgrounds) — cut the same export to 1.77MB, a ~12x
+reduction, with no visible quality loss.
+
+**Third set of fixes found during verification:** several `.textContent`-based DOM reads collapsed
+`<br>`-separated header/label text with no space (e.g. "SE<br>TYPE" → "SETYPE", "Month<br>(30d)" →
+"Month(30d)") — switched every such read to a new shared `txt()` helper using `.innerText` (which
+respects rendered line breaks) instead. Also fixed the Roster/Lesson Matrix fallback tables
+including a spurious blank/duplicate header row (`<thead>` rows were matching the same name/value
+CSS selectors the real `<tbody>` rows use) — scoped the fallback's row query to `tbody tr, tfoot tr`.
+
+**Verified live, end-to-end, for real** (not just "no console errors"): triggered the actual
+`ap127ExportPDFV4()` button function in the browser, intercepted jsPDF's `.save()` to capture the
+real generated PDF bytes (`.output('datauristring')`) instead of relying on an unobservable browser
+download, decoded them back into an actual `.pdf` file, and inspected it directly —
+`pdfinfo`/`pdftoppm`-rendered pages confirmed 11 pages, correct data on every page (KPI numbers,
+Pace Monitor tables, all 6 embedded charts, the full 28-row Progress Ranking table, and the
+Roster/Lesson Matrix fallback tables), zero garbled text, 1.77MB file size. Zero new console errors
+beyond the pre-existing local-dev CORS fallback (the 3 `"ap127ExportPDF failed: oklch"` errors seen
+in the console are stale, from the 3 attempts made *before* the try/catch fallback was added — not
+from the final, verified-working code). Original AP127 Detail (`js/view-cohort.js`) confirmed still
+byte-identical/untouched. Files touched: `js/view-cohort-v4.js`, `index.html` (3 new CDN script
+tags). Full write-up: REVAMP.md's p163 entry.) p162 (2026-08-08 — **AP127 Detail V4 — "Batch Lead/Lag History"
 redesigned into "Batch Lagging History": flipped to a lag-only view, floored at zero.** User: "Now
 I want to redesign the BATCH LEAD/LAG HISTORY chart. Due to it always lagging. I want to change to
 Batch lagging chart. The Y axis show lag hour/lesson in positive. (Basically flip the current
