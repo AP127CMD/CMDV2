@@ -33,6 +33,9 @@
 .v5-brand{font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.06em;white-space:nowrap;}
 .v5-brand b{color:var(--v5-acc);font-weight:700;}
 .v5-chipset{display:flex;gap:2px;font-family:'JetBrains Mono',monospace;font-size:10px;}
+/* Labelled control group — the label is what makes the bar self-explanatory. */
+.v5-ctrl{display:flex;flex-direction:column;gap:3px;}
+.v5-ctrl-l{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--v5-tx3);text-transform:uppercase;letter-spacing:.09em;white-space:nowrap;}
 .v5-chip{border:1px solid var(--v5-bd);border-radius:5px;padding:4px 8px;color:var(--v5-tx2);background:transparent;cursor:pointer;white-space:nowrap;transition:all .12s;}
 .v5-chip:hover{color:var(--v5-tx);border-color:var(--v5-tx3);}
 .v5-chip.on{border-color:var(--v5-acc);color:var(--v5-acc);background:var(--v5-acc-bg);}
@@ -53,10 +56,25 @@
 /* ---- Body / grid ------------------------------------------------------------ */
 .v5-body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:12px;}
 .v5-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:calc(10px*var(--v5-scale));align-items:start;}
-.v5-span-4{grid-column:span 4;} .v5-span-6{grid-column:span 6;} .v5-span-8{grid-column:span 8;} .v5-span-12{grid-column:span 12;}
+/* Every span 1-12 is defined, not just a hand-picked few — a config value with
+   no matching class silently sets no grid-column at all, so the panel collapses
+   to a single 1/12-wide column. That shipped as a real broken-layout bug in the
+   first V5 build (Pulse's pace/watchlist were span 7 and 5). */
+.v5-span-1{grid-column:span 1;} .v5-span-2{grid-column:span 2;} .v5-span-3{grid-column:span 3;}
+.v5-span-4{grid-column:span 4;} .v5-span-5{grid-column:span 5;} .v5-span-6{grid-column:span 6;}
+.v5-span-7{grid-column:span 7;} .v5-span-8{grid-column:span 8;} .v5-span-9{grid-column:span 9;}
+.v5-span-10{grid-column:span 10;} .v5-span-11{grid-column:span 11;} .v5-span-12{grid-column:span 12;}
 @media(max-width:900px){.v5-grid{grid-template-columns:1fr;}.v5-grid>*{grid-column:1 / -1 !important;}}
 
 .v5-panel{background:var(--v5-s1);border:1px solid var(--v5-bd);border-radius:8px;overflow:hidden;content-visibility:auto;contain-intrinsic-size:0 320px;contain:layout paint style;}
+/* content-visibility:auto is only useful BEFORE a panel mounts (it defers the
+   initial paint of not-yet-visible panels). Once real content is injected it
+   becomes a liability: the browser can keep the freshly-inserted subtree in the
+   skipped state, leaving the panel showing its old "Loading…" frame until some
+   unrelated scroll nudges a repaint — reproduced live on the 96-column
+   Curriculum Grid. Turning it off at mount time keeps the lazy-mount benefit
+   and removes the stale-paint failure mode. */
+.v5-panel.v5-mounted{content-visibility:visible;contain-intrinsic-size:auto;}
 .v5-panel-hd{display:flex;align-items:center;gap:8px;padding:calc(8px*var(--v5-scale)) calc(11px*var(--v5-scale));border-bottom:1px solid var(--v5-bd2);flex-wrap:wrap;}
 .v5-panel-t{font-family:'JetBrains Mono',monospace;font-size:calc(10.5px*var(--v5-scale));color:var(--v5-acc);text-transform:uppercase;letter-spacing:1px;}
 .v5-panel-s{font-size:calc(10px*var(--v5-scale));color:var(--v5-tx3);}
@@ -126,6 +144,61 @@
 .v5-gridwrap{position:relative;overflow:auto;border:1px solid var(--v5-bd2);border-radius:6px;}
 .v5-gridwrap canvas{display:block;}
 .v5-gridwrap .v5-gridtip{position:fixed;pointer-events:none;background:var(--v5-s3);border:1px solid var(--v5-bd);border-radius:5px;padding:5px 8px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--v5-tx);z-index:60;max-width:260px;white-space:pre-line;box-shadow:0 6px 18px rgba(0,0,0,.4);}
+
+/* ---- Modern roster grid (Syllabus + Calendar) ----------------------------------
+   Same visual idiom as Aircraft Status' SP Stat / FI Stat roster: separated,
+   rounded, intensity-filled cells; sticky identity + total columns; Monday and
+   month rules; today outlined in the accent colour. */
+/* Sized to what's actually on screen (minus the command bar / section tabs /
+   panel header / legend above it) so the sticky totals footer at the bottom of
+   this box is reachable without scrolling the outer page past it. */
+.v5-rt-wrap{overflow:auto;max-height:max(320px,calc(100vh - 340px));border:1px solid var(--v5-bd2);border-radius:6px;}
+.v5-rt{border-collapse:separate;border-spacing:1px;font-family:'JetBrains Mono',monospace;}
+.v5-rt th,.v5-rt td{padding:0;}
+.v5-rt thead th{position:sticky;top:0;z-index:3;background:var(--v5-s1);vertical-align:bottom;}
+/* Identity columns are sticky, so their widths and left offsets MUST agree
+   exactly or later columns slide underneath them (the phase band header did
+   exactly that on the first attempt). Widths are pinned here, and the JS uses
+   the same --v5-rt-* values to compute each column's `left`. */
+.ap127-v5{--v5-rt-name-w:132px;--v5-rt-c2-w:44px;--v5-rt-c3-w:54px;}
+.v5-rt .v5-rt-name{position:sticky;left:0;z-index:4;background:var(--v5-s1);border-right:1px solid var(--v5-bd);padding:1px 7px;text-align:left;
+  width:var(--v5-rt-name-w);min-width:var(--v5-rt-name-w);max-width:var(--v5-rt-name-w);overflow:hidden;}
+.v5-rt .v5-rt-tot{position:sticky;z-index:4;background:var(--v5-s1);border-right:1px solid var(--v5-bd);padding:1px 5px;text-align:right;white-space:nowrap;}
+.v5-rt .v5-rt-c2{width:var(--v5-rt-c2-w);min-width:var(--v5-rt-c2-w);max-width:var(--v5-rt-c2-w);left:var(--v5-rt-name-w);}
+.v5-rt .v5-rt-c3{width:var(--v5-rt-c3-w);min-width:var(--v5-rt-c3-w);max-width:var(--v5-rt-c3-w);left:calc(var(--v5-rt-name-w) + var(--v5-rt-c2-w));}
+.v5-rt thead .v5-rt-name,.v5-rt thead .v5-rt-tot{z-index:5;}
+.v5-rt-nm{font-size:10px;color:var(--v5-tx2);font-weight:600;white-space:nowrap;display:block;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+.v5-rt-nm:hover{color:var(--v5-acc);}
+.v5-rt-hl{font-size:7.5px;color:var(--v5-tx3);}
+.v5-rt-cell{border-radius:2px;text-align:center;vertical-align:middle;font-size:7px;line-height:1;user-select:none;}
+.v5-rt-mon{border-left:1px solid var(--v5-bd)!important;}
+.v5-rt-today{outline:1px solid var(--v5-acc);outline-offset:-1px;}
+.v5-rt-grp td{padding:3px 7px;border-radius:3px;font-size:10px;font-weight:700;}
+.v5-rt-foot td{background:var(--v5-s2);font-size:7px;color:var(--v5-tx2);text-align:center;border-radius:2px;}
+/* Daily/lesson totals stay pinned to the bottom of the scroll box — otherwise
+   they sit below 28 rows of grid and are only reachable by scrolling the inner
+   container all the way down, which defeats the point of a summary row. */
+.v5-rt tfoot td{position:sticky;bottom:0;z-index:3;background:var(--v5-s2);}
+.v5-rt tfoot tr:first-child td{bottom:18px;}
+.v5-rt tfoot .v5-rt-name,.v5-rt tfoot .v5-rt-tot{z-index:5;}
+.v5-rt-legend{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--v5-tx2);margin-bottom:8px;}
+.v5-rt-swatch{width:11px;height:11px;border-radius:2px;display:inline-block;margin-right:3px;vertical-align:-2px;}
+/* Long-idle / lag run: a dashed rule through the empty cells, plus a faint
+   wash so the whole run reads as one band at 13px cell width. */
+.v5-rt-idle{position:relative;background:rgba(239,68,68,.10)!important;}
+.v5-rt-idle::after{content:'';position:absolute;left:0;right:0;top:50%;border-top:1px dashed var(--v5-bad);opacity:.8;}
+.v5-rt-idle-open{background:rgba(245,158,11,.12)!important;}
+.v5-rt-idle-open::after{border-top-style:dotted;border-top-color:var(--v5-warn);}
+/* Target checkpoint column + its date label. A single thin left rule, NOT a
+   full box-shadow band on both edges of every cell — 17 checkpoints × 28 rows
+   of double-edged rose made the grid unreadable in the first attempt. */
+.v5-rt-tgt{border-left:1px solid var(--v5-rose)!important;}
+.v5-rt-tgt-lbl{writing-mode:vertical-rl;text-orientation:mixed;font-size:7px;color:var(--v5-rose);white-space:nowrap;line-height:1;padding-bottom:2px;}
+.v5-rt-nowcol{border-left:2px solid var(--v5-blue)!important;}
+.v5-rt-kp{font-size:9px;line-height:1;cursor:pointer;color:var(--v5-warn);}
+.v5-rt-kp:hover{color:#fde047;}
+.v5-rt-phase{font-size:8.5px;font-weight:800;color:#0d1117;text-align:center;border-radius:2px;cursor:pointer;padding:2px 0;overflow:hidden;white-space:nowrap;}
+.v5-rt-phase:hover{filter:brightness(1.15);}
 
 /* ---- Time machine popover ------------------------------------------------------ */
 .v5-popover{position:absolute;top:100%;right:0;margin-top:6px;background:var(--v5-s2);border:1px solid var(--v5-bd);border-radius:8px;padding:10px;z-index:80;width:280px;box-shadow:0 10px 30px rgba(0,0,0,.5);}

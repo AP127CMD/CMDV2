@@ -36,20 +36,20 @@
       { id: 'pulse', label: 'Pulse', icon: 'pulse', visible: true, panels: [
         { id: 'reel', span: 12, visible: true, opts: { autoplay: true } },
         { id: 'kpis', span: 12, visible: true, opts: {} },
-        { id: 'pace', span: 7, visible: true, opts: {} },
-        { id: 'watchlist', span: 5, visible: true, opts: {} },
+        { id: 'pace', span: 12, visible: true, opts: {} },
+        { id: 'watchlist', span: 12, visible: true, opts: {} },
       ] },
       { id: 'trend', label: 'Trend', icon: 'trend', visible: true, panels: [
         { id: 'progress-chart', span: 12, visible: true, opts: { level: 'level', scope: 'batch' } },
-        { id: 'output', span: 8, visible: true, opts: {} },
-        { id: 'streaks', span: 4, visible: true, opts: {} },
+        { id: 'output', span: 12, visible: true, opts: {} },
+        { id: 'streaks', span: 12, visible: true, opts: {} },
       ] },
-      { id: 'people', label: 'People', icon: 'people', visible: true, panels: [
+      { id: 'people', label: 'Each SP', icon: 'people', visible: true, panels: [
         { id: 'roster', span: 8, visible: true, opts: {} },
         { id: 'distribution', span: 4, visible: true, opts: {} },
       ] },
       { id: 'syllabus', label: 'Syllabus', icon: 'syllabus', visible: true, panels: [
-        { id: 'curriculum-grid', span: 12, visible: true, opts: { mode: 'bars' } },
+        { id: 'curriculum-grid', span: 12, visible: true, opts: {} },
       ] },
       { id: 'calendar', label: 'Calendar', icon: 'calendar', visible: true, panels: [
         { id: 'activity-calendar', span: 12, visible: true, opts: { groupBy: 'none' } },
@@ -136,7 +136,7 @@
             const def = defSec.panels.find(d => d.id === p.id);
             return {
               id: def.id,
-              span: [4, 6, 8, 12].includes(p.span) ? p.span : def.span,
+              span: (Number.isInteger(p.span) && p.span >= 1 && p.span <= 12) ? p.span : def.span,
               visible: p.visible !== false,
               opts: (p.opts && typeof p.opts === 'object') ? Object.assign({}, def.opts, p.opts) : def.opts,
             };

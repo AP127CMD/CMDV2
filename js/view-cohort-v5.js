@@ -220,6 +220,7 @@
       try { handle = def.mount(body, MODEL, cfg.opts, STATE); }
       catch (e) { console.error('[v5] panel mount failed:', cfg.id, e); body.innerHTML = '<div class="v5-empty">Couldn\'t render this panel.</div>'; }
       MOUNTS[cfg.id] = { el: body, handle, cfg, sectionId, mounted: true };
+      wrap.classList.add('v5-mounted');   // releases content-visibility (see CSS note)
     };
     // Lazy mount via IntersectionObserver — only the panels actually scrolled
     // into view build a chart/canvas. Falls back to immediate mount if IO is
@@ -359,38 +360,59 @@
     setTimeout(() => document.addEventListener('click', onDocClickClosePopover, { once: true }), 0);
   }
 
+  // Each control group carries a visible label and a plain-language tooltip.
+  // Without them the bar was just 12 unexplained chips — user feedback was
+  // "don't know what these are using for or what to expect".
+  function ctrlGroup(labelText, titleText, children) {
+    return el('div', { class: 'v5-ctrl', title: titleText }, [
+      el('span', { class: 'v5-ctrl-l' }, [labelText]),
+      el('div', { class: 'v5-chipset' }, children),
+    ]);
+  }
   function buildCommandBar(root) {
     const bar = el('div', { class: 'v5-cmdbar' });
-    bar.appendChild(el('div', { class: 'v5-brand' }, [h ? null : null, 'AP', el('b', {}, ['127']), ' V5']));
-    // Unit
-    const unitSet = el('div', { class: 'v5-chipset' });
-    [['hours', 'Hours'], ['lessons', 'Lessons']].forEach(([v, l]) => unitSet.appendChild(el('button', { class: 'v5-chip', 'data-unit': v, onclick: () => setUnit(v) }, [l])));
-    bar.appendChild(unitSet);
-    // Scope
-    const scopeAnchor = el('div', { class: 'v5-chipset v5-popover-anchor' });
-    scopeAnchor.appendChild(el('button', { class: 'v5-chip', 'data-scope': 'batch', onclick: () => setScope('batch') }, ['Batch']));
-    scopeAnchor.appendChild(el('button', { class: 'v5-chip', 'data-scope': 'per-sp', onclick: () => setScope('per-sp') }, ['Per-SP']));
-    scopeAnchor.appendChild(el('button', { class: 'v5-chip', 'data-scope': 'sp', onclick: (e) => buildScopePopover(scopeAnchor) }, ['SP…']));
-    bar.appendChild(scopeAnchor);
-    // Range
-    const rangeSet = el('div', { class: 'v5-chipset' });
-    [[30, '30D'], [60, '60D'], [90, '90D'], [0, 'All']].forEach(([v, l]) => rangeSet.appendChild(el('button', { class: 'v5-chip', 'data-range': v, onclick: () => setRange(v) }, [l])));
-    bar.appendChild(rangeSet);
-    // Time machine
-    const timeAnchor = el('div', { class: 'v5-popover-anchor' });
-    const liveChip = el('button', { id: 'd127v5-live', class: 'v5-live', onclick: () => buildTimePopover(timeAnchor) }, ['● live']);
-    timeAnchor.appendChild(liveChip);
+    bar.appendChild(el('div', { class: 'v5-brand' }, ['AP', el('b', {}, ['127']), ' V5']));
+
+    bar.appendChild(ctrlGroup('Measure in', 'Switches every figure and chart on this tab between HOURS and LESSONS. Hours use each lesson’s standard curriculum duration.',
+      [['hours', 'Hours'], ['lessons', 'Lessons']].map(([v, l]) =>
+        el('button', { class: 'v5-chip', 'data-unit': v, onclick: () => setUnit(v) }, [l]))));
+
+    const scopeChips = [
+      el('button', { class: 'v5-chip', 'data-scope': 'batch', onclick: () => setScope('batch') }, ['Whole batch']),
+      el('button', { class: 'v5-chip', 'data-scope': 'per-sp', onclick: () => setScope('per-sp') }, ['All SP']),
+      el('button', { class: 'v5-chip', 'data-scope': 'sp', onclick: () => buildScopePopover($('.v5-ctrl.v5-popover-anchor')) }, ['One SP…']),
+    ];
+    const scopeGroup = ctrlGroup('Show', 'Whole batch = one combined line/total for all 28 SP. All SP = one line per student. One SP = pick a single student and focus the whole tab on them.', scopeChips);
+    scopeGroup.classList.add('v5-popover-anchor');
+    bar.appendChild(scopeGroup);
+
+    bar.appendChild(ctrlGroup('Period', 'How far back the day-by-day panels look (Output, Activity calendar). Does not affect all-time progress totals.',
+      [[30, '30 days'], [60, '60 days'], [90, '90 days'], [0, 'All time']].map(([v, l]) =>
+        el('button', { class: 'v5-chip', 'data-range': v, onclick: () => setRange(v) }, [l]))));
+
+    const timeAnchor = el('div', { class: 'v5-ctrl v5-popover-anchor', title: 'Time machine — rewind the whole tab to see the batch as it stood on any past date. Green = showing live data.' }, [
+      el('span', { class: 'v5-ctrl-l' }, ['Data as of']),
+      el('button', { id: 'd127v5-live', class: 'v5-live' }, ['● live']),
+    ]);
+    $('#d127v5-live', timeAnchor).addEventListener('click', () => buildTimePopover(timeAnchor));
     bar.appendChild(timeAnchor);
-    // Search
-    bar.appendChild(el('input', { class: 'v5-search', placeholder: 'Search roster…', oninput: e => setSearch(e.target.value) }));
+
+    bar.appendChild(el('div', { class: 'v5-ctrl', title: 'Filters the student list by name, call sign or instructor.' }, [
+      el('span', { class: 'v5-ctrl-l' }, ['Find SP']),
+      el('input', { class: 'v5-search', placeholder: 'name / call sign / FI', oninput: e => setSearch(e.target.value) }),
+    ]));
+
     bar.appendChild(el('span', { class: 'v5-spacer' }));
-    // Actions
-    const actions = el('div', { class: 'v5-chipset' });
-    actions.appendChild(el('button', { id: 'd127v5-story-btn', class: 'v5-chip', onclick: toggleReplay, title: 'Animate through the batch’s history' }, ['▶ Story']));
-    actions.appendChild(el('button', { class: 'v5-chip', onclick: openCustomise, title: 'Customise this page’s layout' }, ['⚙ Customise']));
-    actions.appendChild(el('button', { class: 'v5-chip', onclick: openReportPreview, title: 'Preview and export a report that looks like this page' }, ['⤓ PDF']));
-    actions.appendChild(el('button', { class: 'v5-chip', onclick: () => { setAsOf(null); toast('Refreshed'); }, title: 'Return to live data' }, ['⟳']));
-    bar.appendChild(actions);
+
+    bar.appendChild(el('div', { class: 'v5-ctrl' }, [
+      el('span', { class: 'v5-ctrl-l' }, ['Actions']),
+      el('div', { class: 'v5-chipset' }, [
+        el('button', { id: 'd127v5-story-btn', class: 'v5-chip', onclick: toggleReplay, title: 'Play the batch’s whole history back as an animation, pausing at each target checkpoint and milestone.' }, ['▶ Story']),
+        el('button', { class: 'v5-chip', onclick: openCustomise, title: 'Reorder, resize, hide or show any panel. Save as the default, share as a link, or export to commit.' }, ['⚙ Customise']),
+        el('button', { class: 'v5-chip', onclick: openReportPreview, title: 'Preview a printable report that looks like this page, then print it or download it as a PDF.' }, ['⤓ Report']),
+        el('button', { class: 'v5-chip', onclick: () => { setAsOf(null); toast('Back to live data'); }, title: 'Return to live data (clears any time-travel date).' }, ['⟳ Live']),
+      ]),
+    ]));
     root.appendChild(bar);
   }
 
@@ -549,7 +571,9 @@
   }
   registerPanelV5({
     id: 'progress-chart', title: 'Progress vs plan', estHeight: 340, deps: ['unit', 'scope', 'search', 'asOf'],
-    subtitle: () => 'replaces V4’s Combined Progress / Batch Lagging / Actual vs Planned / Individual Lead-Lag',
+    subtitle: () => STATE.scope === 'batch'
+      ? 'batch total · Plan and Target are 28-SP totals'
+      : 'per SP · Plan and Target scaled to one SP for comparison',
     toolbar(bar) {
       bar.appendChild(el('button', { class: 'v5-chip' + (STATE.progressLevel === 'level' ? ' on' : ''), onclick: () => { STATE.progressLevel = 'level'; updatePanel('progress-chart'); refreshToolbarSel(bar); } }, ['Level']));
       bar.appendChild(el('button', { class: 'v5-chip' + (STATE.progressLevel === 'gap' ? ' on' : ''), onclick: () => { STATE.progressLevel = 'gap'; updatePanel('progress-chart'); refreshToolbarSel(bar); } }, ['Gap']));
@@ -573,36 +597,53 @@
   function progressChartCfg(model) {
     const isHrs = STATE.unit === 'hours';
     const s = isHrs ? model.series.hours : model.series.lessons;
-    const isBatch = STATE.scope !== 'per-sp';
+    // Batch aggregate only when scope is 'batch'. 'sp' (one student) previously
+    // fell into the batch branch and drew the 28-SP aggregate line — so picking
+    // a single SP showed everything BUT that SP's own progress.
+    const aggregate = STATE.scope === 'batch';
+    // Plan/Target come out of the model as BATCH totals (each lesson's planned
+    // value × 28 SP). Against per-student actual lines those references sit ~28x
+    // too high, which is what made the per-SP view unreadable. Divide by the
+    // student count so a per-SP line is compared against a per-SP plan/target.
+    const n = Math.max(1, model.batch.n);
+    const refDiv = aggregate ? 1 : n;
+    const scaleSeries = arr => refDiv === 1 ? arr : arr.map(p => ({ x: p.x, y: +(p.y / refDiv).toFixed(2) }));
+    const refSuffix = aggregate ? '' : ' / SP';
     const datasets = [];
     if (STATE.progressLevel === 'level') {
-      datasets.push({ label: 'Plan', data: s.plan, borderColor: '#cbd5e1', borderDash: [6, 4], borderWidth: 1.4, pointRadius: 0, tension: 0, order: 3 });
+      datasets.push({ label: 'Plan' + refSuffix, data: scaleSeries(s.plan), borderColor: '#cbd5e1', borderDash: [6, 4], borderWidth: 1.4, pointRadius: 0, tension: 0, order: 3 });
       const targetSeries = isHrs ? model.series.target.hours : model.series.target.lessons;
-      if (targetSeries.length) datasets.push({ label: 'Target', data: targetSeries, borderColor: '#f43f5e', borderDash: [5, 2], borderWidth: 2, pointRadius: 2, pointBackgroundColor: '#f43f5e', tension: 0, order: 1.5 });
-      if (isBatch) {
+      if (targetSeries.length) datasets.push({ label: 'Target' + refSuffix, data: scaleSeries(targetSeries), borderColor: '#f43f5e', borderDash: [5, 2], borderWidth: 2, pointRadius: 2, pointBackgroundColor: '#f43f5e', tension: 0, order: 1.5 });
+      if (aggregate) {
         datasets.push({ label: 'Actual', data: s.actual, borderColor: '#e88aff', borderWidth: 2.4, pointRadius: 0, tension: 0, order: 1 });
       } else {
-        scopedStudents().forEach(sp => {
+        const list = scopedStudents();
+        const solo = list.length === 1;
+        list.forEach(sp => {
           const flown = sp.flown.slice().sort((a, b) => a.date.localeCompare(b.date));
           let acc = 0;
           const data = flown.map(f => ({ x: f.date, y: +(acc += (isHrs ? f.effMins / 60 : 1)).toFixed(2) }));
-          datasets.push({ label: sp.shortName, data, borderColor: `hsla(${sp.hue},85%,62%,0.85)`, borderWidth: 1.2, pointRadius: 0, tension: 0, order: 2 });
+          datasets.push({ label: sp.shortName, data, borderColor: solo ? '#e88aff' : `hsla(${sp.hue},85%,62%,0.85)`, borderWidth: solo ? 2.4 : 1.2, pointRadius: 0, tension: 0, order: 2 });
         });
       }
     } else {
       datasets.push({ label: 'Zero', data: s.lag.map(p => ({ x: p.x, y: 0 })), borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1, pointRadius: 0, order: 5 });
-      if (isBatch) {
+      if (aggregate) {
         datasets.push({ label: 'Batch lag', data: s.lag, borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: .12, fill: { target: { value: 0 }, above: 'rgba(239,68,68,0.14)' }, order: 1 });
       } else {
+        // Per-SP gap uses the PER-SP plan (planByDate is per-lesson minutes, not
+        // ×n), so this branch was already per-student — kept as-is.
         const plannedByDate = model.curriculum.planByDate;
-        scopedStudents().forEach(sp => {
+        const list = scopedStudents();
+        const solo = list.length === 1;
+        list.forEach(sp => {
           let ra = 0, rp = 0; const dates = [...new Set([...sp.flown.map(f => f.date), ...Object.keys(plannedByDate)])].filter(d => d <= model.asOf).sort();
           const data = dates.map(d => {
             ra += (sp.flownByDate[d] || []).reduce((a, f) => a + (isHrs ? f.effMins / 60 : 1), 0);
             rp += isHrs ? (plannedByDate[d] || 0) / 60 : (model.curriculum.planLessonCountByDate[d] || 0);
             return { x: d, y: +(rp - ra).toFixed(2) };
           });
-          datasets.push({ label: sp.shortName, data, borderColor: `hsla(${sp.hue},85%,62%,0.85)`, borderWidth: 1.2, pointRadius: 0, tension: 0, order: 2 });
+          datasets.push({ label: sp.shortName, data, borderColor: solo ? '#ef4444' : `hsla(${sp.hue},85%,62%,0.85)`, borderWidth: solo ? 2.4 : 1.2, pointRadius: 0, tension: 0, order: 2 });
         });
       }
     }
@@ -612,7 +653,7 @@
         responsive: true, maintainAspectRatio: false, parsing: { xAxisKey: 'x', yAxisKey: 'y' },
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { display: isBatch || STATE.progressLevel === 'level' && datasets.length <= 8, labels: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 14 } },
+          legend: { display: datasets.length <= 9, labels: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 14, filter: it => it.text !== 'Zero' } },
           tooltip: { callbacks: { title: c => { const r = c[0] && c[0].raw; return r ? fd(r.x) : ''; }, label: c => c.dataset.label === 'Zero' ? null : `${c.dataset.label}: ${fUnit(c.raw.y, STATE.unit)}` } },
         },
         scales: {
@@ -826,246 +867,463 @@
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Canvas grid engine — shared by Curriculum Grid + Activity Calendar. Rows =
-  // SP, drawn on one canvas (no per-cell DOM nodes — this is what actually
-  // fixes the scroll lag V4 had from its two ~5,000-node heatmap tables).
-  // Hit-testing maps pointer coordinates back to (row, col) against the same
-  // index the draw pass used.
+  // Shared roster-grid helpers — the "modern roster style" borrowed from
+  // Aircraft Status' SP Stat / FI Stat tab (js/view-aircraft.js:1163): a real
+  // table with separated rounded cells, intensity fill, sticky identity +
+  // total columns, Monday/month rules and a today outline. Both the Syllabus
+  // and Calendar grids are built from these so they read as one component.
   // ─────────────────────────────────────────────────────────────────────────
-  function attachCanvasGrid(canvas, opts) {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = opts.width * dpr; canvas.height = opts.height * dpr;
-    canvas.style.width = opts.width + 'px'; canvas.style.height = opts.height + 'px';
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    opts.draw(ctx);
-    let tip = null;
-    const showTip = (x, y, text) => {
-      if (!tip) { tip = el('div', { class: 'v5-gridtip' }); document.body.appendChild(tip); }
-      tip.textContent = text; tip.style.left = (x + 14) + 'px'; tip.style.top = (y + 14) + 'px'; tip.style.display = 'block';
-    };
-    const hideTip = () => { if (tip) tip.style.display = 'none'; };
-    canvas.addEventListener('mousemove', e => {
-      const r = canvas.getBoundingClientRect();
-      const hit = opts.hitTest(e.clientX - r.left, e.clientY - r.top);
-      if (hit && hit.title) { showTip(e.clientX, e.clientY, hit.title); canvas.style.cursor = hit.clickable ? 'pointer' : 'default'; }
-      else { hideTip(); canvas.style.cursor = 'default'; }
+  function mixColor(hex, pct) {
+    // Plain rgba mix against transparent — deliberately NOT color-mix(in oklch),
+    // which html2canvas can't parse (that's what broke V4's PDF export of its
+    // heatmaps and forced a text-table fallback).
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${(pct / 100).toFixed(3)})`;
+  }
+  function rosterLegend(items) {
+    const wrap = el('div', { class: 'v5-rt-legend' });
+    items.forEach(it => {
+      if (it.sep) { wrap.appendChild(el('span', { style: 'width:1px;height:11px;background:var(--v5-bd)' })); return; }
+      wrap.appendChild(el('span', { title: it.title || '' }, [
+        el('i', { class: 'v5-rt-swatch', style: 'background:' + it.color + (it.dash ? ';background:none;border-top:1px dashed ' + it.color + ';height:0;border-radius:0' : '') }),
+        it.label,
+      ]));
     });
-    canvas.addEventListener('mouseleave', hideTip);
-    canvas.addEventListener('click', e => {
-      const r = canvas.getBoundingClientRect();
-      const hit = opts.hitTest(e.clientX - r.left, e.clientY - r.top);
-      if (hit && hit.clickable && opts.onClick) opts.onClick(hit);
-    });
-    return { ctx, destroy() { if (tip) tip.remove(); } };
+    return wrap;
   }
 
-  // ── PANEL: Curriculum Grid (Syllabus) ──────────────────────────────────────
+  // ── Lesson / phase / milestone detail modals (restored from V4) ────────────
+  function openDetailModal(title, sub, blocks) {
+    $$('.v5-sp-draw-ov').forEach(n => n.remove());
+    const ov = el('div', { class: 'v5-sp-draw-ov show', onclick: e => { if (e.target === ov) closeSPDrawer(); } });
+    const draw = el('div', { class: 'v5-sp-draw', onclick: e => e.stopPropagation() });
+    draw.appendChild(el('div', { class: 'v5-sp-draw-hd' }, [
+      el('div', {}, [el('div', { class: 'v5-sp-name' }, [title]), el('div', { class: 'v5-sp-meta' }, [sub || ''])]),
+      el('button', { class: 'v5-btn', onclick: closeSPDrawer }, ['Close']),
+    ]));
+    const body = el('div', { style: 'padding:4px 18px 20px' });
+    blocks.forEach(b => {
+      if (!b) return;
+      if (b.heading) body.appendChild(el('div', { class: 'v5-mono', style: 'font-size:9px;color:var(--v5-acc);text-transform:uppercase;letter-spacing:1px;margin:14px 0 5px' }, [b.heading]));
+      if (b.text) body.appendChild(el('div', { style: 'font-size:12.5px;line-height:1.65;color:var(--v5-tx2)' }, [b.text]));
+      if (b.rows) b.rows.forEach(r => body.appendChild(el('div', { class: 'v5-sp-log-row' }, [
+        el('span', { style: 'width:120px;color:var(--v5-tx3)' }, [r[0]]),
+        el('span', { style: 'flex:1;color:var(--v5-tx)' }, [String(r[1])]),
+      ])));
+    });
+    draw.appendChild(body);
+    ov.appendChild(draw);
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', escCloseSPDrawer);
+  }
+  function openPhaseModal(seg, model) {
+    const ph = model.phasesDef[seg.phaseIdx] || {};
+    const lessons = model.curriculum.lessons.filter(l => l.num >= seg.lo && l.num <= seg.hi);
+    const hrs = lessons.reduce((a, l) => a + l.plannedMins, 0) / 60;
+    const kps = model.keyPoints.filter(k => k.num >= seg.lo && k.num <= seg.hi);
+    openDetailModal(seg.title, `Lessons ${seg.lo}–${seg.hi} · ${lessons.length} lessons · ${hrs.toFixed(0)}h`, [
+      ph.blurb ? { text: ph.blurb } : null,
+      ph.objective ? { heading: 'Objective', text: ph.objective } : null,
+      ph.standard ? { heading: 'Completion standard', text: ph.standard } : null,
+      kps.length ? { heading: 'Milestones in this phase', rows: kps.map(k => ['L' + k.num, k.label]) } : null,
+      { heading: 'Lessons', rows: lessons.map(l => ['L' + l.num + ' · ' + l.lesson, (l.plannedMins ? l.plannedMins + ' min' : '—') + (l.plannedDate ? ' · planned ' + fdShort(l.plannedDate) : '')]) },
+    ]);
+  }
+  function openMilestoneModal(kp, model) {
+    const meta = Model.milestoneMeta(kp.label);
+    const l = model.curriculum.byNum[kp.num];
+    const doneBy = model.students.filter(s => s.flownByNum[kp.num]).length;
+    openDetailModal(kp.label, 'Lesson ' + kp.num + (l ? ' · ' + l.lesson : ''), [
+      meta.explain ? { text: meta.explain } : null,
+      { heading: 'Status', rows: [
+        ['Completed by', `${doneBy} of ${model.batch.n} SP`],
+        ['Phase', l ? l.phase.title : '—'],
+        ['Standard duration', l && l.plannedMins ? l.plannedMins + ' min' : '—'],
+        ['Planned date', l && l.plannedDate ? fd(l.plannedDate) : 'TBC'],
+      ] },
+    ]);
+  }
+  function openLessonCellModal(sp, num, model) {
+    const l = model.curriculum.byNum[num];
+    const flights = sp.flownByNum[num] || [];
+    openDetailModal(`${sp.shortName} · Lesson ${num}`, (l ? l.lesson + ' · ' + l.phase.title : '') + (flights.length > 1 ? ' · retaken' : ''), [
+      { heading: 'Lesson', rows: [
+        ['Code', l ? l.lesson : '—'],
+        ['Phase', l ? l.phase.title : '—'],
+        ['Type', l ? l.type : '—'],
+        ['Standard duration', l && l.plannedMins ? l.plannedMins + ' min' : '—'],
+        ['Planned date', l && l.plannedDate ? fd(l.plannedDate) : 'TBC'],
+      ] },
+      flights.length
+        ? { heading: flights.length > 1 ? `Flown ${flights.length}× (retake)` : 'Flown', rows: flights.map((f, i) => [fd(f.date), Math.round(f.effMins) + ' min' + (i > 0 ? ' · retake' : '') + (f.fromOps ? ' · from Ops' : '')]) }
+        : { heading: 'Not yet flown', text: num === sp.nextNum ? 'This is this SP’s next lesson.' : 'Still ahead of this SP.' },
+      { heading: 'This SP', rows: [
+        ['Lessons completed', `${sp.lessonsCompleted} / ${sp.total}`],
+        ['Effective hours', sp.hoursEffective.toFixed(1) + 'h'],
+        ['vs target', sp.vsTarget == null ? '—' : signed(sp.vsTarget, v => v + ' lessons')],
+        ['ETC', sp.etcNever ? 'no measurable pace' : fd(sp.etcDate)],
+      ] },
+    ]);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PANEL: Curriculum grid (Syllabus) — one roster-style view, no mode toggle
+  // ─────────────────────────────────────────────────────────────────────────
   registerPanelV5({
-    id: 'curriculum-grid', title: 'Curriculum grid', estHeight: 460, deps: ['asOf', 'scope', 'search'],
-    subtitle: m => `${m.curriculum.count} lessons × ${scopedStudents().length} SP`,
-    toolbar(bar) {
-      bar.appendChild(el('button', { class: 'v5-chip' + (STATE.gridMode === 'bars' ? ' on' : ''), onclick: () => { STATE.gridMode = 'bars'; updatePanel('curriculum-grid'); } }, ['Bars']));
-      bar.appendChild(el('button', { class: 'v5-chip' + (STATE.gridMode === 'cells' ? ' on' : ''), onclick: () => { STATE.gridMode = 'cells'; updatePanel('curriculum-grid'); } }, ['Cells']));
-    },
+    id: 'curriculum-grid', title: 'Curriculum grid', estHeight: 520, deps: ['asOf', 'scope', 'search'],
+    subtitle: m => `${m.curriculum.count} lessons × ${scopedStudents().length} SP · click any cell, phase or milestone for detail`,
     mount(container, model) {
-      const legend = el('div', { class: 'v5-legend' });
-      model.segmentsDef.forEach(seg => legend.appendChild(el('span', {}, [el('span', { class: 'v5-dot2', style: 'background:' + seg.c }), seg.label + ' '])));
-      container.appendChild(legend);
-      const gridwrap = el('div', { class: 'v5-gridwrap' });
-      container.appendChild(gridwrap);
-      const handle = { gridwrap };
+      const handle = { host: el('div', {}) };
+      container.appendChild(handle.host);
       this._draw(handle, model);
       return handle;
     },
     _draw(handle, model) {
-      const gridwrap = handle.gridwrap; gridwrap.innerHTML = '';
+      const host = handle.host; host.innerHTML = '';
       const sps = Model.sortStudents(scopedStudents(), 'vsTarget');
-      if (!sps.length) { gridwrap.appendChild(el('div', { class: 'v5-empty' }, ['No students in scope'])); return; }
+      if (!sps.length) { host.appendChild(el('div', { class: 'v5-empty' }, ['No students in scope'])); return; }
       const count = model.curriculum.count || 96;
-      const cellW = Math.max(7, Math.min(14, Math.floor(900 / count)));
-      const rowH = 20, nameW = 130, vsW = 44, headerH = 34;
-      const width = nameW + vsW + count * cellW;
-      const height = headerH + sps.length * rowH + 18; // +18 footer band
-      const canvasHolder = el('div', { style: `position:relative;width:${width}px` });
-      // pinned columns (name / vs target) drawn as HTML overlay, so canvas text
-      // never has to be measured/wrapped
-      const pinned = el('div', { style: `position:absolute;left:0;top:0;width:${nameW + vsW}px;z-index:2;background:var(--v5-s1)` });
-      pinned.appendChild(el('div', { style: `height:${headerH}px` }));
-      sps.forEach(s => pinned.appendChild(el('div', {
-        style: `height:${rowH}px;display:flex;align-items:center;font-size:10px;padding-left:4px;border-bottom:1px solid var(--v5-bd2);cursor:pointer`,
-        onclick: () => openSPDrawer(s.catc_id),
-      }, [el('b', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, [s.shortName]), el('span', { class: 'v5-mono', style: 'width:' + vsW + 'px;text-align:right;color:' + (s.vsTarget == null ? 'var(--v5-tx3)' : s.vsTarget >= 0 ? 'var(--v5-good)' : 'var(--v5-rose)') }, [s.vsTarget == null ? '—' : signed(s.vsTarget, v => v + '')])])));
-      canvasHolder.appendChild(pinned);
-      const canvasWrap = el('div', { style: `margin-left:${nameW + vsW}px` });
-      const canvas = el('canvas');
-      canvasWrap.appendChild(canvas);
-      canvasHolder.appendChild(canvasWrap);
-      gridwrap.appendChild(canvasHolder);
-      gridwrap.style.height = (height + 4) + 'px';
+      const CELL_W = 13;
+      const targets = model.targets.list;
+      const targetByLesson = {}; targets.forEach(t => { targetByLesson[t.lesson] = t; });
+      // "Current date" line on a LESSON axis = the interpolated target lesson
+      // for today. This is the lesson number the batch is supposed to have
+      // reached right now, so it's the meaningful "now" marker in this space.
+      const nowLesson = model.batch.targetLessonToday == null ? null : Math.round(model.batch.targetLessonToday);
+      const kpByNum = {}; model.keyPoints.forEach(k => { (kpByNum[k.num] = kpByNum[k.num] || []).push(k); });
 
-      const gridMode = STATE.gridMode;
-      attachCanvasGrid(canvas, {
-        width: count * cellW, height,
-        draw(ctx) {
-          // header: phase band
-          model.segmentsDef.forEach(seg => {
-            const lo = seg.lo, hi = Math.min(seg.hi, count);
-            ctx.fillStyle = seg.c;
-            ctx.fillRect((lo - 1) * cellW, 0, (hi - lo + 1) * cellW, headerH - 14);
-          });
-          ctx.fillStyle = '#0d1117'; ctx.font = '700 8px JetBrains Mono, monospace'; ctx.textAlign = 'center';
-          for (let n2 = 1; n2 <= count; n2 += 5) ctx.fillText(String(n2), (n2 - 0.5) * cellW, headerH - 4);
-          // target checkpoint flags
-          model.targets.list.forEach(t => {
-            const x = (t.lesson - 1) * cellW;
-            ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
-            ctx.beginPath(); ctx.moveTo(x + cellW / 2, headerH); ctx.lineTo(x + cellW / 2, height - 18); ctx.stroke(); ctx.setLineDash([]);
-          });
-          // rows
-          sps.forEach((s, ri) => {
-            const y = headerH + ri * rowH;
-            if (gridMode === 'cells') {
-              for (let n2 = 1; n2 <= count; n2++) {
-                const flights = s.flownByNum[n2];
-                const x = (n2 - 1) * cellW;
-                ctx.fillStyle = flights ? Model.util.segmentOfNum(n2).c : (n2 === s.nextNum ? 'rgba(232,138,255,0.25)' : '#21262d');
-                ctx.fillRect(x + 1, y + 1, cellW - 2, rowH - 2);
-                if (flights && flights.length > 1) { ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(x + cellW - 3, y + 3, 2, 0, 7); ctx.fill(); }
-              }
-            } else {
-              const done = s.lessonsCompleted;
-              for (let n2 = 1; n2 <= done && n2 <= count; n2++) {
-                const x = (n2 - 1) * cellW;
-                ctx.fillStyle = Model.util.segmentOfNum(n2).c;
-                ctx.fillRect(x + 1, y + 3, cellW - 2, rowH - 6);
-              }
-            }
-          });
-          // footer batch-% band
-          const fy = height - 16;
-          for (let n2 = 1; n2 <= count; n2++) {
-            const doneCount = sps.filter(s => s.flownByNum[n2]).length;
-            const pct = sps.length ? doneCount / sps.length : 0;
-            ctx.fillStyle = `rgba(232,138,255,${0.12 + pct * 0.7})`;
-            ctx.fillRect((n2 - 1) * cellW, fy, cellW - 1, 14);
-          }
-        },
-        hitTest(px, py) {
-          if (py < headerH || py > headerH + sps.length * rowH) return null;
-          const ri = Math.floor((py - headerH) / rowH);
-          const n2 = Math.floor(px / cellW) + 1;
-          const s = sps[ri]; if (!s || n2 < 1 || n2 > count) return null;
-          const flights = s.flownByNum[n2];
-          const title = `${s.shortName} · Lesson ${n2}` + (flights ? `\n${flights.map(f => fd(f.date) + ' (' + Math.round(f.effMins) + 'm)').join(', ')}` : n2 === s.nextNum ? ' — next up' : ' — not yet flown');
-          return { title, clickable: !!flights, spCatc: s.catc_id };
-        },
-        onClick(hit) { openSPDrawer(hit.spCatc); },
+      host.appendChild(rosterLegend([
+        ...model.segmentsDef.map(s => ({ color: s.c, label: s.label, title: s.title })),
+        { sep: true },
+        { color: 'var(--v5-rose)', label: 'target checkpoint (date shown)' },
+        { color: 'var(--v5-blue)', label: 'target for today (L' + (nowLesson == null ? '—' : nowLesson) + ')' },
+        { color: 'var(--v5-bad)', dash: true, label: 'lag — behind today’s target' },
+        { color: 'var(--v5-warn)', label: 'next lesson' },
+      ]));
+
+      const wrap = el('div', { class: 'v5-rt-wrap' });
+      const table = el('table', { class: 'v5-rt' });
+
+      // ── header: phase band, target dates, lesson numbers, milestones ──
+      const thead = el('thead', {});
+      const phaseRow = el('tr', {}, [
+        el('th', { class: 'v5-rt-name' }, [el('span', { class: 'v5-rt-hl' }, ['SP'])]),
+        el('th', { class: 'v5-rt-tot v5-rt-c2' }, [el('span', { class: 'v5-rt-hl' }, ['vs tgt'])]),
+        el('th', { class: 'v5-rt-tot v5-rt-c3' }, [el('span', { class: 'v5-rt-hl' }, ['ETC'])]),
+      ]);
+      model.segmentsDef.forEach(seg => {
+        const lo = seg.lo, hi = Math.min(seg.hi, count);
+        if (hi < lo) return;
+        phaseRow.appendChild(el('th', { colspan: hi - lo + 1, title: seg.title + ' — click for full phase detail' }, [
+          el('div', { class: 'v5-rt-phase', style: 'background:' + seg.c, onclick: () => openPhaseModal(seg, model) }, [seg.label]),
+        ]));
       });
+      thead.appendChild(phaseRow);
+
+      // target checkpoint DATE row (vertical labels above their own column)
+      const dateRow = el('tr', {}, [
+        el('th', { class: 'v5-rt-name' }, [el('span', { class: 'v5-rt-hl' }, ['target date →'])]),
+        el('th', { class: 'v5-rt-tot v5-rt-c2' }), el('th', { class: 'v5-rt-tot v5-rt-c3' }),
+      ]);
+      for (let n = 1; n <= count; n++) {
+        const t = targetByLesson[n];
+        dateRow.appendChild(el('th', { style: `width:${CELL_W}px;height:46px` },
+          t ? [el('div', { class: 'v5-rt-tgt-lbl', title: `AP127 target: every SP at lesson ${n} by ${fd(t.date)}` }, [fdShort(t.date)])] : []));
+      }
+      thead.appendChild(dateRow);
+
+      // milestone icons + lesson numbers
+      const kpRow = el('tr', {}, [
+        el('th', { class: 'v5-rt-name' }, [el('span', { class: 'v5-rt-hl' }, ['milestone →'])]),
+        el('th', { class: 'v5-rt-tot v5-rt-c2' }), el('th', { class: 'v5-rt-tot v5-rt-c3' }),
+      ]);
+      const KP_ICON = { solo: '▲', instrument: '◉', xc: '◈', sim: '▣', me: '✦', check: '✓', other: '•' };
+      for (let n = 1; n <= count; n++) {
+        const kps = kpByNum[n];
+        kpRow.appendChild(el('th', { style: `width:${CELL_W}px` },
+          kps ? [el('div', { class: 'v5-rt-kp', title: kps.map(k => k.label).join(' · ') + ' — click for detail', onclick: () => openMilestoneModal(kps[0], model) }, [KP_ICON[Model.milestoneMeta(kps[0].label).key] || '•'])] : []));
+      }
+      thead.appendChild(kpRow);
+
+      const numRow = el('tr', {}, [
+        el('th', { class: 'v5-rt-name' }, [el('span', { class: 'v5-rt-hl' }, ['lesson →'])]),
+        el('th', { class: 'v5-rt-tot v5-rt-c2' }), el('th', { class: 'v5-rt-tot v5-rt-c3' }),
+      ]);
+      for (let n = 1; n <= count; n++) {
+        // Every 10th only (+ first/last/today). At 13px per column a 2-digit
+        // label every 5 lessons physically overlaps its neighbour; the target
+        // columns are already identified by the date row above, so they don't
+        // need to force a number here too.
+        const show = n === 1 || n === count || n % 10 === 0 || n === nowLesson;
+        const cls = (targetByLesson[n] ? ' v5-rt-tgt' : '') + (n === nowLesson ? ' v5-rt-nowcol' : '');
+        numRow.appendChild(el('th', { class: cls.trim(), style: `width:${CELL_W}px`, title: 'Lesson ' + n },
+          [el('div', { class: 'v5-rt-hl', style: n === nowLesson ? 'color:var(--v5-blue);font-weight:700' : '' }, [show ? String(n) : ''])]));
+      }
+      thead.appendChild(numRow);
+      table.appendChild(thead);
+
+      // ── body ──
+      const tbody = el('tbody', {});
+      sps.forEach(sp => {
+        const vsCol = sp.vsTarget == null ? 'var(--v5-tx3)' : sp.vsTarget >= 0 ? 'var(--v5-good)' : 'var(--v5-rose)';
+        const tr = el('tr', {}, [
+          el('td', { class: 'v5-rt-name' }, [el('span', { class: 'v5-rt-nm', title: sp.name + ' — click for full SP detail', onclick: () => openSPDrawer(sp.catc_id) }, [sp.shortName])]),
+          el('td', { class: 'v5-rt-tot v5-rt-c2' }, [el('span', { style: 'font-size:9px;font-weight:700;color:' + vsCol }, [sp.vsTarget == null ? '—' : signed(sp.vsTarget, v => String(v))])]),
+          el('td', { class: 'v5-rt-tot v5-rt-c3' }, [el('span', { style: 'font-size:8.5px;color:' + (sp.atRisk ? 'var(--v5-warn)' : 'var(--v5-good)') }, [sp.etcNever ? 'never' : fdShort(sp.etcDate)])]),
+        ]);
+        // Where this SP's own progress ends, and where today's target sits —
+        // the cells between the two are this SP's visible lag.
+        const done = sp.lessonsCompleted;
+        for (let n = 1; n <= count; n++) {
+          const flights = sp.flownByNum[n];
+          const isNext = n === sp.nextNum;
+          const inLag = nowLesson != null && n > done && n <= nowLesson;
+          let bg = 'transparent', brd = '1px solid var(--v5-bd2)', label = '';
+          if (flights) {
+            const seg = Model.util.segmentOfNum(n);
+            bg = mixColor(seg.c, flights.length > 1 ? 92 : 74);
+            brd = '1px solid ' + mixColor(seg.c, 100);
+            label = flights.length > 1 ? '↻' : '';
+          } else if (isNext) {
+            brd = '1px solid var(--v5-warn)';
+            bg = mixColor('#f59e0b', 18);
+          }
+          const cls = ['v5-rt-cell'];
+          if (targetByLesson[n]) cls.push('v5-rt-tgt');
+          if (n === nowLesson) cls.push('v5-rt-nowcol');
+          if (inLag && !flights) cls.push('v5-rt-idle');
+          const title = flights
+            ? `${sp.shortName} · L${n} · ${flights.map(f => fdShort(f.date)).join(', ')}${flights.length > 1 ? ' (retaken)' : ''} — click for detail`
+            : isNext ? `${sp.shortName} · L${n} — next lesson`
+            : inLag ? `${sp.shortName} · L${n} — behind today’s target (L${nowLesson})`
+            : `${sp.shortName} · L${n} — not yet flown`;
+          tr.appendChild(el('td', {
+            class: cls.join(' '), title,
+            style: `width:${CELL_W}px;height:20px;background:${bg};border:${brd};cursor:pointer`,
+            onclick: () => openLessonCellModal(sp, n, model),
+          }, [label ? el('span', { style: 'font-size:7px;color:#fff' }, [label]) : null]));
+        }
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      // ── footer: batch %-complete per lesson (the Phase Funnel, integrated) ──
+      const tfoot = el('tfoot', {});
+      const footRow = el('tr', { class: 'v5-rt-foot' }, [
+        el('td', { class: 'v5-rt-name' }, [el('span', { class: 'v5-rt-hl' }, ['BATCH %'])]),
+        el('td', { class: 'v5-rt-tot v5-rt-c2' }), el('td', { class: 'v5-rt-tot v5-rt-c3' }),
+      ]);
+      for (let n = 1; n <= count; n++) {
+        const doneCount = sps.filter(s => s.flownByNum[n]).length;
+        const pct = sps.length ? doneCount / sps.length : 0;
+        footRow.appendChild(el('td', {
+          class: 'v5-rt-cell' + (targetByLesson[n] ? ' v5-rt-tgt' : ''),
+          title: `Lesson ${n} · ${Math.round(pct * 100)}% of batch complete (${doneCount}/${sps.length})`,
+          style: `width:${CELL_W}px;height:16px;background:${mixColor('#e88aff', 10 + pct * 80)}`,
+        }));
+      }
+      tfoot.appendChild(footRow);
+      table.appendChild(tfoot);
+
+      wrap.appendChild(table);
+      host.appendChild(wrap);
+
+      // Phase completion summary strip (was V4's separate Phase Progress Funnel)
+      const funnel = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-top:10px' });
+      model.phases.forEach(p => {
+        funnel.appendChild(el('div', { style: 'background:var(--v5-s2);border-radius:6px;padding:7px 9px;cursor:pointer', title: p.phase.title, onclick: () => openPhaseModal(model.segmentsDef.find(s => s.phaseIdx === model.phasesDef.indexOf(p.phase)) || model.segmentsDef[0], model) }, [
+          el('div', { class: 'v5-mono', style: 'font-size:9px;color:' + p.phase.c + ';text-transform:uppercase' }, [p.phase.label]),
+          el('div', { class: 'v5-mono', style: 'font-size:14px;font-weight:700;margin-top:2px' }, [Math.round(p.pct * 100) + '%']),
+          el('div', { class: 'v5-mono', style: 'font-size:8.5px;color:var(--v5-tx3)' }, [`${p.done} / ${p.slots} slots`]),
+          el('div', { style: 'height:4px;border-radius:99px;background:var(--v5-bd);margin-top:4px;overflow:hidden' }, [
+            el('i', { style: `display:block;height:100%;width:${(p.pct * 100).toFixed(1)}%;background:${p.phase.c}` }),
+          ]),
+        ]));
+      });
+      host.appendChild(funnel);
     },
     update(handle, model) { this._draw(handle, model); },
   });
 
-  // ── PANEL: Activity Calendar ──────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // PANEL: Activity calendar — roster style, daily totals, idle marking
+  // ─────────────────────────────────────────────────────────────────────────
   registerPanelV5({
-    id: 'activity-calendar', title: 'Activity calendar', estHeight: 460, deps: ['range', 'asOf', 'scope', 'search'],
-    subtitle: m => STATE.range ? `Last ${STATE.range}d` : `All time · since ${fdShort(m.batchStart)}`,
+    id: 'activity-calendar', title: 'Activity calendar', estHeight: 520, deps: ['range', 'asOf', 'scope', 'search', 'unit'],
+    subtitle: m => (STATE.range ? `Last ${STATE.range}d` : `All time · since ${fdShort(m.batchStart)}`) + ' · click a cell for detail',
     toolbar(bar) {
       bar.appendChild(el('button', { class: 'v5-chip' + (STATE.calGroupBy === 'none' ? ' on' : ''), onclick: () => { STATE.calGroupBy = 'none'; updatePanel('activity-calendar'); } }, ['No group']));
       bar.appendChild(el('button', { class: 'v5-chip' + (STATE.calGroupBy === 'instructor' ? ' on' : ''), onclick: () => { STATE.calGroupBy = 'instructor'; updatePanel('activity-calendar'); } }, ['By instructor']));
     },
     mount(container, model) {
-      const gridwrap = el('div', { class: 'v5-gridwrap' });
-      container.appendChild(gridwrap);
-      const handle = { gridwrap };
+      const handle = { host: el('div', {}) };
+      container.appendChild(handle.host);
       this._draw(handle, model);
       return handle;
     },
     _draw(handle, model) {
-      const gridwrap = handle.gridwrap; gridwrap.innerHTML = '';
-      let sps = Model.sortStudents(scopedStudents(), 'name');
+      const host = handle.host; host.innerHTML = '';
+      const sps = Model.sortStudents(scopedStudents(), 'name');
       const start = rangeStart(), end = model.asOf;
       const days = U.datesRange(start, end);
-      if (!sps.length || !days.length) { gridwrap.appendChild(el('div', { class: 'v5-empty' }, ['No data in range'])); return; }
-      const cellW = Math.max(6, Math.min(15, Math.floor(760 / days.length)));
-      const rowH = 18, nameW = 150, totalW = 76, headerH = 26;
-      let rowsMeta = sps.map(s => ({ s, header: null }));
+      if (!sps.length || !days.length) { host.appendChild(el('div', { class: 'v5-empty' }, ['No data in range'])); return; }
+      const CELL_W = days.length > 100 ? 13 : days.length > 60 ? 16 : 22;
+      const IDLE_MIN = 7;
+
+      host.appendChild(rosterLegend([
+        ...model.phasesDef.map(p => ({ color: p.c, label: p.label, title: p.title })),
+        { sep: true },
+        { color: 'var(--v5-bad)', dash: true, label: `idle gap ≥ ${IDLE_MIN}d (between flights)` },
+        { color: 'var(--v5-warn)', dash: true, label: 'still idle — through to today' },
+        { color: 'var(--v5-acc)', label: 'today' },
+      ]));
+
+      // rows, optionally grouped by instructor
+      let rows = sps.map(s => ({ sp: s }));
       if (STATE.calGroupBy === 'instructor') {
-        const byFI = {}; sps.forEach(s => (byFI[s.fiFull || 'Unassigned'] = byFI[s.fiFull || 'Unassigned'] || []).push(s));
-        rowsMeta = [];
-        Object.keys(byFI).sort((a, b) => byFI[b].length - byFI[a].length).forEach(fi => {
-          rowsMeta.push({ s: null, header: fi + ' · ' + byFI[fi].length + ' SP' });
-          byFI[fi].forEach(s => rowsMeta.push({ s, header: null }));
+        const byFI = {};
+        sps.forEach(s => (byFI[s.fiFull || 'Unassigned'] = byFI[s.fiFull || 'Unassigned'] || []).push(s));
+        rows = [];
+        Object.keys(byFI).sort((a, b) => byFI[b].length - byFI[a].length || a.localeCompare(b)).forEach(fi => {
+          rows.push({ group: fi, members: byFI[fi] });
+          byFI[fi].forEach(s => rows.push({ sp: s }));
         });
       }
-      const height = headerH + rowsMeta.length * rowH;
-      const holder = el('div', { style: `position:relative;width:${nameW + totalW + days.length * cellW}px` });
-      const pinned = el('div', { style: `position:absolute;left:0;top:0;width:${nameW + totalW}px;z-index:2;background:var(--v5-s1)` });
-      pinned.appendChild(el('div', { style: `height:${headerH}px` }));
-      rowsMeta.forEach(r => {
-        if (r.header) { pinned.appendChild(el('div', { style: `height:${rowH}px;display:flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--v5-tx3);text-transform:uppercase;padding-left:4px` }, [r.header])); return; }
-        const inRange = r.s.flown.filter(f => f.date >= start && f.date <= end);
-        const hrs = inRange.reduce((a, f) => a + f.effMins / 60, 0);
-        pinned.appendChild(el('div', {
-          style: `height:${rowH}px;display:flex;align-items:center;font-size:10px;padding-left:4px;border-bottom:1px solid var(--v5-bd2);cursor:pointer`, onclick: () => openSPDrawer(r.s.catc_id),
-        }, [el('b', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, [r.s.shortName]), el('span', { class: 'v5-mono', style: `width:${totalW}px;text-align:right;color:var(--v5-tx3)` }, [inRange.length + 'L · ' + hrs.toFixed(1) + 'h'])]));
-      });
-      holder.appendChild(pinned);
-      const canvasWrap = el('div', { style: `margin-left:${nameW + totalW}px` });
-      const canvas = el('canvas'); canvasWrap.appendChild(canvas); holder.appendChild(canvasWrap);
-      gridwrap.appendChild(holder); gridwrap.style.height = (height + 4) + 'px';
 
-      const targetDates = new Set(model.targets.list.map(t => t.date));
-      attachCanvasGrid(canvas, {
-        width: days.length * cellW, height,
-        draw(ctx) {
-          // header: day-of-month labels on Mondays + month change
-          let lastMonth = null;
-          days.forEach((d, i) => {
-            const dObj = new Date(d + 'T12:00:00Z'); const isMon = dObj.getUTCDay() === 1;
-            const month = dObj.getUTCMonth(); const newMonth = month !== lastMonth; if (isMon || newMonth || i === 0) lastMonth = month;
-            if (isMon || newMonth || i === 0 || cellW >= 14) {
-              ctx.fillStyle = '#6e7681'; ctx.font = '8px JetBrains Mono, monospace'; ctx.textAlign = 'left';
-              ctx.fillText(dObj.toLocaleDateString('en-GB', newMonth ? { day: 'numeric', month: 'short', timeZone: 'UTC' } : { day: 'numeric', timeZone: 'UTC' }), i * cellW + 1, headerH - 12);
-            }
-            if (newMonth && i > 0) { ctx.strokeStyle = '#30363d'; ctx.beginPath(); ctx.moveTo(i * cellW, 0); ctx.lineTo(i * cellW, height); ctx.stroke(); }
-            if (d === model.asOf) { ctx.fillStyle = 'rgba(56,189,248,0.08)'; ctx.fillRect(i * cellW, 0, cellW, height); }
-            if (targetDates.has(d)) { ctx.strokeStyle = '#f43f5e'; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(i * cellW, headerH); ctx.lineTo(i * cellW, height); ctx.stroke(); ctx.setLineDash([]); }
-          });
-          // rows
-          rowsMeta.forEach((r, ri) => {
-            const y = headerH + ri * rowH;
-            if (r.header) return;
-            let lastFlownIdx = -1, gapStart = -1;
-            days.forEach((d, ci) => {
-              const flights = r.s.flownByDate[d];
-              const x = ci * cellW;
-              if (flights && flights.length) {
-                ctx.fillStyle = Model.util.phaseOfNum(flights[0].num).c;
-                ctx.fillRect(x + 1, y + 1, cellW - 2, rowH - 2);
-                if (lastFlownIdx >= 0 && ci - lastFlownIdx > 7) {
-                  ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
-                  ctx.beginPath(); ctx.moveTo(lastFlownIdx * cellW + cellW / 2, y + rowH - 2); ctx.lineTo(ci * cellW + cellW / 2, y + rowH - 2); ctx.stroke();
-                }
-                lastFlownIdx = ci;
-              }
-            });
-          });
-        },
-        hitTest(px, py) {
-          if (py < headerH) return null;
-          const ri = Math.floor((py - headerH) / rowH);
-          const ci = Math.floor(px / cellW);
-          const r = rowsMeta[ri]; if (!r || r.header || !days[ci]) return null;
-          const d = days[ci]; const flights = r.s.flownByDate[d];
-          const title = `${r.s.shortName} · ${fd(d)}` + (flights ? ': ' + flights.map(f => f.lesson).join(', ') : ': no flight');
-          return { title, clickable: !!flights, spCatc: r.s.catc_id };
-        },
-        onClick(hit) { openSPDrawer(hit.spCatc); },
+      // per-cell hours, and the max for intensity scaling
+      const cellH = {};
+      let maxH = 0;
+      sps.forEach(s => days.forEach(d => {
+        const fl = s.flownByDate[d];
+        if (!fl) return;
+        const hv = fl.reduce((a, f) => a + f.effMins / 60, 0);
+        cellH[s.catc_id + '|' + d] = hv;
+        if (hv > maxH) maxH = hv;
+      }));
+      maxH = maxH || 1;
+
+      const wrap = el('div', { class: 'v5-rt-wrap' });
+      const table = el('table', { class: 'v5-rt' });
+      const thead = el('thead', {}, [el('tr', {}, [
+        el('th', { class: 'v5-rt-name' }, [el('span', { class: 'v5-rt-hl' }, ['SP'])]),
+        el('th', { class: 'v5-rt-tot v5-rt-c2' }, [el('span', { class: 'v5-rt-hl' }, ['period'])]),
+        ...days.map((d, i) => {
+          const dObj = new Date(d + 'T12:00:00Z');
+          const isMon = dObj.getUTCDay() === 1;
+          const isTod = d === model.asOf;
+          const showD = i === 0 || isMon || CELL_W >= 22;
+          const showM = i === 0 || dObj.getUTCDate() <= 7 && isMon;
+          return el('th', { class: isMon && i > 0 ? 'v5-rt-mon' : '', style: `width:${CELL_W}px` }, [
+            showD ? el('div', { class: 'v5-rt-hl', style: isTod ? 'color:var(--v5-acc);font-weight:700' : '' }, [String(dObj.getUTCDate())]) : null,
+            showM ? el('div', { class: 'v5-rt-hl' }, [dObj.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })]) : null,
+          ]);
+        }),
+      ])]);
+      table.appendChild(thead);
+
+      const tbody = el('tbody', {});
+      rows.forEach(r => {
+        if (r.group) {
+          const gh = r.members.reduce((a, s) => a + s.flown.filter(f => f.date >= start && f.date <= end).reduce((b, f) => b + f.effMins / 60, 0), 0);
+          const gl = r.members.reduce((a, s) => a + s.flown.filter(f => f.date >= start && f.date <= end).length, 0);
+          tbody.appendChild(el('tr', { class: 'v5-rt-grp' }, [
+            el('td', { colspan: days.length + 2, style: 'background:' + mixColor('#e88aff', 9) }, [
+              el('span', { style: 'color:var(--v5-acc)' }, [r.group]),
+              el('span', { style: 'color:var(--v5-tx3);font-weight:400;margin-left:8px;font-size:9px' }, [`${r.members.length} SP · ${gl} les · ${gh.toFixed(1)}h`]),
+            ]),
+          ]));
+          return;
+        }
+        const sp = r.sp;
+        const inRange = sp.flown.filter(f => f.date >= start && f.date <= end);
+        const totH = inRange.reduce((a, f) => a + f.effMins / 60, 0);
+        // Idle runs: index spans of consecutive no-fly days. A run bounded by a
+        // later flight is a closed gap; a run reaching the last column is "still
+        // idle, through to today" and drawn differently.
+        const flownIdx = days.map((d, i) => sp.flownByDate[d] ? i : -1).filter(i => i >= 0);
+        const idleCell = new Array(days.length).fill(0); // 0 none, 1 closed gap, 2 open (to today)
+        for (let k = 0; k < flownIdx.length - 1; k++) {
+          const gap = flownIdx[k + 1] - flownIdx[k] - 1;
+          if (gap >= IDLE_MIN) for (let i = flownIdx[k] + 1; i < flownIdx[k + 1]; i++) idleCell[i] = 1;
+        }
+        const lastFlown = flownIdx.length ? flownIdx[flownIdx.length - 1] : -1;
+        const openGap = days.length - 1 - lastFlown;
+        if (lastFlown >= 0 && openGap >= IDLE_MIN) for (let i = lastFlown + 1; i < days.length; i++) idleCell[i] = 2;
+        if (lastFlown < 0) for (let i = 0; i < days.length; i++) idleCell[i] = 2; // never flew in range
+
+        const tr = el('tr', {}, [
+          el('td', { class: 'v5-rt-name' }, [el('span', { class: 'v5-rt-nm', title: sp.name + ' — click for full SP detail', onclick: () => openSPDrawer(sp.catc_id) }, [sp.shortName])]),
+          el('td', { class: 'v5-rt-tot v5-rt-c2' }, [el('span', { style: 'font-size:9px;font-weight:600;color:var(--v5-tx2)' }, [`${inRange.length}L·${totH.toFixed(1)}h`])]),
+        ]);
+        days.forEach((d, di) => {
+          const hv = cellH[sp.catc_id + '|' + d] || 0;
+          const fl = sp.flownByDate[d];
+          const isMon = new Date(d + 'T12:00:00Z').getUTCDay() === 1;
+          const isTod = d === model.asOf;
+          const cls = ['v5-rt-cell'];
+          if (isMon && di > 0) cls.push('v5-rt-mon');
+          if (isTod) cls.push('v5-rt-today');
+          if (!fl && idleCell[di] === 1) cls.push('v5-rt-idle');
+          if (!fl && idleCell[di] === 2) { cls.push('v5-rt-idle'); cls.push('v5-rt-idle-open'); }
+          let bg = 'transparent', brd = '1px solid var(--v5-bd2)';
+          if (hv > 0) {
+            const seg = Model.util.phaseOfNum(fl[0].num);
+            const pct = Math.round(Math.max(24, Math.min(1, hv / maxH) * 88));
+            bg = mixColor(seg.c, pct);
+            brd = '1px solid ' + mixColor(seg.c, Math.min(100, pct + 15));
+          }
+          const title = fl
+            ? `${sp.shortName} · ${fd(d)} · ${hv.toFixed(2)}h — ${fl.map(f => f.lesson).join(', ')}`
+            : idleCell[di] === 2 ? `${sp.shortName} · ${fd(d)} — still idle (${openGap}d since last flight)`
+            : idleCell[di] === 1 ? `${sp.shortName} · ${fd(d)} — inside an idle gap`
+            : `${sp.shortName} · ${fd(d)} — no flight`;
+          tr.appendChild(el('td', {
+            class: cls.join(' '), title,
+            style: `width:${CELL_W}px;height:21px;background:${bg};border:${brd};${fl ? 'cursor:pointer' : ''}`,
+            onclick: fl ? () => openSPDrawer(sp.catc_id) : undefined,
+          }, [hv > 0 && CELL_W >= 20 ? el('span', { style: 'font-size:7px;font-weight:600;color:' + (hv / maxH > 0.55 ? 'rgba(255,255,255,.92)' : 'var(--v5-tx2)') }, [hv.toFixed(1)]) : null]));
+        });
+        tbody.appendChild(tr);
       });
+      table.appendChild(tbody);
+
+      // ── footer: batch total per DAY (hours + lesson count) ──
+      const dayTot = days.map(d => {
+        let hv = 0, les = 0;
+        sps.forEach(s => { const fl = s.flownByDate[d]; if (fl) { les += fl.length; hv += fl.reduce((a, f) => a + f.effMins / 60, 0); } });
+        return { hv, les };
+      });
+      const maxDay = Math.max(1, ...dayTot.map(t => t.hv));
+      const grandH = dayTot.reduce((a, t) => a + t.hv, 0), grandL = dayTot.reduce((a, t) => a + t.les, 0);
+      const mkFootRow = (label, pick, fmt) => {
+        const tr = el('tr', { class: 'v5-rt-foot' }, [
+          el('td', { class: 'v5-rt-name' }, [el('span', { class: 'v5-rt-hl', style: 'color:var(--v5-acc)' }, [label])]),
+          el('td', { class: 'v5-rt-tot v5-rt-c2' }, [el('span', { style: 'font-size:9px;font-weight:700;color:var(--v5-acc)' }, [label === 'HOURS/DAY' ? grandH.toFixed(1) + 'h' : grandL + 'L'])]),
+        ]);
+        days.forEach((d, di) => {
+          const v = pick(dayTot[di]);
+          const isMon = new Date(d + 'T12:00:00Z').getUTCDay() === 1;
+          tr.appendChild(el('td', {
+            class: 'v5-rt-cell' + (isMon && di > 0 ? ' v5-rt-mon' : ''),
+            title: `${fd(d)} — batch total ${dayTot[di].hv.toFixed(2)}h across ${dayTot[di].les} lesson${dayTot[di].les === 1 ? '' : 's'}`,
+            style: `width:${CELL_W}px;height:17px;background:${v > 0 ? mixColor('#e88aff', 12 + (dayTot[di].hv / maxDay) * 70) : 'transparent'}`,
+          }, [v > 0 && CELL_W >= 16 ? el('span', { style: 'font-size:6.5px;color:var(--v5-tx)' }, [fmt(v)]) : null]));
+        });
+        return tr;
+      };
+      const tfoot = el('tfoot', {}, [
+        mkFootRow('HOURS/DAY', t => t.hv, v => v.toFixed(1)),
+        mkFootRow('LESSONS/DAY', t => t.les, v => String(v)),
+      ]);
+      table.appendChild(tfoot);
+
+      wrap.appendChild(table);
+      host.appendChild(wrap);
     },
     update(handle, model) { this._draw(handle, model); },
   });
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // SP drawer

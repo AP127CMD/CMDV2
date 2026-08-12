@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p165` (all currently at p164)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p166` (all currently at p165)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -67,7 +67,45 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p164` (2026-08-12 — **New tab: AP127 Detail V5 — a redesigned,
+**Last known:** all files `p165` (2026-08-12 — **AP127 Detail V5 — first round of user feedback on
+the p164 build.** Seven asks, all shipped:
+1. **Broken Pulse layout root-caused to invalid span values, not styling** — the shipped default used
+   `span: 7`/`span: 5` but only `.v5-span-4/6/8/12` existed in CSS, so `grid-column` was never set and
+   both panels collapsed to one 1/12-wide column. All spans 1-12 now defined, validator accepts any
+   integer 1-12, and Pace vs Target / Watchlist are full-width one-per-line as requested. Trend the
+   same: Output and Streaks full width, Streaks below Output.
+2. **Command bar made self-explanatory** — every group now has a visible label (MEASURE IN · SHOW ·
+   PERIOD · DATA AS OF · FIND SP · ACTIONS) plus a plain-language tooltip, and chip wording moved from
+   jargon to plain terms (`Batch`/`Per-SP`/`SP…` → `Whole batch`/`All SP`/`One SP…`).
+3. **Trend Plan/Target now scale to scope — a real accuracy bug.** Both are batch totals (×28 SP); the
+   per-SP view drew 28 student lines against them, ~28× too high. Now divided by student count when
+   scope isn't batch and relabelled `Plan / SP` / `Target / SP`. **Second bug found doing this:** scope
+   `sp` (one student) fell into the batch branch, so picking one SP drew the 28-SP aggregate instead of
+   that SP. Fixed.
+4. **PEOPLE renamed "Each SP"** (label only — panel ids unchanged so saved layouts/share links survive).
+5. **SYLLABUS rebuilt as ONE roster-style grid** (Bars|Cells toggle removed), matching Aircraft Status'
+   SP Stat idiom, with the V4 detail restored: click-through lesson detail, clickable phase band showing
+   objective + completion standard, a key-point/milestone row, an ETC column, each of the 17 target
+   columns labelled with its own DATE, a blue current-date (today's target lesson) column, and a red
+   dashed lag band spanning each SP's gap to today's target. Phase funnel folded in as a summary strip.
+6. **CALENDAR rebuilt in the same roster style** — per-cell hours, sticky name/period columns, month and
+   Monday rules, today outlined, instructor grouping kept; plus sticky HOURS/DAY + LESSONS/DAY footer
+   rows with batch grand totals, red dashed marking for idle runs ≥7d between flights, and amber dotted
+   marking for SP still idle through to today.
+7. Dead canvas-grid engine (`attachCanvasGrid`) and its tooltip CSS removed.
+
+Also: `content-visibility:auto` is released once a panel mounts (`.v5-mounted`) — defensive only, NOT a
+fix for a reproduced bug; the "stuck on Loading…" frames seen while testing were stale screenshot
+captures (DOM verified correct each time, forced repaint showed the real grid).
+
+Verified live: sticky identity columns measured to align exactly with the lesson grid and phase header
+(257px vs 258px — first attempt had the phase band sliding under them, and a double-edged rose shadow on
+17 target columns × 28 rows that made the grid unreadable; both fixed); lesson labels thinned every-5th →
+every-10th after measuring real overlap at 13px columns; all three restored modals confirmed with correct
+content; Calendar footer pinned and populated (1039.0h / 827L); parity harness 0 mismatches across 28 SP;
+self-check 11/11; mobile 375px zero horizontal overflow on all five sections; V4 reloaded and unchanged
+(10 charts, KPI 34.8%), `git diff --stat` on the three DB_Share-proxied files empty. Files touched:
+`js/view-cohort-v5.js`, `js/ap127-v5-layout.js`, `css/cohort-v5.css`, `index.html`.) p164 (2026-08-12 — **New tab: AP127 Detail V5 — a redesigned,
 consolidated successor to AP127 Detail V4, additive only (V4 stays exactly as-is).** User: "I want
 to continue develop the AP127 DETAIL V4 tab... New version of AP127 DETAIL will be on a new tab
 'AP127 DETAIL V5'... Keep all the current system and tab." Full design doc:

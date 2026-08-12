@@ -2905,3 +2905,106 @@ protected files empty throughout.
 
 Files touched: `js/ap127-v5-model.js` (new), `js/ap127-v5-layout.js` (new), `js/view-cohort-v5.js`
 (new), `css/cohort-v5.css` (new), `index.html`, `js/shell.js`.
+
+---
+
+## p165 (2026-08-12 — **AP127 Detail V5 — first round of user feedback after using
+the live p164 build.** Seven items, all shipped. Verbatim asks: "Option setting bar at top look
+confuse, dont know what these are using for or what to expect" · PULSE "Layout is complete broken
+(on desktop) at PACE vs Target and Watchlist. Move it as a single chart per line, it can expland
+then" · TREND "Target and Plan line of the whole batch is single SP should be different" + "Move
+streak to below OUPUT chart" · PEOPLE "Change it name to Each SP" · SYLLABUS "It missing a lot of
+feature from the original — Detail of lesson and phase, Key point mark, ETC" + "Indicate the target
+date of each target red line" + "Add line of current date" + "Add lagging line indicate for lag SP
+relate to target line" + "Combine it into just one mode — Modern roster style. ref to SP sub-tab in
+Aircraft status tab" · CALENDAR "Change it to be the modern roster style ref to SP sub-tab in
+Aircraft status tab" + "Add sum of hours for each day at bottom" + "Show dash line indicate long
+idle day" + "Show idle day till today".
+
+**1. Broken Pulse layout — root cause was invalid span values, not styling.** The shipped default
+layout used `span: 7` for Pace vs Target and `span: 5` for Watchlist, but `css/cohort-v5.css` only
+ever defined `.v5-span-4/6/8/12`. With no matching class, `grid-column` was never set, so both
+panels fell back to a single 1/12-wide column of the 12-column grid — hence "complete broken".
+Fixed three ways: every span 1-12 is now defined in CSS (so the class can't silently not exist),
+the layout validator accepts any integer 1-12 instead of a hand-picked list of four, and per the
+request both panels are now `span: 12` (one per line, full width). Same treatment for Trend —
+Output and Streaks are both full width with Streaks ordered after Output.
+
+**2. Command bar made self-explanatory.** It was 12 bare chips with no indication of what each
+group controlled. Every group now carries a visible uppercase label — MEASURE IN · SHOW · PERIOD ·
+DATA AS OF · FIND SP · ACTIONS — plus a plain-language tooltip on the group explaining what it
+changes and what to expect. Chip wording changed from jargon to plain terms (`Batch`/`Per-SP`/`SP…`
+→ `Whole batch`/`All SP`/`One SP…`; `30D` → `30 days`; `⤓ PDF` → `⤓ Report`; `⟳` → `⟳ Live`).
+
+**3. Trend Plan/Target now scale to the selected scope — a real accuracy bug.** Plan and Target
+come out of the model as BATCH totals (each lesson's planned value × 28 SP). The per-SP view drew
+28 individual student lines against those batch-scale references, i.e. roughly 28× too high, making
+the comparison meaningless. Both reference series are now divided by the student count whenever
+scope isn't `batch`, and relabelled `Plan / SP` / `Target / SP` so the scale is stated. Verified
+live: batch Plan peaks at 2156h, per-SP Plan at 77h against a 62h max student line. **Also fixed a
+second bug found while doing this:** `isBatch` was `scope !== 'per-sp'`, so scope `sp` (one student
+picked) fell into the batch branch and drew the 28-SP aggregate line — picking a single SP showed
+everything except that SP. Single-SP now draws that student's own line, thickened, against per-SP
+references.
+
+**4. PEOPLE renamed to "Each SP"** (section label only; panel ids unchanged so saved layouts and
+share links keep working).
+
+**5. SYLLABUS rebuilt as ONE roster-style grid with the V4 detail restored.** The `Bars | Cells`
+toggle is gone — a single view in the same idiom as Aircraft Status' SP Stat roster
+(`js/view-aircraft.js:1163`): a real table with separated rounded cells, intensity fill, sticky
+identity columns, phase-coloured completions. Restored from V4 and added:
+   - **Lesson detail** — click any cell for code, phase, type, standard duration, planned date, when
+     it was flown (every attempt, retakes labelled), plus that SP's standing.
+   - **Phase detail** — the phase band across the top is clickable per segment, opening the phase's
+     objective and completion standard (verbatim from the authoritative syllabus) with its lesson
+     list and the milestones inside it.
+   - **Key point marks** — a milestone row above the lesson numbers, each icon clickable for what
+     that milestone means and how many SP have passed it.
+   - **ETC column** — per-SP estimated completion date, alongside the existing vs-target column.
+   - **Target checkpoint dates** — each of the 17 red target columns now carries its own date
+     printed vertically in the header, so the red line says *when*, not just *where*.
+   - **Current-date line** — the interpolated target lesson for today (L32 at time of writing) drawn
+     as a blue column: on a lesson axis this is the meaningful "now" marker.
+   - **Lagging indicator** — the cells between each SP's own progress and today's target lesson are
+     washed red with a dashed rule, so each SP's lag against the target reads as a band.
+   - Phase Progress Funnel kept, folded in as a clickable summary strip beneath the grid.
+
+**6. CALENDAR rebuilt in the same roster style** with per-cell hours printed when the column is wide
+enough, sticky name + period-total columns, Monday rules, month labels, today outlined, phase-
+coloured intensity, and instructor grouping preserved. Added per the request:
+   - **Sum per day at the bottom** — two sticky footer rows (HOURS/DAY and LESSONS/DAY) with a
+     batch grand total in the pinned column, intensity-shaded per day. Made `position:sticky` inside
+     the scroll box, and the box sized to `calc(100vh - 340px)`, because a non-sticky footer sat
+     below 28 rows of grid and was only reachable by scrolling the inner container to its end —
+     which defeats the purpose of a totals row.
+   - **Dashed line for long idle** — runs of ≥7 consecutive no-fly days between two flights are
+     marked with a red dashed rule and a faint wash across the whole run.
+   - **Idle through to today** — a run that reaches the last column (i.e. the SP still hasn't flown)
+     is drawn distinctly in amber dotted, and its tooltip reports how many days since the last
+     flight. An SP with no flights at all in range is marked idle for the entire row.
+
+**7. Dead code removed** — the canvas-grid engine (`attachCanvasGrid`) that backed the previous
+Bars/Cells and canvas calendar is gone now that both grids are roster tables, along with its
+`.v5-gridtip` styling.
+
+**Also changed while verifying:** `content-visibility:auto` is now released (`.v5-mounted`) once a
+panel has real content. It is genuinely useful only *before* mount, to defer painting panels that
+aren't visible yet; leaving it on a mounted 96-column grid is a standing risk of the browser
+holding a freshly-inserted subtree in the skipped state. **Honest note:** I could not prove
+content-visibility was actually causing a visible fault — the "stuck on Loading…" frames seen
+during this session turned out to be stale screenshot captures (each time, the DOM was verified
+correct — no skeleton present, table built, 28 rows — and a forced repaint showed the real grid).
+This change is defensive, not a fix for a reproduced bug.
+
+**Verified live:** sticky identity columns measured to align exactly with the lesson grid and the
+phase-band header (right edge 257px vs first lesson column at 258px — the first attempt had the
+phase band sliding underneath them, and a double-edged rose box-shadow on all 17 target columns ×
+28 rows that made the grid unreadable; both fixed). Lesson-number labels thinned from every 5th to
+every 10th after measuring that two digits at 7.5px physically overlap in a 13px column. All three
+restored modals confirmed opening with correct content (lesson CDGL 01 / phase objective+standard /
+milestone explanation). Calendar footer confirmed pinned and populated (1039.0h / 827L). Parity
+harness still 0 mismatches across all 28 SP; self-check 11/11. Mobile 375px: zero horizontal page
+overflow on all five sections. V4 reloaded afterward — mounted, 10 charts, KPI 34.8%, unchanged;
+`git diff --stat` on the three DB_Share-proxied files empty. Files touched:
+`js/view-cohort-v5.js`, `js/ap127-v5-layout.js`, `css/cohort-v5.css`, `index.html` (p164→p165).
