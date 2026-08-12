@@ -2754,3 +2754,154 @@ once per heatmap panel, matching the fallback path actually engaging as designed
 Original AP127 Detail (`js/view-cohort.js`) confirmed still byte-identical/untouched throughout.
 Files touched: `js/view-cohort-v4.js`, `index.html` (3 new CDN script tags for jsPDF/autotable/
 html2canvas, plus the usual cache-bust bump, p162→p163).
+
+---
+
+## p164 (2026-08-12 — **New tab: AP127 Detail V5** — a redesigned, consolidated
+successor to AP127 Detail V4, additive only. User: "I want to continue develop the AP127 DETAIL V4
+tab... New version of AP127 DETAIL will be on a new tab 'AP127 DETAIL V5'... Keep all the current
+system and tab." Full design doc:
+`docs/superpowers/specs/2026-08-12-ap127-detail-v5-design.md`.
+
+**Why.** V4 had grown to 16 stacked panels / 13 Chart.js instances / 2 ~5,000-node DOM heatmaps
+across ~25 rounds of incremental feedback (p121-p163), each additive, nothing ever consolidated.
+User reported: laggy scrolling, duplicated charts/info, confusing layout, no chart-to-chart
+consistency, no admin customisation, and a PDF export that doesn't look like the page. A study of
+`js/view-cohort-v4.js` found the concrete causes (2 heatmap tables with sticky columns and
+~10,400 total DOM cells; `ap127Hours()` rebuilding a 96-entry lessons map on every call from inside
+sort comparators and per-row renders; 13 canvases all built eagerly on mount) and two real, live
+accuracy inconsistencies: **F1** — the headline "lessons done" (`s.done`, every flight record
+including retakes) disagreed with the Lesson Matrix/Phase Funnel's own deduped counts (both fixed
+in earlier rounds specifically because retakes over-counted); **F2** — `ap127Hours()` credits a
+retaken lesson's full standard duration on every attempt, contradicting the p143 Ops Analytics rule
+("a lesson's effective hours count once per SP"), so this tab and Ops Analytics disagreed about the
+same batch's hours.
+
+**Architecture — new tab, new files, V4 untouched.**
+- `js/ap127-v5-model.js` (new, plain script) — the ONLY place any V5 number is computed. Every
+  formula ported **verbatim** from `view-cohort-v4.js` with its original line number in a comment;
+  the two F1/F2 divergences are the sole deliberate exceptions, each documented at its site.
+  Exposes `lessonsCompleted`/`flightRecords`/`hoursEffective`/`hoursLogged` as four distinct,
+  separately-labeled quantities (V4 conflated the first two and the last two) plus a visible
+  `retakes` count. Runs unmodified under Node (`module.exports`) — verified directly against the
+  live `PROGRESS_DATA` snapshot before any UI existed: 0 mismatches across all 28 SP for every
+  non-divergent figure, 11/11 self-check invariants pass, all edge cases clean (never-flown SP,
+  As-Of before batch start, As-Of past plan end, empty roster).
+- `js/ap127-v5-layout.js` (new) — the admin-customisable dynamic layout: a versioned config object
+  (sections → panels → span/visible/opts), presets (Default/Director brief/Instructor daily/Full
+  detail/Report), a validator that rejects hostile/stale configs without ever blanking the page,
+  localStorage persistence + revision log, a `?v5layout=` base64url share-link codec, and an
+  "export for commit" that pretty-prints the config as the pasteable new code default (git history
+  on this file is the durable revision record — same honest static-host pattern as
+  `js/ap127-targets-data.js`).
+- `js/view-cohort-v5.js` (new) — the shell: one global command bar (Unit/Scope/Range/time-machine/
+  search replace 9 independent per-panel V4 control sets), 5 sections (Pulse/Trend/People/Syllabus/
+  Calendar) lazily mounted via `IntersectionObserver`, a panel registry, and every panel. 16 V4
+  panels consolidated to 10: the 4 actual-vs-plan charts (Combined Progress/Batch Lagging/Actual vs
+  Planned/Individual Lead-Lag) become 1 chart with `Level|Gap` × `Batch|Per-SP`; the 2 heatmap
+  tables (Flight Timeline, Roster) become 1 canvas-drawn Activity Calendar; the 3 lesson-number
+  views (Overall Progress Bar, Lesson Matrix, Phase Funnel) become 1 canvas-drawn Curriculum Grid
+  with an integrated batch-%-complete footer band. The two canvas grids are what actually fixes the
+  scroll lag — measured live: 115 DOM nodes / 3 live Chart.js instances on the Trend section
+  (V4's two heatmaps alone were ~10,000 nodes). Also: a 10-generator deterministic Insight Reel
+  (auto-advancing, pause on hover/focus, arrow keys), a Replay ("▶ Story") that drives the existing
+  As-Of scrubber through the batch's history with extra pauses at target checkpoints/milestones,
+  KPI count-up + delta flash, a collapsible Self-Check footer running 11 live invariant assertions,
+  and a Report Sheet builder feeding both an on-screen preview + `window.print()` (vector, real page
+  numbers from the browser) and a one-click raster PDF download (own per-page footer with real
+  page numbers, drawn directly via jsPDF rather than baked into the captured image).
+- `css/cohort-v5.css` (new) — entirely scoped under `.ap127-v5`, own hex/rgb palette (not the app's
+  oklch() theme tokens — deliberately, so the PDF/print path never has to fight them).
+- `index.html` — 3 new `<script>` tags + 1 new `<link>`, every `?v=p163` bumped to `p164`.
+- `js/shell.js` — one nav entry (`cohort-v5` / "AP127 Detail V5" / ◆, in the Progress group) + one
+  registry key. Neither file is DB_Share-proxied.
+- **`js/view-cohort-v4.js`, `js/shared.js`, `css/progress.css` were never touched** — confirmed via
+  `git diff --stat` before every commit (these three are live-proxied by DB_Share, see the note near
+  the top of this file / CLAUDE.md).
+
+**Real bugs found and fixed during live verification (not shipped blind):**
+1. **chartjs-plugin-datalabels auto-registers off the CDN UMD build** the moment its `<script>` tag
+   runs in `index.html` (loaded for V4's charts) — every `new Chart(...)` anywhere on the page
+   inherits it, including V5's, showing raw `x:date, y:value` text stamped over every point.
+   Centralized a `plugins.datalabels:{display:false}` default into the shared `mkChart()` wrapper
+   rather than repeating it per chart config.
+2. **`Model.segmentOfNum`/`Model.phaseOfNum` called without the `.util.` namespace** in the
+   Curriculum Grid and Activity Calendar canvas draw code — `TypeError`, panel failed to render.
+3. **`signed()` double-negated for callers whose formatter doesn't already take an absolute value**
+   — `vsTarget`/`dayDelta` columns rendered "−-2" instead of "−2" (the "−" sign prepended to a
+   still-negative `"-2"` string). Fixed centrally by having `signed()` always pass `Math.abs(v)`
+   into `fmt` (safe/idempotent for `fH`/`fL`, which already did their own internal abs).
+4. **A stray `container` reference inside the Output panel's `update()`** (leftover from a mount-only
+   draft) threw `ReferenceError`, aborting the panel every time unit/range/asOf changed after first
+   mount. Removed the two dead lines.
+5. **Nested-hash routing conflict**: `goSection()` originally wrote `#/cohort-v5/<section>` via
+   `history.replaceState` — but the outer app shell (`js/shell.js`) owns `location.hash` for its own
+   top-level view routing and only strips a single `#/` segment, so on reload it would have read
+   `'cohort-v5/pulse'` as the view id, matched nothing, and shown the "no view registered"
+   placeholder for the WHOLE APP, not just failed to restore the section. Fixed by moving V5's
+   section deep-link into a `?v5section=` query param instead, which that routing logic never reads.
+6. **SP drawer / Customise drawer / Report preview rendered fully transparent**, letting the dimmed
+   page underneath show straight through and visually collide with their own header text. Root
+   cause: these overlays are deliberately appended straight to `document.body` (so `position:fixed`
+   always covers the true viewport, not some ancestor's clipped box) — but every `--v5-*` custom
+   property was defined scoped to `.ap127-v5`, which these overlays sit OUTSIDE of in the DOM, so
+   every `var(--v5-*)` inside them resolved to nothing. Fixed by moving the variable definitions to
+   `:root`. Also bumped the SP drawer's scrim from `rgba(0,0,0,.55)` to `rgba(3,4,6,.86)` — even once
+   opaque, the original alpha still let the page's own bright text read as a second, distracting
+   layer above the drawer on short viewports.
+7. **PDF download failed outright** with html2canvas's `"unsupported color function oklch"` even
+   though the Report Sheet's own nodes are palette-snapshotted to plain `rgb()` before capture —
+   because html2canvas clones the **whole document** (not just the target element) to resolve
+   stacking contexts correctly, so it still walked into this app's oklch()-based `css/theme.css`
+   elsewhere on the page during that clone. Fixed by capturing from an **isolated `<iframe>`**
+   containing only `css/cohort-v5.css` (hex/rgb only) — html2canvas's clone of that iframe's own
+   document never has an oklch() value to trip on. Verified against the real generated PDF (same
+   `.save()`-interception + `pdfinfo`/`pdftoppm` technique as p163): 2-3 pages, both embedded charts
+   present regardless of which section was active when the report was generated, all 28 roster rows,
+   correct running footer.
+8. **Report charts silently missing whenever the report was generated from a non-Trend section** —
+   the report read `CHARTS['progress-chart']`/`CHARTS.output`, the LIVE on-screen chart instances,
+   which only exist while the Trend section happens to be the one currently mounted (switching
+   sections destroys them). Fixed by extracting `progressChartCfg(model)`/`outputChartCfg(model)` as
+   standalone config builders shared by both the live panels and a new `renderOffscreenChartImg()`
+   that renders each into its own fresh, detached canvas at report time regardless of what's mounted.
+9. **PDF footer said "Page 1" on every physical page** — a single static footer div baked into the
+   captured sheet image landed wherever the raster slice happened to cut it (confirmed live: it
+   showed up on the LAST page, page 3, still reading "Page 1"). Fixed by drawing a real per-page
+   running footer directly via jsPDF (`Page P / N`, correct on every page) instead, with the sheet's
+   own DOM footer changed to a neutral "End of report" (correct once, since it only physically
+   exists at one point in the flowing content).
+10. **KPI count-up race condition** — every headline tile stuck on the bare tweened number
+    ("34.8" instead of "34.8%", "107" instead of "27 Nov 26") and never recovered. Root-caused via a
+    live `MutationObserver` trace (not guessed): the animation was split across two independent
+    timers — a `requestAnimationFrame` loop driving the count-up, and a separate `setTimeout(520)`
+    that swapped in the final formatted text — and they raced. rAF's own last frame is tied to the
+    display refresh, not a fixed delay, so it could fire a few ms AFTER that setTimeout, overwriting
+    the just-applied formatted text with the tween's raw number with nothing left to re-correct it.
+    Traced exactly this in the live DOM: every tile briefly showed the correct formatted text then
+    reverted 14ms later. Fixed by giving the tween a single `onDone` callback that renders the true
+    final text from its OWN last frame — one code path now owns the final state, so the race can't
+    recur. Re-verified via the same mutation trace: all six tiles settle correctly and stay correct
+    across repeated toggles.
+11. **Roster table sort headers had no keyboard/screen-reader affordance** (bare `onclick`, no
+    `tabindex`/`role`/`aria-sort`) — same gap V4 fixed in its own Progress Ranking table (p149).
+    Added the identical pattern here: `tabindex="0"`, `role="button"`, live `aria-sort`, Enter/Space
+    keydown handling.
+
+**Verified live, end-to-end:** `ap127V5ParityV5()` (new dev-only console harness) compares V5's
+model against V4's own formulas for all 28 SP — 0 mismatches on every non-divergent figure (current
+live data has 0 retakes, so F1/F2 currently show 0.00 too; the divergence is documented/dormant,
+not fabricated). Self-check panel 11/11 pass on live data, on a time-travelled As-Of, and throughout
+a full Replay run. All five sections exercised with real data (Pulse KPIs/reel/pace/watchlist, Trend
+merged chart + output + streaks, People roster/distribution/SP-drawer, Syllabus Bars+Cells canvas
+with click-through to the SP drawer, Calendar canvas with instructor grouping and click-through).
+Customise: hid a panel, Applied, reloaded the page cold — stayed hidden (real localStorage
+persistence, not session-only); Reset correctly restored the published default. PDF download
+decoded from a real captured `.save()` call and inspected with `pdfinfo`/`pdftoppm` (not just "no
+console errors"). Mobile 375px: zero page-level horizontal overflow on every section, including the
+96-column Curriculum Grid canvas (scrolls inside its own container). V4 re-loaded after all of this
+and confirmed pixel-for-pixel unchanged, zero new console errors, `git diff --stat` on the three
+protected files empty throughout.
+
+Files touched: `js/ap127-v5-model.js` (new), `js/ap127-v5-layout.js` (new), `js/view-cohort-v5.js`
+(new), `css/cohort-v5.css` (new), `index.html`, `js/shell.js`.

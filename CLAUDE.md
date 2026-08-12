@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p164` (all currently at p163)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p165` (all currently at p164)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -47,7 +47,10 @@ step, it just fetches these files' current content on every DB_Share page load. 
 to either file (removed export, renamed `window.*` global, a new dependency on `js/shell.js` or
 another view) breaks DB_Share too. After editing either file, load
 `https://ap127-dashboardr1.pages.dev` and confirm it still renders. Design:
-`docs/superpowers/specs/2026-08-02-mirror-cmdv2-detail-v4-design.md`.
+`docs/superpowers/specs/2026-08-02-mirror-cmdv2-detail-v4-design.md`. **`js/view-cohort-v5.js` (new,
+2026-08-12) is NOT part of this mirror** — DB_Share only proxies the two files named above; V5 is
+additive and doesn't touch either of them (verify with `git diff --stat js/view-cohort-v4.js
+js/shared.js css/progress.css` before every commit — must stay empty).
 
 ## Verify actual state — run before starting
 ```bash
@@ -64,7 +67,72 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p163` (2026-08-09 — **AP127 Detail V4 — new "Export PDF" button:
+**Last known:** all files `p164` (2026-08-12 — **New tab: AP127 Detail V5 — a redesigned,
+consolidated successor to AP127 Detail V4, additive only (V4 stays exactly as-is).** User: "I want
+to continue develop the AP127 DETAIL V4 tab... New version of AP127 DETAIL will be on a new tab
+'AP127 DETAIL V5'... Keep all the current system and tab." Full design doc:
+`docs/superpowers/specs/2026-08-12-ap127-detail-v5-design.md`; full build log with every bug found
+during live verification: REVAMP.md's p164 entry.
+
+**Why V4 needed this:** 16 stacked panels / 13 Chart.js instances / 2 ~5,000-node DOM heatmaps
+after ~25 rounds of purely additive feedback (p121-p163) — laggy scrolling, duplicated charts,
+inconsistent per-panel controls, no admin customisation, and a PDF export that doesn't look like
+the page. Also found two real, live accuracy bugs in V4 (not fixed there — V4 is frozen; fixed only
+in the new model): **F1** the headline "lessons done" (`s.done`, includes retakes) disagreed with
+the Lesson Matrix/Phase Funnel's own deduped counts; **F2** `ap127Hours()` credits a retaken
+lesson's full duration on every attempt, contradicting the p143 Ops Analytics rule ("count once per
+SP"), so V4 and Ops Analytics disagreed about the same batch's hours.
+
+**New files (nav: Progress → "AP127 Detail V5" / ◆ / `cohort-v5`):**
+`js/ap127-v5-model.js` — the only place any V5 number is computed; every formula ported verbatim
+from `view-cohort-v4.js` (line-numbered in comments) except the documented F1/F2 fix, which exposes
+`lessonsCompleted`/`flightRecords`/`hoursEffective`/`hoursLogged` as four distinct quantities plus a
+visible `retakes` count; runs unmodified under Node, verified against the live snapshot with 0
+mismatches. `js/ap127-v5-layout.js` — the dynamic-layout config (presets, validator, localStorage +
+revision log, `?v5layout=` share link, export-for-commit). `js/view-cohort-v5.js` — one global
+command bar (replaces 9 independent V4 control sets), 5 lazily-mounted sections (Pulse/Trend/
+People/Syllabus/Calendar), 16 V4 panels consolidated to 10 (the 4 actual-vs-plan charts → 1 chart;
+the 2 DOM heatmaps → 1 canvas-drawn Activity Calendar; the 3 lesson-number views → 1 canvas-drawn
+Curriculum Grid) — measured 115 DOM nodes / 3 live charts on Trend vs. V4's ~10,000-node heatmaps
+alone. Plus a 10-generator Insight Reel, a Replay ("▶ Story") that drives the As-Of scrubber through
+history with pauses at milestones, KPI count-up, an 11-check Self-Check footer, and a Report Sheet
+feeding both `window.print()` (vector, real page numbers) and a raster PDF download (own per-page
+footer drawn by jsPDF). `css/cohort-v5.css` — own hex/rgb palette, scoped `.ap127-v5` (deliberately
+not the app's oklch() theme, so PDF export never fights it).
+
+**11 real bugs found and fixed during live verification** (full detail in REVAMP.md's p164 entry):
+chartjs-plugin-datalabels auto-registering globally off the CDN build and stamping raw coordinates
+on every V5 chart · a missing `.util.` namespace on two model helper calls · `signed()`
+double-negating negative values ("−-2" instead of "−2") · a stray leftover `container` reference
+throwing inside the Output panel's update · a nested-hash routing conflict where V5's own section
+deep-link would have made the OUTER app fail to restore its view on reload (fixed by moving to a
+`?v5section=` query param instead) · the SP/Customise/Report overlays rendering fully transparent
+because their CSS variables were scoped to `.ap127-v5` while the overlays (deliberately
+`document.body`-appended, for correct `position:fixed` viewport coverage) sit outside it in the DOM
+· the PDF download failing on html2canvas's `"unsupported color function oklch"` even with the
+report sheet's own palette snapshotted to `rgb()`, because html2canvas clones the *whole document*
+and still walked into this app's oklch() theme elsewhere on the page (fixed with an isolated iframe
+containing only the hex/rgb V5 stylesheet) · report charts silently missing whenever generated from
+a non-Trend section, since the report read the LIVE (possibly-destroyed) chart instances instead of
+rendering its own · the PDF footer reading "Page 1" on every physical page (now a real per-page
+running footer drawn directly by jsPDF) · a KPI count-up race between `requestAnimationFrame` and a
+separate `setTimeout` that could let the tween's raw number permanently overwrite the correct
+formatted text — root-caused via a live `MutationObserver` trace, fixed by giving the tween a single
+`onDone` callback that owns the final state · missing keyboard/`aria-sort` affordance on the roster
+table's sort headers (same gap V4 fixed in p149, applied here too).
+
+**Verified live, end-to-end:** new `ap127V5ParityV5()` console harness — 0 mismatches vs. V4's own
+formulas across all 28 SP for every non-divergent figure. Self-check 11/11 pass on live data, a
+time-travelled As-Of, and throughout a full Replay run. All 5 sections exercised with real data
+including canvas click-through to the SP drawer on both grids. Customise: hid a panel, Applied,
+cold-reloaded — stayed hidden; Reset correctly restored the default. PDF download decoded from a
+real intercepted `.save()` call and inspected with `pdfinfo`/`pdftoppm` (same technique as p163) —
+valid multi-page PDF, both charts present, all 28 roster rows, correct running footer. Mobile 375px:
+zero horizontal page overflow anywhere, including the 96-column Curriculum Grid canvas. V4 reloaded
+after all of this — pixel-for-pixel unchanged, zero new console errors,
+`git diff --stat js/view-cohort-v4.js js/shared.js css/progress.css` empty throughout. Files
+touched: `js/ap127-v5-model.js` (new), `js/ap127-v5-layout.js` (new), `js/view-cohort-v5.js` (new),
+`css/cohort-v5.css` (new), `index.html`, `js/shell.js`.) p163 (2026-08-09 — **AP127 Detail V4 — new "Export PDF" button:
 snaps the tab's current state into a downloadable PDF report.** User: "No I want this tab export
 function. To snap the current state as pdf. It should include all data in the page with proper
 layout. But this should not effect the current look of the page. Pls design and propose to me with
