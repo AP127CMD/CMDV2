@@ -67,7 +67,10 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p165` (2026-08-12 — **AP127 Detail V5 — first round of user feedback on
+**Last known:** all files `p166` (2026-08-12 — **AP127 Detail V5 labelled as Draft** — sidebar
+nav reads "AP127 Detail V5 (Draft)", in-page brand shows a DRAFT badge with a tooltip. Cosmetic
+only, no ids changed. Files: `js/shell.js`, `js/view-cohort-v5.js`, `css/cohort-v5.css`.) p165
+(2026-08-12 — **AP127 Detail V5 — first round of user feedback on
 the p164 build.** Seven asks, all shipped:
 1. **Broken Pulse layout root-caused to invalid span values, not styling** — the shipped default used
    `span: 7`/`span: 5` but only `.v5-span-4/6/8/12` existed in CSS, so `grid-column` was never set and
