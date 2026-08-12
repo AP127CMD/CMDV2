@@ -31,6 +31,7 @@
 /* ---- Command bar ---------------------------------------------------------- */
 .v5-cmdbar{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--v5-s1);border-bottom:1px solid var(--v5-bd);flex-wrap:wrap;position:sticky;top:0;z-index:40;}
 .v5-brand{font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.06em;white-space:nowrap;}
+.v5-draft-tag{margin-left:6px;font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--v5-warn);border:1px solid var(--v5-warn);border-radius:4px;padding:1px 5px;vertical-align:2px;}
 .v5-brand b{color:var(--v5-acc);font-weight:700;}
 .v5-chipset{display:flex;gap:2px;font-family:'JetBrains Mono',monospace;font-size:10px;}
 /* Labelled control group — the label is what makes the bar self-explanatory. */

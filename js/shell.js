@@ -16,7 +16,7 @@
     { label: 'Progress', items: [
       { id: 'cohort', label: 'AP127 Detail', icon: '▰' },
       { id: 'cohort-v4', label: 'AP127 Detail V4', icon: '◈' },
-      { id: 'cohort-v5', label: 'AP127 Detail V5', icon: '◆' },
+      { id: 'cohort-v5', label: 'AP127 Detail V5 (Draft)', icon: '◆' },
       { id: 'student', label: 'Student Lens', icon: '👤' },
       { id: 'plans', label: 'Curriculum Prog', icon: '▤' },
     ] },

@@ -371,7 +371,7 @@
   }
   function buildCommandBar(root) {
     const bar = el('div', { class: 'v5-cmdbar' });
-    bar.appendChild(el('div', { class: 'v5-brand' }, ['AP', el('b', {}, ['127']), ' V5']));
+    bar.appendChild(el('div', { class: 'v5-brand' }, ['AP', el('b', {}, ['127']), ' V5', el('span', { class: 'v5-draft-tag', title: 'This tab is still under active development — expect layout and behaviour to keep changing.' }, ['DRAFT'])]));
 
     bar.appendChild(ctrlGroup('Measure in', 'Switches every figure and chart on this tab between HOURS and LESSONS. Hours use each lesson’s standard curriculum duration.',
       [['hours', 'Hours'], ['lessons', 'Lessons']].map(([v, l]) =>

@@ -3008,3 +3008,12 @@ harness still 0 mismatches across all 28 SP; self-check 11/11. Mobile 375px: zer
 overflow on all five sections. V4 reloaded afterward — mounted, 10 charts, KPI 34.8%, unchanged;
 `git diff --stat` on the three DB_Share-proxied files empty. Files touched:
 `js/view-cohort-v5.js`, `js/ap127-v5-layout.js`, `css/cohort-v5.css`, `index.html` (p164→p165).
+
+---
+
+## p166 (2026-08-12 — **AP127 Detail V5 — labelled as Draft.** User: "Rename the V5 tab to
+include 'Draft'." Sidebar nav entry changed from "AP127 Detail V5" to "AP127 Detail V5 (Draft)";
+in-page command bar brand now shows a "DRAFT" badge next to "AP127 V5" with a tooltip explaining
+the tab is still under active development. Purely cosmetic — no behavior, no DOM id, and no panel
+id changed (saved layouts / share links still work). Files touched: `js/shell.js`,
+`js/view-cohort-v5.js`, `css/cohort-v5.css` (p165→p166).
