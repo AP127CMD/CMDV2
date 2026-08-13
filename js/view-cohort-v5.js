@@ -107,6 +107,67 @@
     try { localStorage.setItem(LS_STATE_KEY, JSON.stringify({ unit: STATE.unit, scope: STATE.scope, spotlightId: STATE.spotlightId, range: STATE.range, section: STATE.section })); } catch (e) {}
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // SIZING SYSTEM
+  //
+  // The rule: nothing shrinks itself into illegibility as data grows. Every
+  // sized surface has a MIN and a MAX. When the natural "fit everything in the
+  // container" size would fall below MIN, we stop shrinking and switch
+  // technique instead — grids scroll horizontally at a readable cell size (with
+  // an explicit zoom stepper), dense time-axis charts grow taller up to a cap
+  // and then rely on zoom/pan rather than cramming more pixels per point.
+  // ─────────────────────────────────────────────────────────────────────────
+  const SIZE = {
+    cell: { min: 11, max: 30, default: 22 },      // grid cell edge, px
+    zoomSteps: [11, 14, 18, 22, 26, 30],
+    chart: { min: 200, max: 620, perSeries: 9, base: 230 },
+    rowH: { grid: 21, min: 16, max: 30 },
+    nameCol: 136, vsCol: 46, etcCol: 56, totCol: 78,
+  };
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  // Chart height grows with how many series it has to separate, then caps —
+  // past the cap the chart offers zoom/pan instead of getting unreadably dense.
+  function chartHeight(seriesCount, opts) {
+    const o = opts || {};
+    const base = o.base == null ? SIZE.chart.base : o.base;
+    const per = o.perSeries == null ? SIZE.chart.perSeries : o.perSeries;
+    const max = o.max == null ? SIZE.chart.max : o.max;
+    return Math.round(clamp(base + Math.max(0, seriesCount - 1) * per, o.min == null ? SIZE.chart.min : o.min, max));
+  }
+  // Largest cell size that fits `cols` into `avail` px — but never below MIN.
+  // Returning MIN (rather than something smaller) is what makes the container
+  // scroll instead of the content becoming unreadable.
+  function fitCell(cols, avail, o) {
+    const min = (o && o.min) || SIZE.cell.min;
+    const max = (o && o.max) || SIZE.cell.max;
+    if (!cols || !avail) return SIZE.cell.default;
+    return clamp(Math.floor(avail / cols), min, max);
+  }
+  function availGridWidth(host, reserved) {
+    const w = host && host.getBoundingClientRect ? host.getBoundingClientRect().width : 0;
+    return Math.max(240, (w || 900) - (reserved || 0) - 8);
+  }
+  // Per-grid zoom override (null = auto-fit). Kept out of STATE's persisted set
+  // deliberately — it's a transient view aid, not a saved preference.
+  const GRID_ZOOM = { 'curriculum-grid': null, 'activity-calendar': null };
+  function gridZoomBar(panelId, autoW, onChange) {
+    const wrap = el('div', { class: 'v5-zoombar' });
+    wrap.appendChild(el('span', { class: 'v5-zoom-l' }, ['Zoom']));
+    const cur = GRID_ZOOM[panelId];
+    const mk = (label, val, title) => {
+      const b = el('button', { class: 'v5-chip' + ((val === null ? cur === null : cur === val) ? ' on' : ''), title }, [label]);
+      b.addEventListener('click', () => { GRID_ZOOM[panelId] = val; onChange(); });
+      return b;
+    };
+    const set = el('div', { class: 'v5-chipset' }, [
+      mk('Fit', null, 'Size cells to fit the panel width, never below the readable minimum (' + SIZE.cell.min + 'px)'),
+      ...SIZE.zoomSteps.filter(s => s !== autoW).map(s => mk(s + 'px', s, 'Fixed ' + s + 'px cells — scroll horizontally')),
+    ]);
+    wrap.appendChild(set);
+    wrap.appendChild(el('span', { class: 'v5-zoom-note' }, [cur === null ? `auto · ${autoW}px cells` : `${cur}px cells · scroll to pan`]));
+    return wrap;
+  }
+
   let RAW = { students: [], curriculum: [], updatedAt: null };
   let MODEL = null;
   let ROOT_EL = null;
@@ -224,11 +285,18 @@
     };
     // Lazy mount via IntersectionObserver — only the panels actually scrolled
     // into view build a chart/canvas. Falls back to immediate mount if IO is
-    // unavailable.
+    // unavailable, AND to a short timer regardless — `io.observe(wrap)` here
+    // runs on a node that isn't attached to the document yet (it's still just
+    // this function's return value, appended by the caller a tick later), and
+    // while that's a normally-safe pattern, a panel getting permanently stuck
+    // on its "Loading…" skeleton is a bad enough failure mode (confirmed live:
+    // it happened) that a cheap timeout backstop is worth it regardless of the
+    // exact cause — it guarantees a panel never fails to mount silently.
     if ('IntersectionObserver' in window) {
       const io = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) { mountNow(); io.disconnect(); } }, { root: $('#d127v5-body'), rootMargin: '200px' });
       io.observe(wrap);
       MOUNTS[cfg.id] = { el: body, handle: null, io, cfg, sectionId, mounted: false };
+      setTimeout(() => { if (MOUNTS[cfg.id] && !MOUNTS[cfg.id].mounted) { try { io.disconnect(); } catch (e) {} mountNow(); } }, 900);
     } else mountNow();
     return wrap;
   }
@@ -567,6 +635,17 @@
     // off centrally here rather than repeated in every chart config below.
     cfg.options.plugins = cfg.options.plugins || {};
     if (cfg.options.plugins.datalabels === undefined) cfg.options.plugins.datalabels = { display: false };
+    // Zoom/pan is the "other technique" a dense chart switches to instead of
+    // packing ever more points into the same pixels. Gated behind Ctrl/⌘ for the
+    // wheel so ordinary page scrolling over a chart still scrolls the page
+    // (V4 shipped unconditional wheel-zoom and the user reported it as "all over
+    // the place, very sensitive" — see REVAMP.md p138).
+    if (cfg.options.plugins.zoom === undefined && window.Chart && window.Chart.registry) {
+      cfg.options.plugins.zoom = {
+        zoom: { wheel: { enabled: true, modifierKey: 'ctrl', speed: 0.06 }, pinch: { enabled: true }, mode: 'x' },
+        pan: { enabled: true, mode: 'x' },
+      };
+    }
     return new window.Chart(ctx, cfg);
   }
   registerPanelV5({
@@ -580,11 +659,22 @@
       function refreshToolbarSel(b) { $$('.v5-chip', b).forEach(c => c.classList.toggle('on', c.textContent === (STATE.progressLevel === 'level' ? 'Level' : 'Gap'))); }
     },
     mount(container, model) {
-      container.appendChild(el('div', { style: 'position:relative;height:320px' }, [el('canvas', { id: 'd127v5-progress-chart' })]));
+      const nSeries = STATE.scope === 'batch' ? 3 : scopedStudents().length;
+      const hgt = chartHeight(nSeries, { base: 300, perSeries: 5, max: 560 });
+      container.appendChild(el('div', { class: 'v5-chartbox', style: 'height:' + hgt + 'px' }, [el('canvas', { id: 'd127v5-progress-chart' })]));
+      container.appendChild(el('div', { class: 'v5-charthint' }, ['Ctrl/⌘ + scroll to zoom · drag to pan · ', el('button', { class: 'v5-chip', onclick: () => { const c = CHARTS['progress-chart']; if (c && c.resetZoom) { c.resetZoom(); } } }, ['⟳ Reset zoom'])]));
       this.update(null, model);
       return {};
     },
     update(_h, model) {
+      // Re-height the box every update, not just at first mount — scope/search
+      // change how many series are drawn, and a box sized for 3 lines stayed
+      // that size after switching to 28, cramming them instead of growing.
+      const canvas = $('#d127v5-progress-chart');
+      if (canvas) {
+        const nSeries = STATE.scope === 'batch' ? 3 : scopedStudents().length;
+        canvas.parentElement.style.height = chartHeight(nSeries, { base: 300, perSeries: 5, max: 560 }) + 'px';
+      }
       CHARTS['progress-chart'] = mkChart('d127v5-progress-chart', progressChartCfg(model));
     },
     destroy() { if (CHARTS['progress-chart']) { CHARTS['progress-chart'].destroy(); delete CHARTS['progress-chart']; } },
@@ -676,7 +766,8 @@
       bar.appendChild(el('button', { class: 'v5-chip' + (STATE.lbBreakdown ? ' on' : ''), onclick: () => { STATE.lbBreakdown = !STATE.lbBreakdown; updatePanel('output'); } }, ['By type']));
     },
     mount(container, model) {
-      container.appendChild(el('div', { style: 'position:relative;height:260px' }, [el('canvas', { id: 'd127v5-output' })]));
+      container.appendChild(el('div', { class: 'v5-chartbox', style: 'height:' + chartHeight(3, { base: 280, perSeries: 0, max: 340 }) + 'px' }, [el('canvas', { id: 'd127v5-output' })]));
+      container.appendChild(el('div', { class: 'v5-charthint' }, ['Ctrl/⌘ + scroll to zoom · drag to pan · ', el('button', { class: 'v5-chip', onclick: () => { const c = CHARTS.output; if (c && c.resetZoom) c.resetZoom(); } }, ['⟳ Reset zoom'])]));
       this.update(null, model);
       return {};
     },
@@ -729,7 +820,8 @@
     subtitle: () => '+days flying · −days idle',
     mount(container, model) {
       container.appendChild(el('div', { class: 'v5-panel-note', style: 'font-size:10px;color:var(--v5-tx3);margin-bottom:6px' }, ['Walked from the batch’s earliest flown date, not each SP’s own start — a late starter reads idle for every day before they began.']));
-      container.appendChild(el('div', { style: 'position:relative;height:220px' }, [el('canvas', { id: 'd127v5-streaks' })]));
+      container.appendChild(el('div', { class: 'v5-chartbox', style: 'height:' + chartHeight(scopedStudents().length, { base: 260, perSeries: 6, max: 520 }) + 'px' }, [el('canvas', { id: 'd127v5-streaks' })]));
+      container.appendChild(el('div', { class: 'v5-charthint' }, ['Ctrl/⌘ + scroll to zoom · drag to pan · ', el('button', { class: 'v5-chip', onclick: () => { const c = CHARTS.streaks; if (c && c.resetZoom) c.resetZoom(); } }, ['⟳ Reset zoom'])]));
       this.update(null, model);
       return {};
     },
@@ -833,7 +925,7 @@
     id: 'distribution', title: 'Distribution', estHeight: 260, deps: ['asOf'],
     subtitle: m => m.distribution ? `median ${m.distribution.median} · IQR ${m.distribution.q1}–${m.distribution.q3}` : '',
     mount(container, model) {
-      container.appendChild(el('div', { style: 'position:relative;height:200px' }, [el('canvas', { id: 'd127v5-distribution' })]));
+      container.appendChild(el('div', { class: 'v5-chartbox', style: 'height:' + chartHeight(1, { base: 240, max: 300 }) + 'px' }, [el('canvas', { id: 'd127v5-distribution' })]));
       this.update(null, model);
       return {};
     },
@@ -984,7 +1076,15 @@
       const sps = Model.sortStudents(scopedStudents(), 'vsTarget');
       if (!sps.length) { host.appendChild(el('div', { class: 'v5-empty' }, ['No students in scope'])); return; }
       const count = model.curriculum.count || 96;
-      const CELL_W = 13;
+      // Identity column widths are declared ONCE here and reused for both the
+      // width and the sticky `left` offset of every cell in those columns.
+      // Hardcoding mismatched values is what made the phase header slide under
+      // the identity block in the first attempt.
+      const NW = SIZE.nameCol, VW = SIZE.vsCol, EW = SIZE.etcCol;
+      const RESERVED = NW + VW + EW;
+      const autoW = fitCell(count, availGridWidth(host, RESERVED));
+      const CELL_W = GRID_ZOOM['curriculum-grid'] || autoW;
+      host.appendChild(gridZoomBar('curriculum-grid', autoW, () => this._draw(handle, model)));
       const targets = model.targets.list;
       const targetByLesson = {}; targets.forEach(t => { targetByLesson[t.lesson] = t; });
       // "Current date" line on a LESSON axis = the interpolated target lesson
@@ -1126,6 +1226,14 @@
       tfoot.appendChild(footRow);
       table.appendChild(tfoot);
 
+      // Explicit table width, computed from the same numbers used to size
+      // every cell. Without this, `table-layout:auto` inside a `contain:layout`
+      // panel (needed elsewhere for lazy-mount performance) compresses every
+      // column far below its declared px width instead of letting the table
+      // grow and the wrapper scroll — confirmed live: a 22px cell rendered at
+      // 4.5px. An explicit table width is what actually forces the browser to
+      // honour the per-cell widths and scroll horizontally instead of cramming.
+      table.style.width = (NW + VW + EW + count * CELL_W + (count + 3) * 1) + 'px';
       wrap.appendChild(table);
       host.appendChild(wrap);
 
@@ -1168,8 +1276,15 @@
       const start = rangeStart(), end = model.asOf;
       const days = U.datesRange(start, end);
       if (!sps.length || !days.length) { host.appendChild(el('div', { class: 'v5-empty' }, ['No data in range'])); return; }
-      const CELL_W = days.length > 100 ? 13 : days.length > 60 ? 16 : 22;
+      const NW = SIZE.nameCol, TW = SIZE.totCol;
+      const RESERVED = NW + TW;
+      // Auto-fit, but clamped at the readable minimum — a 400-day range gives
+      // 11px cells and horizontal scroll rather than 2px cells that fit but
+      // can't be read. The zoom stepper below is the explicit escape hatch.
+      const autoW = fitCell(days.length, availGridWidth(host, RESERVED));
+      const CELL_W = GRID_ZOOM['activity-calendar'] || autoW;
       const IDLE_MIN = 7;
+      host.appendChild(gridZoomBar('activity-calendar', autoW, () => this._draw(handle, model)));
 
       host.appendChild(rosterLegend([
         ...model.phasesDef.map(p => ({ color: p.c, label: p.label, title: p.title })),
@@ -1318,6 +1433,9 @@
       ]);
       table.appendChild(tfoot);
 
+      // See the matching comment on the Curriculum grid — an explicit table
+      // width is required for the browser to honour per-cell px widths here.
+      table.style.width = (NW + TW + days.length * CELL_W + (days.length + 2) * 1) + 'px';
       wrap.appendChild(table);
       host.appendChild(wrap);
     },
@@ -1505,41 +1623,268 @@
   // ─────────────────────────────────────────────────────────────────────────
   // Replay ("Story")
   // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // REPLAY ("Story") — precomputed-frame engine.
+  //
+  // The first version called setAsOf() once per frame, which meant a FULL model
+  // rebuild (28 SP × every flight, every series, every index) + renderSelfCheck
+  // (11 invariants over all flights) + applyState re-rendering EVERY mounted
+  // panel + regenerating all 10 insight generators — around 90 times in a row.
+  // On the Syllabus section that re-rendered a 2,688-cell table per frame, and
+  // on Trend it destroyed and recreated Chart.js instances per frame. That's
+  // what the stutter was.
+  //
+  // Now: one precompute pass builds every frame's aggregates as flat arrays
+  // (prefix sums), and playback is a pure array lookup driven by a
+  // time-based requestAnimationFrame clock. Per frame we only write KPI text
+  // and swap the Actual dataset's already-built point array on the existing
+  // chart (update('none') — no animation, no re-layout). No model rebuild, no
+  // panel re-render, no chart re-creation. Frame cost is O(1) in the data size.
+  // ─────────────────────────────────────────────────────────────────────────
+  let REPLAY = null;
+
+  function buildReplayTimeline(model) {
+    const dates = U.datesRange(model.batchStart, model.todayBKK);
+    const n = dates.length;
+    const idxOf = {}; dates.forEach((d, i) => { idxOf[d] = i; });
+
+    // ── per-day batch deltas, one pass over all flights ──
+    const dLes = new Float64Array(n), dHrs = new Float64Array(n);
+    // per-SP unique-lesson completion day index, for the "behind target" count
+    const spSeen = model.students.map(() => new Set());
+    const spCum = model.students.map(() => new Int16Array(n));
+    model.students.forEach((sp, si) => {
+      const seen = spSeen[si];
+      sp.flown.forEach(f => {
+        const i = idxOf[f.date];
+        if (i == null) return;
+        dLes[i] += 1;
+        dHrs[i] += f.effMins / 60;
+        if (f.num != null && !seen.has(f.num)) { seen.add(f.num); spCum[si][i] += 1; }
+      });
+      // prefix-sum this SP's unique count so any frame is an O(1) lookup
+      const arr = spCum[si];
+      for (let i = 1; i < n; i++) arr[i] += arr[i - 1];
+    });
+
+    // ── plan deltas by day (batch scale, same convention as the model) ──
+    const pLes = new Float64Array(n), pHrs = new Float64Array(n);
+    const nSP = Math.max(1, model.batch.n);
+    Object.keys(model.curriculum.planByDate).forEach(d => {
+      const i = idxOf[d]; if (i == null) return;
+      pHrs[i] += model.curriculum.planByDate[d] * nSP / 60;
+    });
+    Object.keys(model.curriculum.planLessonCountByDate).forEach(d => {
+      const i = idxOf[d]; if (i == null) return;
+      pLes[i] += model.curriculum.planLessonCountByDate[d] * nSP;
+    });
+
+    // ── cumulative arrays ──
+    const cLes = new Float64Array(n), cHrs = new Float64Array(n);
+    const cpLes = new Float64Array(n), cpHrs = new Float64Array(n);
+    let a = 0, b = 0, c = 0, e = 0;
+    for (let i = 0; i < n; i++) {
+      a += dLes[i]; b += dHrs[i]; c += pLes[i]; e += pHrs[i];
+      cLes[i] = a; cHrs[i] = b; cpLes[i] = c; cpHrs[i] = e;
+    }
+
+    // unique lessons completed batch-wide (retake-free) per frame
+    const cUniq = new Float64Array(n);
+    for (let i = 0; i < n; i++) { let s = 0; for (let si = 0; si < spCum.length; si++) s += spCum[si][i]; cUniq[i] = s; }
+
+    // target lesson + how many SP are behind it, per frame
+    const tgtLesson = new Float64Array(n), behind = new Int16Array(n);
+    const hasTargets = model.targets.list.length > 0;
+    for (let i = 0; i < n; i++) {
+      if (!hasTargets) { tgtLesson[i] = -1; continue; }
+      const tl = model.targets.lessonForDate(dates[i]);
+      tgtLesson[i] = tl == null ? -1 : tl;
+      if (tl != null && tl > 0) {
+        let cnt = 0;
+        for (let si = 0; si < spCum.length; si++) if (spCum[si][i] < tl) cnt++;
+        behind[i] = cnt;
+      }
+    }
+
+    // ── key dates worth pausing on, each with a caption ──
+    const captions = {};
+    model.targets.list.forEach(t => {
+      if (idxOf[t.date] == null) return;
+      captions[t.date] = `Target checkpoint — every SP should be at lesson ${t.lesson}`;
+    });
+    model.keyPoints.forEach(kp => {
+      let first = null;
+      model.students.forEach(sp => { const f = sp.flownByNum[kp.num]; if (f && (!first || f[0].date < first)) first = f[0].date; });
+      if (first && idxOf[first] != null && !captions[first]) captions[first] = `First ${kp.label} in the batch (lesson ${kp.num})`;
+    });
+    // worst single-day lag jump gets a caption too
+    let worstI = 0, worstJump = 0;
+    for (let i = 1; i < n; i++) {
+      const j = (cpHrs[i] - cHrs[i]) - (cpHrs[i - 1] - cHrs[i - 1]);
+      if (j > worstJump) { worstJump = j; worstI = i; }
+    }
+    if (worstJump > 0 && !captions[dates[worstI]]) captions[dates[worstI]] = `Biggest single-day slip — plan pulled ${worstJump.toFixed(1)}h further ahead`;
+
+    // ── the full Actual series, prebuilt so a frame is just a .slice() ──
+    const actHrs = dates.map((d, i) => ({ x: d, y: +cHrs[i].toFixed(2) }));
+    const actLes = dates.map((d, i) => ({ x: d, y: +cLes[i].toFixed(2) }));
+    const lagHrs = dates.map((d, i) => ({ x: d, y: Math.max(0, +(cpHrs[i] - cHrs[i]).toFixed(2)) }));
+    const lagLes = dates.map((d, i) => ({ x: d, y: Math.max(0, +(cpLes[i] - cLes[i]).toFixed(2)) }));
+
+    return { dates, n, captions, cLes, cHrs, cpLes, cpHrs, cUniq, tgtLesson, behind, actHrs, actLes, lagHrs, lagLes, curLessons: model.curriculum.count, nSP };
+  }
+
+  // Write one frame. Deliberately touches only text nodes and one chart dataset.
+  function replayApplyFrame(i) {
+    const R = REPLAY; if (!R) return;
+    const T = R.timeline;
+    i = clamp(i, 0, T.n - 1);
+    R.idx = i;
+    const date = T.dates[i];
+
+    // as-of chip
+    const live = $('#d127v5-live');
+    if (live) { live.classList.add('v5-timetravel'); live.innerHTML = '⏪ ' + escHtml(fdShort(date)); }
+
+    // KPI tiles — direct text, no tween (a tween would fight the playback clock)
+    const isHrs = STATE.unit === 'hours';
+    const done = isHrs ? T.cHrs[i] : T.cUniq[i];
+    const plan = isHrs ? T.cpHrs[i] : T.cpLes[i];
+    const delta = done - plan;
+    const slots = isHrs ? T.nSP * MODEL.curriculum.totalHours : T.nSP * T.curLessons;
+    const setKpi = (key, text, color) => {
+      const elv = $('.v5-kpi-v[data-kpi="' + key + '"]');
+      if (!elv) return;
+      elv.textContent = text;
+      if (color) elv.style.color = color;
+    };
+    setKpi('progress', slots ? (T.cUniq[i] / slots * 100).toFixed(1) + '%' : '—');
+    setKpi('hoursDelta', signed(T.cHrs[i] - T.cpHrs[i], fH), T.cHrs[i] >= T.cpHrs[i] ? 'var(--v5-good)' : 'var(--v5-bad)');
+    setKpi('lessonsDelta', signed(T.cUniq[i] - T.cpLes[i], fL), T.cUniq[i] >= T.cpLes[i] ? 'var(--v5-good)' : 'var(--v5-bad)');
+    if (T.tgtLesson[i] >= 0) setKpi('vsTarget', T.behind[i] + ' SP');
+
+    // progress chart — swap the prebuilt Actual/lag slice on the LIVE instance
+    const ch = CHARTS['progress-chart'];
+    if (ch) {
+      const gap = STATE.progressLevel === 'gap';
+      const src = gap ? (isHrs ? T.lagHrs : T.lagLes) : (isHrs ? T.actHrs : T.actLes);
+      const target = ch.data.datasets.find(d => gap ? /lag/i.test(d.label) : d.label === 'Actual');
+      if (target) { target.data = src.slice(0, i + 1); ch.update('none'); }
+    }
+
+    // scrub + caption
+    if (R.ui) {
+      R.ui.fill.style.width = (i / Math.max(1, T.n - 1) * 100).toFixed(2) + '%';
+      R.ui.date.textContent = fd(date);
+      const cap = T.captions[date];
+      if (cap) { R.ui.caption.textContent = cap; R.ui.caption.classList.add('v5-replay-cap-on'); }
+      else if (!R.holdUntil) R.ui.caption.classList.remove('v5-replay-cap-on');
+    }
+    return !!T.captions[date];
+  }
+
+  function buildReplayUI() {
+    const host = $('#d127v5-body');
+    if (!host) return null;
+    const bar = el('div', { class: 'v5-replay', id: 'd127v5-replay' });
+    const playBtn = el('button', { class: 'v5-btn v5-primary', title: 'Pause / resume' }, ['⏸']);
+    const dateEl = el('span', { class: 'v5-replay-date' }, ['—']);
+    const track = el('div', { class: 'v5-replay-track', title: 'Drag to scrub through the batch’s history' });
+    const fill = el('i', { class: 'v5-replay-fill' });
+    track.appendChild(fill);
+    const caption = el('div', { class: 'v5-replay-cap' }, ['']);
+    const speedSet = el('div', { class: 'v5-chipset' });
+    [[0.5, '0.5×'], [1, '1×'], [2, '2×'], [4, '4×']].forEach(([v, l]) => {
+      const b = el('button', { class: 'v5-chip' + (v === 1 ? ' on' : ''), title: 'Playback speed' }, [l]);
+      b.addEventListener('click', () => {
+        REPLAY.speed = v;
+        $$('.v5-chip', speedSet).forEach(c => c.classList.toggle('on', c.textContent === l));
+      });
+      speedSet.appendChild(b);
+    });
+    const closeBtn = el('button', { class: 'v5-btn', title: 'Stop and return to live data' }, ['✕ Exit']);
+    bar.appendChild(el('div', { class: 'v5-replay-row' }, [
+      playBtn, dateEl, track,
+      el('span', { class: 'v5-zoom-l' }, ['Speed']), speedSet, closeBtn,
+    ]));
+    bar.appendChild(caption);
+    host.parentNode.insertBefore(bar, host);
+
+    playBtn.addEventListener('click', () => {
+      REPLAY.paused = !REPLAY.paused;
+      playBtn.textContent = REPLAY.paused ? '▶' : '⏸';
+      if (!REPLAY.paused) { REPLAY.last = performance.now(); REPLAY.holdUntil = 0; tickReplay(); }
+    });
+    closeBtn.addEventListener('click', stopReplay);
+    let drag = false;
+    const scrub = clientX => {
+      const r = track.getBoundingClientRect();
+      const frac = clamp((clientX - r.left) / r.width, 0, 1);
+      replayApplyFrame(Math.round(frac * (REPLAY.timeline.n - 1)));
+    };
+    track.addEventListener('pointerdown', e => { drag = true; track.setPointerCapture(e.pointerId); REPLAY.paused = true; playBtn.textContent = '▶'; scrub(e.clientX); });
+    track.addEventListener('pointermove', e => { if (drag) scrub(e.clientX); });
+    track.addEventListener('pointerup', () => { drag = false; });
+    return { bar, playBtn, dateEl, track, fill, caption, date: dateEl };
+  }
+
+  // Time-based clock: advance by elapsed real time, so a slow frame skips ahead
+  // instead of stretching the timeline (that's what makes it feel smooth).
+  const REPLAY_DAYS_PER_SEC = 26;
+  function tickReplay() {
+    const R = REPLAY;
+    if (!R || R.paused) return;
+    const now = performance.now();
+    if (R.holdUntil && now < R.holdUntil) { R.raf = requestAnimationFrame(tickReplay); return; }
+    R.holdUntil = 0;
+    const dt = Math.min(0.25, (now - R.last) / 1000);
+    R.last = now;
+    R.pos += dt * REPLAY_DAYS_PER_SEC * R.speed;
+    const next = Math.floor(R.pos);
+    if (next >= R.timeline.n - 1) {
+      replayApplyFrame(R.timeline.n - 1);
+      R.finished = true;
+      if (R.ui) { R.ui.playBtn.textContent = '↺'; R.ui.caption.textContent = 'Replay complete — exit to return to live data.'; R.ui.caption.classList.add('v5-replay-cap-on'); }
+      R.paused = true;
+      return;
+    }
+    const onKey = replayApplyFrame(next);
+    // Pause on a key date so the caption is actually readable.
+    if (onKey && R.lastKey !== next) { R.lastKey = next; R.holdUntil = now + 1400 / R.speed; }
+    R.raf = requestAnimationFrame(tickReplay);
+  }
+
   function toggleReplay() {
-    if (STATE.replay && STATE.replay.playing) stopReplay();
+    if (REPLAY) stopReplay();
     else startReplay();
   }
   function startReplay() {
     if (!MODEL) return;
-    const days = U.datesRange(MODEL.batchStart, MODEL.todayBKK);
-    if (days.length < 2) { toast('Not enough history to replay'); return; }
-    const keySet = new Set();
-    MODEL.targets.list.forEach(t => keySet.add(t.date));
-    MODEL.students.forEach(s => MODEL.keyPoints.forEach(kp => { const f = s.flownByNum[kp.num]; if (f) keySet.add(f[0].date); }));
-    // sample down to at most 90 frames for a smooth ~5-8s replay, always
-    // including every key date so pauses land where they should
-    const stride = Math.max(1, Math.floor(days.length / 90));
-    const frames = [];
-    for (let i = 0; i < days.length; i += stride) frames.push(days[i]);
-    if (frames[frames.length - 1] !== days[days.length - 1]) frames.push(days[days.length - 1]);
-    days.forEach(d => { if (keySet.has(d) && !frames.includes(d)) frames.push(d); });
-    frames.sort();
-    STATE.replay = { playing: true, idx: 0, frames, speed: 1, keySet };
-    const btn = $('#d127v5-story-btn'); if (btn) { btn.textContent = '⏸ Pause'; btn.classList.add('on'); }
-    stepReplay();
-  }
-  function stepReplay() {
-    const r = STATE.replay; if (!r || !r.playing) return;
-    setAsOf(r.frames[r.idx]);
-    r.idx++;
-    if (r.idx >= r.frames.length) { stopReplay(); return; }
-    const pause = r.keySet.has(r.frames[r.idx - 1]) ? 1100 : 90;
-    r._t = setTimeout(stepReplay, pause / r.speed);
+    // Replay is a Trend-section story: the growing Actual line is the whole
+    // point, so make sure that section (and its chart) is mounted first.
+    if (STATE.section !== 'trend') goSection('trend');
+    const timeline = buildReplayTimeline(MODEL);
+    if (timeline.n < 3) { toast('Not enough history to replay'); return; }
+    REPLAY = { timeline, idx: 0, pos: 0, speed: 1, paused: false, last: performance.now(), holdUntil: 0, lastKey: -1, ui: null };
+    REPLAY.ui = buildReplayUI();
+    const btn = $('#d127v5-story-btn'); if (btn) { btn.textContent = '⏹ Stop'; btn.classList.add('on'); }
+    // Let the Trend panels mount before the first frame writes into them.
+    setTimeout(() => { if (!REPLAY) return; REPLAY.last = performance.now(); replayApplyFrame(0); tickReplay(); }, 260);
   }
   function stopReplay() {
-    if (STATE.replay) { clearTimeout(STATE.replay._t); STATE.replay.playing = false; }
+    if (!REPLAY) return;
+    if (REPLAY.raf) cancelAnimationFrame(REPLAY.raf);
+    if (REPLAY.ui && REPLAY.ui.bar) REPLAY.ui.bar.remove();
+    REPLAY = null;
     const btn = $('#d127v5-story-btn'); if (btn) { btn.textContent = '▶ Story'; btn.classList.remove('on'); }
-    setAsOf(null);
+    // One real state restore at the end — the expensive path runs once, not 400×.
+    STATE.asOf = null;
+    rebuildModel();
+    renderSelfCheck();
+    KPI_PREV = {};
+    applyState(['asOf', 'unit', 'scope', 'range']);
+    mountReel(true);
+    refreshCommandBarChrome();
   }
 
   // ─────────────────────────────────────────────────────────────────────────

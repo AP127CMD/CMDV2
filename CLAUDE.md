@@ -29,7 +29,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p167` (all currently at p166)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p175` (all currently at p174)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -67,7 +67,22 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p166` (2026-08-12 — **AP127 Detail V5 labelled as Draft** — sidebar
+**Last known:** all files `p174` (2026-08-12 — **AP127 Detail V5 — UX/UI pass:**
+sizing system (charts grow with series count then rely on zoom/pan instead of cramming; grids get
+a Zoom stepper with an 11px readable floor instead of shrinking further), Syllabus + Calendar
+rebuilt as one real `<table>` in the "modern roster" style (ref Aircraft Status SP Stat) with
+restored V4 detail (lesson/phase/milestone click-through, target dates, today-target column, lag
+indicator, daily hour+lesson totals, idle-gap dashes distinguishing closed vs still-open gaps),
+Trend's Plan/Target lines fixed to scale per-SP instead of showing the 28-SP total against a
+single student's line, command bar given labels+tooltips, and — the actual fix for reported
+"stuttering" — Replay rewritten from a per-frame full-model-rebuild into a precomputed-timeline
+engine (one prefix-sum pass, O(1) per-frame lookups, only KPI text + one chart dataset swap per
+frame). Also fixed a real bug where grid cells silently compressed to ~20% of their declared width
+(`table-layout:auto` + `contain:layout` ancestor — fixed with an explicit `<table>` width). Full
+write-up incl. a debugging note about this dev server's stale-HTML-cache behavior: REVAMP.md's
+p174 entry. Only V5's own files touched (`js/view-cohort-v5.js`, `js/ap127-v5-layout.js`,
+`css/cohort-v5.css`); `git diff --stat` on the three DB_Share-proxied files confirmed empty.) p166
+(2026-08-12 — **AP127 Detail V5 labelled as Draft** — sidebar
 nav reads "AP127 Detail V5 (Draft)", in-page brand shows a DRAFT badge with a tooltip. Cosmetic
 only, no ids changed. Files: `js/shell.js`, `js/view-cohort-v5.js`, `css/cohort-v5.css`.) p165
 (2026-08-12 — **AP127 Detail V5 — first round of user feedback on

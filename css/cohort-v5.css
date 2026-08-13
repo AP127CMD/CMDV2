@@ -81,6 +81,10 @@
 .v5-panel-s{font-size:calc(10px*var(--v5-scale));color:var(--v5-tx3);}
 .v5-panel-body{padding:calc(10px*var(--v5-scale));}
 .v5-panel-toolbar{display:flex;gap:4px;align-items:center;margin-left:auto;flex-wrap:wrap;}
+/* Charts get an explicit box height (computed from series count, clamped) and a
+   min-height so they can never be squeezed flat by a narrow grid column. */
+.v5-chartbox{position:relative;width:100%;min-height:200px;}
+.v5-charthint{font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--v5-tx3);margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .v5-skeleton{min-height:220px;display:flex;align-items:center;justify-content:center;color:var(--v5-tx3);font-family:'JetBrains Mono',monospace;font-size:10px;}
 .v5-skeleton::before{content:'';width:22px;height:22px;border-radius:50%;border:2px solid var(--v5-bd);border-top-color:var(--v5-acc);animation:v5spin .8s linear infinite;margin-right:8px;}
 @keyframes v5spin{to{transform:rotate(360deg)}}
@@ -183,6 +187,11 @@
 .v5-rt tfoot tr:first-child td{bottom:18px;}
 .v5-rt tfoot .v5-rt-name,.v5-rt tfoot .v5-rt-tot{z-index:5;}
 .v5-rt-legend{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--v5-tx2);margin-bottom:8px;}
+/* Zoom stepper — the "other technique" a grid switches to instead of shrinking
+   cells below the readable minimum. */
+.v5-zoombar{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.v5-zoom-l{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--v5-tx3);text-transform:uppercase;letter-spacing:.09em;}
+.v5-zoom-note{font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--v5-tx3);}
 .v5-rt-swatch{width:11px;height:11px;border-radius:2px;display:inline-block;margin-right:3px;vertical-align:-2px;}
 /* Long-idle / lag run: a dashed rule through the empty cells, plus a faint
    wash so the whole run reads as one band at 13px cell width. */
@@ -206,6 +215,15 @@
 .v5-popover-anchor{position:relative;}
 .v5-scrubber{position:relative;height:14px;background:var(--v5-s3);border-radius:3px;cursor:pointer;margin:8px 0;}
 .v5-scrub-thumb{position:absolute;top:-3px;width:4px;height:20px;background:var(--v5-blue);border-radius:2px;cursor:grab;}
+
+/* ---- Replay ("Story") control bar --------------------------------------------- */
+.v5-replay{flex-shrink:0;background:var(--v5-s2);border-bottom:1px solid var(--v5-bd);padding:7px 12px;}
+.v5-replay-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.v5-replay-date{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--v5-acc);font-weight:700;min-width:88px;}
+.v5-replay-track{flex:1;min-width:160px;height:8px;background:var(--v5-s3);border-radius:99px;position:relative;cursor:pointer;touch-action:none;}
+.v5-replay-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--v5-acc);border-radius:99px;pointer-events:none;}
+.v5-replay-cap{font-size:11.5px;color:var(--v5-tx3);margin-top:5px;min-height:15px;opacity:0;transition:opacity .18s;}
+.v5-replay-cap.v5-replay-cap-on{opacity:1;color:var(--v5-warn);}
 
 /* ---- Customise drawer ------------------------------------------------------- */
 .v5-drawer-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:none;}

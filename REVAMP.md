@@ -3017,3 +3017,101 @@ in-page command bar brand now shows a "DRAFT" badge next to "AP127 V5" with a to
 the tab is still under active development. Purely cosmetic — no behavior, no DOM id, and no panel
 id changed (saved layouts / share links still work). Files touched: `js/shell.js`,
 `js/view-cohort-v5.js`, `css/cohort-v5.css` (p165→p166).
+
+---
+
+## p174 (2026-08-12 — **AP127 Detail V5 — UX/UI pass: sizing system, replay engine
+rewrite, Syllabus/Calendar rebuilt in the "modern roster" style.** User: "pls go through all UX
+UI again. Fix all problem, focus on layout, sizing, UX UI, readability. Charts should not cramped
+when more data added, it should have limit on the max/min size of all UI... may be some buffer
+system." Full pass, several real bugs found and fixed live:
+
+**Layout fixes.** Command bar was 12 unexplained chips ("don't know what these are using for") —
+every control group now has a visible label + explanatory tooltip (Measure in / Show / Period /
+Data as of / Find SP / Actions). Pulse's Pace vs Target and Watchlist panels were using invalid
+`span:7`/`span:5` values — `css/cohort-v5.css` only defined spans 4/6/8/12, so the unmatched spans
+silently applied NO grid-column rule and the panels collapsed to a single 1/12-wide sliver. Fixed
+by defining every span 1–12 and switching those two panels (plus Trend's Output/Streaks) to
+full-width, one per line. "People" section renamed to "Each SP" per request.
+
+**Trend accuracy bug.** The merged Progress-vs-Plan chart's Plan/Target reference lines are batch
+totals (× 28 SP) — switching scope to Per-SP or a single SP still showed the 28-SP-scale
+reference against 1-SP-scale actual lines, ~28x too high and effectively unusable. Fixed:
+Plan/Target now divide by student count outside batch scope, labelled "Plan / SP" / "Target / SP".
+
+**Sizing system** (`SIZE` constants + `chartHeight()`/`fitCell()`/`gridZoomBar()` helpers, new).
+Charts now grow with series count (base + N×perSeries) up to a hard cap, then rely on zoom/pan
+instead of cramming more lines into the same pixels — confirmed live: switching Trend to "All SP"
+(28 lines) grew the chart from 310px to 435px instead of squeezing 28 lines into a fixed 320px box.
+Chart.js zoom/pan enabled on every V5 chart, gated behind Ctrl/⌘+scroll (V4's own p138 lesson —
+plain wheel-zoom was reported "all over the place, very sensitive"). Grids (Curriculum, Calendar)
+get an explicit Zoom stepper (Fit/14/18/22/26/30px) — "Fit" clamps to a floor of 11px and the grid
+scrolls horizontally rather than compressing cells below that floor.
+
+**Real bug: grid cells silently compressed to ~20% of their declared width.** `table-layout:auto`
+tables with no explicit `<table>` width, nested inside a `.v5-panel` that uses
+`content-visibility:auto`/`contain:layout` (needed for lazy-mount performance), had every per-cell
+`width:22px` style overridden down to ~4.5px regardless of what was declared — confirmed live via
+direct DOM measurement (`getBoundingClientRect()`), and confirmed the fix by manually setting
+`table.style.width` in the console, which immediately restored the correct 22px/11px cell sizes.
+Fixed by computing and setting an explicit `<table>` width (identity columns + `count × CELL_W`)
+on both grids — the table now genuinely grows to that width and the wrapper scrolls, instead of
+the browser silently shrinking every column to fit.
+
+**Syllabus rebuilt as ONE roster-style grid** (ref: Aircraft Status' SP Stat/FI Stat roster,
+`js/view-aircraft.js`), replacing the two-mode canvas (Bars|Cells) with a single real `<table>`
+combining both: phase-colour cell fill (bars-style extent AND cells-style per-lesson detail in one
+view). Restored V4 features that were missing from the first V5 build: click-through detail modals
+for lesson cells / phase headers / milestone icons (lesson code, standard duration, planned date,
+flown history, phase objective/completion-standard text), an ETC column per SP, target-checkpoint
+DATE labels above their own column (vertical text, not just a flagged column), a "today's target"
+column (blue) computed from the interpolated batch target lesson, and a dashed lag indicator drawn
+on every cell between an SP's own progress and today's target. Sticky identity-column offsets
+(name/vs-target/ETC) are now computed from one set of width constants instead of hardcoded
+mismatched pixel values (the mismatch was letting phase headers slide under the identity block).
+
+**Calendar rebuilt the same way** — real `<table>`, sticky name+period columns, Monday/month
+rules, today outline, per-cell hours with phase-colour fill. Added a footer showing batch total
+hours AND lessons per day (was missing), dashed red rules for closed idle gaps ≥7 days between two
+flights, and a distinct dotted amber rule for a gap that's STILL open through to today (was
+previously drawn identically to a closed gap, losing the "still idle right now" signal). Both
+grids get the same Zoom stepper as Syllabus.
+
+**Replay ("Story") rewritten as a precomputed-frame engine — this is the actual fix for the
+reported stutter.** The first version called `setAsOf()` once per frame, which triggers a FULL
+model rebuild (every flight for all 28 SP) + `renderSelfCheck()` (11 invariants over the whole
+dataset) + `applyState()` re-rendering EVERY mounted panel — including, on the Syllabus section, a
+2,688-cell table rebuild, and on Trend, destroying and recreating Chart.js instances — roughly 90
+times in a row for one playback. Rewritten around one precompute pass (`buildReplayTimeline()`):
+per-day batch deltas and per-SP unique-lesson-completion counts are prefix-summed ONCE into flat
+typed arrays, so every frame during playback is an O(1) array lookup. Per-frame work during
+playback is now limited to: writing KPI tile text directly, and swapping the Actual/lag dataset's
+already-built point array on the LIVE Chart.js instance via `update('none')` (no re-creation, no
+animation, no layout pass) — confirmed live via a manual scrub: jumping the timeline instantly
+re-renders with zero visible lag, versus the old version's full-panel-rebuild-per-frame cost.
+Playback itself is now a `requestAnimationFrame` time-based clock (elapsed real time × days/sec,
+not a fixed per-frame delay) so a slow frame skips ahead instead of stretching the timeline, with
+real controls: play/pause, a draggable scrub track (auto-pauses playback), speed presets
+(0.5×/1×/2×/4×), and a caption band that shows why a keydate got a longer pause (target checkpoint
+date, first-in-batch milestone, or the single worst daily lag jump) — computed from the same
+precomputed arrays, not hardcoded. Exiting restores live state with exactly ONE real model
+rebuild/re-render (not one per frame).
+
+**Verified live** end-to-end after a genuinely confusing debugging detour (documented for future
+sessions): this local dev server's `index.html` document itself was being served from a stale
+browser-cache snapshot across `force:true` navigations to the same URL — script tags referencing
+an OLD `?v=pNN` token kept loading despite the file on disk being current, which looked exactly
+like a code regression (mount functions "never called") until confirmed via
+`document.querySelector('script[src*="..."]').src` showing the stale token. **Fix for future
+sessions: append a throwaway `?nocache=<timestamp>` query param on the HTML document URL itself**
+(not just the asset `?v=` tokens) when the served script doesn't match what was just edited — a
+plain reload/force-navigate to the identical URL is not reliable here. Once on a verified-fresh
+load: Pulse/Trend/Syllabus/Calendar all render correctly, grid width fix confirmed via direct
+`table.style.width`/cell `getBoundingClientRect()` measurement (Syllabus: 1393px table, ~11px
+cells; Calendar: 1308px table, ~14px cells), zoom stepper functional, Trend chart height grows
+310px→435px switching Batch→All SP, per-SP Plan/Target scaling confirmed via dataset inspection,
+Replay's manual scrub confirmed instant/glitch-free (the actual claim under test), Exit restores
+live state cleanly, self-check 11/11 throughout, zero new console errors, V4 reloaded and confirmed
+unchanged. `git diff --stat` on the three DB_Share-proxied files confirmed empty throughout.
+
+Files touched: `js/view-cohort-v5.js`, `js/ap127-v5-layout.js`, `css/cohort-v5.css`.
