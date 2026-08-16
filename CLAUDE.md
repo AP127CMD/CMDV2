@@ -1,5 +1,42 @@
 # CMDV2 — Claude Code Context
 
+## Note (2026-08-16): Watchdog's recurring "Exceeded CPU Limit" outage — root-caused for real this time, fixed at the source
+
+User reported "Watchdog system is down??". Confirmed: `ap127-watchdog` had been silently dead since
+2026-08-15 23:50 UTC (~8h) — `wrangler tail` showed `"*/5 * * * *" - Exceeded CPU Limit` on every
+cron tick, the same signature as 3 prior incidents (2026-07-11/13, 2026-07-14 hardening, 2026-07-21
+19h outage). Immediate recovery: a plain `cd watchdog && npx wrangler deploy` (fresh isolate, no code
+change — same fix as every prior occurrence).
+
+**Real root cause, found this time (previous incidents never fully pinned it down):** the upstream
+feed had grown from ~1.4 MB (last hardening, 2026-07-14) to ~2.2 MB, and the full `JSON.parse` of the
+WHOLE feed — done every 5 min, BEFORE `withinSnapshotWindow()` could filter it down — was the
+dominant CPU cost, scaling with total feed size regardless of the 2026-07-14 windowing fix. An
+in-worker fix was attempted first (regex-based "extract only the window's bytes, skip JSON.parse for
+the rest") — 12 tests, all green, but benchmarked against the real live feed it came out **2x SLOWER**
+than a plain full `JSON.parse` (V8's native parser beats a hand-rolled JS scan of comparable size).
+Reverted before deploying, not shipped — see the CMDV2 git history around this date for the dead end
+if it's ever worth retrying differently.
+
+**Actual fix — filter at the source, not in the worker:** flight-schedule-feed (CMD_CTR)'s
+`scripts/generate_flight_data.py` now also writes `flight-data-recent.js` — same data, filtered to a
+generous `-4d/+15d` window and stripped of unused `instructors`/`resources`/`leaves` — see that repo's
+CLAUDE.md for the full design. `watchdog/src/index.js`'s `FLIGHT_SRC` now points at it instead of the
+full `flight-data.js`. Caught and fixed a real deploy gap along the way: `fetch_schedule.yml`'s commit
+step used an explicit `git add` file list that didn't know about the new file — the first CI run after
+the code change silently generated it but never committed it (confirmed via `gh api .../git/trees`),
+caught before the watchdog was switched over, so no outage from this gap. **Verified live end-to-end:**
+`/status` after the switch shows `feedSig` length `183234` (the new ~186 KB file, not 2.2 MB),
+`healthy:true`, `staleMinutes:0`, and the next cron tick completed `"*/5 * * * *" - Ok` (no CPU-limit
+kill) — first clean tick on the very first attempt with the new, ~91% smaller payload.
+
+**Still open, flagged to the user, not yet actioned:** the dead-man's-switch monitor
+(`ap127-watchdog-monitor`) still has `TELEGRAM_BOT_TOKEN` unset (`wrangler secret list` → `[]`,
+confirmed live) — it can detect a future outage but still can't alert. This is now a 2nd session's
+worth of "repeat ask" (first flagged 2026-07-21). User was given the exact command to run themselves
+(so the token never passes through a chat transcript): `cd watchdog-monitor && npx wrangler secret put
+TELEGRAM_BOT_TOKEN`.
+
 ## Note (2026-08-06): Watchdog now shows a distinct "Removed" notice, and notifications are back ON
 
 AP127 notifications were turned back on and are working — but a real user report found recent cancel
