@@ -2,7 +2,18 @@ import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons,
 import { buildCombinedMessages, sendTelegram } from './telegram.js';
 import { appendLog, getLog } from './log.js';
 
-const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flight-data.js';
+// 2026-08-16: points at CMD_CTR's small, watchdog-only pre-windowed feed (see
+// flight-schedule-feed/scripts/generate_flight_data.py:filter_recent) instead of the full
+// flight-data.js (5000+ flights, 2+ MB and growing) — fixes the recurring "Exceeded CPU Limit"
+// incidents on this worker's Workers Free plan (hard ~10ms/invocation CPU cap). A same-day
+// in-worker "skip JSON.parse for out-of-window records" attempt was tried first and benchmarked
+// SLOWER than a plain full JSON.parse (V8's native parser beats a hand-rolled JS scan of
+// comparable size) — reverted, not shipped. Filtering at the source, where CPU is free and the
+// data's already in memory, is what actually cuts the bytes this worker has to parse (~2 MB →
+// tens of KB). `withinSnapshotWindow()` below still re-applies the watchdog's own EXACT window as
+// a cheap correctness backstop — the source feed's window is deliberately a bit wider, so this can
+// only ever trim, never need to widen.
+const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flight-data-recent.js';
 
 // Sites allowed to call this Worker.
 const ALLOWED_ORIGINS = new Set([
