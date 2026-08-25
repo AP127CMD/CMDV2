@@ -1,5 +1,25 @@
 # CMDV2 — Claude Code Context
 
+## Note (2026-08-26): CC's fetch pipeline paused — CMDV2's flight data is fully frozen until the Orange Pi 4 Pro is live
+
+Not a CMDV2 bug — the whole chain upstream of it stopped on purpose. CMD_CTR's `fetch_schedule.yml`
+(the ultimate source of `flight-data.js`, which this repo mirrors) has been failing every run since
+2026-08-25 04:29 UTC because the Ops Portal now requires Google sign-in and Google's bot-detection
+permanently blocks the CI-launched browser from completing it. A same-day backoff fix made the repeated
+failures cheap, but every throttled run was still failing — so on 2026-08-26 the workflow was disabled
+outright (`gh workflow disable`) and the CF dispatcher's trigger for it paused too, rather than left to
+keep churning for no benefit. **Net effect: `flight-data.js` (CC and its CMDV2 mirror) is frozen at
+whatever it last had, with no fallback of any kind, until either a durable fix goes live or someone
+manually re-authenticates.** CMDV2's own `refresh-data.yml` cron still runs hourly — it just has
+nothing new to mirror, so don't mistake a "successful" refresh run for fresh data; check
+`flight-data.js`'s `fetchedAt` field directly if data staleness is ever in question.
+
+**Durable fix in progress, not yet deployed:** an Orange Pi 4 Pro (4GB) running a persistent,
+manually-signed-in real Chromium, with `fetch_schedule.py` attaching to it over CDP instead of
+launching (and failing to log into) its own — the exact path already proven live once via a manual
+run. Full detail: `flight-schedule-feed/CLAUDE.md` and `docker/README.md` (that repo), `AP127_Docs`
+README §10 and §3.1, and `/Users/nugui/CLAUDE/HomeServer/` (2026-08-25/26 entries throughout).
+
 ## Note (2026-08-16): Watchdog's recurring "Exceeded CPU Limit" outage — root-caused for real this time, fixed at the source
 
 User reported "Watchdog system is down??". Confirmed: `ap127-watchdog` had been silently dead since
