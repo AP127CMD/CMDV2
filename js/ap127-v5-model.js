@@ -467,7 +467,14 @@
         // behind, so a signed line spent its life in negative territory.
         lag.push({ x: d, y: Math.max(0, +(rp - ra).toFixed(2)) });
       });
-      return { actual, plan, lag, dates: upto };
+      // Plan drawn to the curriculum's FULL finish date, not clipped to asOf —
+      // "Plane [sic Plan] should show up to the finish date not current date"
+      // (round 3 feedback). Actual/lag stay clipped to asOf since there's no
+      // real data past today; the reference schedule itself isn't time-travel-
+      // dependent, so it can run all the way to planEndDate regardless.
+      let rpFull = 0;
+      const planFull = Object.keys(pMap).sort().map(d => { rpFull += pMap[d] || 0; return { x: d, y: +rpFull.toFixed(2) }; });
+      return { actual, plan, planFull, lag, dates: upto };
     };
     const hours = mk(actH, planH), lessons = mk(actL, planL);
 

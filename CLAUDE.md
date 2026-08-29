@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p175` (all currently at p174)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p176` (all currently at p175)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -124,7 +124,24 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p174` (2026-08-12 — **AP127 Detail V5 — UX/UI pass:**
+**Last known:** all files `p175` (2026-08-12 — **AP127 Detail V5 — round-3 feedback: Trend
+accuracy + Report overhaul.** Trend: Progress vs Plan's Plan line now runs to the curriculum's
+finish date (not clipped to today — new `series.*.planFull` in `js/ap127-v5-model.js`, computed
+over the full planned-date range regardless of asOf, vs Actual/lag which correctly stay clipped to
+asOf); "Target" renamed "Revised-target"; Output chart's Required overlay changed from a single dot
+sitting on the moving-avg line (the reported "glitch" — it wasn't the average itself, just Required
+visually fused onto it) to its own full-width dashed red reference line, plus a new plain-text
+"Required · Actual · Gap" readout under the chart. Report: now dark by default (matches the site's
+own cockpit theme — was hardcoded light despite an unused `.v5-report-dark` class already existing;
+print stays light/ink-friendly via a `!important` override regardless), Executive Summary gained an
+explicit "Hours done: X/Y (Z%) · Remaining: Wh" line, Pace vs Target headers spelled out
+(Req→Required, Act→Actual), report Roster drops 4 columns (Call sign/Last lesson/Day Δ/vs target,
+report-only — the live People panel's own column picker is untouched), and two V4-parity panels
+were added to the report that weren't there before: Individual Lead/Lag vs Plan (all 28 SP,
+`progressChartCfg()` now takes an optional override so this can force per-SP/gap mode independent
+of the live command bar) and Lesson Completion Matrix (new compact print-safe HTML/CSS grid, not
+a canvas — 96 lesson columns fit to the report's 703px width via `<colgroup>`, phase-colored,
+retake-flagged). Full write-up: REVAMP.md's p175 entry.) p174 (2026-08-12 — **AP127 Detail V5 — UX/UI pass:**
 sizing system (charts grow with series count then rely on zoom/pan instead of cramming; grids get
 a Zoom stepper with an 11px readable floor instead of shrinking further), Syllabus + Calendar
 rebuilt as one real `<table>` in the "modern roster" style (ref Aircraft Status SP Stat) with

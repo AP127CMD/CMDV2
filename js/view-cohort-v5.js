@@ -563,7 +563,7 @@
       const n = perSP ? 1 : model.batch.n;
       const wrap = el('div', {});
       const table = el('table', { class: 'v5-pacetbl' });
-      table.appendChild(el('thead', {}, [el('tr', {}, [el('th', {}, ['Period']), el('th', {}, ['Req']), el('th', {}, ['Act']), el('th', {}, ['Gap'])])]));
+      table.appendChild(el('thead', {}, [el('tr', {}, [el('th', {}, ['Period']), el('th', {}, ['Required']), el('th', {}, ['Actual']), el('th', {}, ['Gap'])])]));
       const tbody = el('tbody', {});
       const rows = [
         ['Month', pace ? pace.reqMonthHrsB : null, pace ? pace.reqMonthLesB : null, act.actMonthHrsB, act.actMonthLesB],
@@ -684,13 +684,20 @@
   // chart even when the Trend section isn't the one currently mounted (its
   // canvas/Chart.js instance only exists while that section is on screen;
   // the report must be complete regardless of which section the user is on).
-  function progressChartCfg(model) {
+  function progressChartCfg(model, ov) {
+    ov = ov || {};
+    // Optional overrides let a caller (the report's dedicated Lead/Lag chart,
+    // below) force per-SP/gap mode over ALL students regardless of whatever
+    // the live command bar currently has selected — the live panel itself
+    // still just calls this with no overrides, reading STATE as before.
+    const level = ov.level || STATE.progressLevel;
+    const scopeMode = ov.scope || STATE.scope;
     const isHrs = STATE.unit === 'hours';
     const s = isHrs ? model.series.hours : model.series.lessons;
     // Batch aggregate only when scope is 'batch'. 'sp' (one student) previously
     // fell into the batch branch and drew the 28-SP aggregate line — so picking
     // a single SP showed everything BUT that SP's own progress.
-    const aggregate = STATE.scope === 'batch';
+    const aggregate = scopeMode === 'batch';
     // Plan/Target come out of the model as BATCH totals (each lesson's planned
     // value × 28 SP). Against per-student actual lines those references sit ~28x
     // too high, which is what made the per-SP view unreadable. Divide by the
@@ -700,14 +707,17 @@
     const scaleSeries = arr => refDiv === 1 ? arr : arr.map(p => ({ x: p.x, y: +(p.y / refDiv).toFixed(2) }));
     const refSuffix = aggregate ? '' : ' / SP';
     const datasets = [];
-    if (STATE.progressLevel === 'level') {
-      datasets.push({ label: 'Plan' + refSuffix, data: scaleSeries(s.plan), borderColor: '#cbd5e1', borderDash: [6, 4], borderWidth: 1.4, pointRadius: 0, tension: 0, order: 3 });
+    if (level === 'level') {
+      // Plan is drawn all the way to the curriculum's finish date (model.js's
+      // planFull), not clipped to today/asOf — the reference schedule itself
+      // doesn't depend on how far the batch has actually gotten.
+      datasets.push({ label: 'Plan' + refSuffix, data: scaleSeries(s.planFull), borderColor: '#cbd5e1', borderDash: [6, 4], borderWidth: 1.4, pointRadius: 0, tension: 0, order: 3 });
       const targetSeries = isHrs ? model.series.target.hours : model.series.target.lessons;
-      if (targetSeries.length) datasets.push({ label: 'Target' + refSuffix, data: scaleSeries(targetSeries), borderColor: '#f43f5e', borderDash: [5, 2], borderWidth: 2, pointRadius: 2, pointBackgroundColor: '#f43f5e', tension: 0, order: 1.5 });
+      if (targetSeries.length) datasets.push({ label: 'Revised-target' + refSuffix, data: scaleSeries(targetSeries), borderColor: '#f43f5e', borderDash: [5, 2], borderWidth: 2, pointRadius: 2, pointBackgroundColor: '#f43f5e', tension: 0, order: 1.5 });
       if (aggregate) {
         datasets.push({ label: 'Actual', data: s.actual, borderColor: '#e88aff', borderWidth: 2.4, pointRadius: 0, tension: 0, order: 1 });
       } else {
-        const list = scopedStudents();
+        const list = ov.students || scopedStudents();
         const solo = list.length === 1;
         list.forEach(sp => {
           const flown = sp.flown.slice().sort((a, b) => a.date.localeCompare(b.date));
@@ -724,7 +734,7 @@
         // Per-SP gap uses the PER-SP plan (planByDate is per-lesson minutes, not
         // ×n), so this branch was already per-student — kept as-is.
         const plannedByDate = model.curriculum.planByDate;
-        const list = scopedStudents();
+        const list = ov.students || scopedStudents();
         const solo = list.length === 1;
         list.forEach(sp => {
           let ra = 0, rp = 0; const dates = [...new Set([...sp.flown.map(f => f.date), ...Object.keys(plannedByDate)])].filter(d => d <= model.asOf).sort();
@@ -748,7 +758,7 @@
         },
         scales: {
           x: { type: 'time', time: { unit: 'month', displayFormats: { day: 'd MMM', week: 'd MMM', month: 'MMM yy' } }, ticks: { font: { family: 'JetBrains Mono', size: 8 }, color: '#6e7681', maxTicksLimit: 12 }, grid: { color: '#21262d' } },
-          y: { beginAtZero: STATE.progressLevel === 'gap', ticks: { font: { family: 'JetBrains Mono', size: 9 }, color: '#8b949e' }, grid: { color: '#21262d' } },
+          y: { beginAtZero: level === 'gap', ticks: { font: { family: 'JetBrains Mono', size: 9 }, color: '#8b949e' }, grid: { color: '#21262d' } },
         },
       },
     };
@@ -767,15 +777,35 @@
     },
     mount(container, model) {
       container.appendChild(el('div', { class: 'v5-chartbox', style: 'height:' + chartHeight(3, { base: 280, perSeries: 0, max: 340 }) + 'px' }, [el('canvas', { id: 'd127v5-output' })]));
+      container.appendChild(el('div', { id: 'd127v5-output-gap', class: 'v5-charthint' }));
       container.appendChild(el('div', { class: 'v5-charthint' }, ['Ctrl/⌘ + scroll to zoom · drag to pan · ', el('button', { class: 'v5-chip', onclick: () => { const c = CHARTS.output; if (c && c.resetZoom) c.resetZoom(); } }, ['⟳ Reset zoom'])]));
       this.update(null, model);
       return {};
     },
     update(_h, model) {
       CHARTS.output = mkChart('d127v5-output', outputChartCfg(model));
+      const hint = $('#d127v5-output-gap');
+      if (hint) {
+        const g = outputRequiredInfo(model);
+        hint.textContent = g ? `Required ${fUnit(g.req, STATE.unit)}/period · Actual ${fUnit(g.actual, STATE.unit)} · Gap ${signed(g.gap, v => fUnit(v, STATE.unit))} vs latest closed period` : '';
+      }
     },
     destroy() { if (CHARTS.output) { CHARTS.output.destroy(); delete CHARTS.output; } },
   });
+  // Required-pace figure for the latest CLOSED period — shared by the chart
+  // (dashed reference line) and the panel's plain-text gap readout below it,
+  // so the two can never disagree.
+  function outputRequiredInfo(model) {
+    const out = model.output({ unit: STATE.unit, period: STATE.lbPeriod, showAll: STATE.lbShowAll, start: rangeStart(), end: model.asOf });
+    const pace = model.pace;
+    if (!pace || out.gapIdx < 0) return null;
+    const reqPer = STATE.lbPeriod === 'day' ? pace.reqDayHrsB : STATE.lbPeriod === 'week' ? pace.reqWeekHrsB : pace.reqMonthHrsB;
+    const reqPerL = STATE.lbPeriod === 'day' ? pace.reqDayLesB : STATE.lbPeriod === 'week' ? pace.reqWeekLesB : pace.reqMonthLesB;
+    const req = STATE.unit === 'hours' ? reqPer : reqPerL;
+    if (req == null) return null;
+    const actual = out.values[out.gapIdx];
+    return { req, actual, gap: +(actual - req).toFixed(2), gapIdx: out.gapIdx, keys: out.keys };
+  }
   // Standalone chart-config builder — same reasoning as progressChartCfg()
   // above: shared by the live panel and the report sheet so a chart embeds in
   // the exported/printed report regardless of which section is on screen.
@@ -789,16 +819,18 @@
     } else {
       datasets = [{ label: STATE.unit === 'hours' ? 'Hours' : 'Lessons', data: out.values, backgroundColor: '#e88aff', borderRadius: 2, stack: 's' }];
     }
-    datasets.push({ type: 'line', label: 'Moving avg', data: out.ma, borderColor: '#38bdf8', borderWidth: 1.6, pointRadius: 0, tension: .2, order: -1 });
-    // Required-pace overlay on the latest CLOSED period.
-    const pace = model.pace;
-    if (pace && out.gapIdx >= 0) {
-      const reqPer = STATE.lbPeriod === 'day' ? pace.reqDayHrsB : STATE.lbPeriod === 'week' ? pace.reqWeekHrsB : pace.reqMonthHrsB;
-      const reqPerL = STATE.lbPeriod === 'day' ? pace.reqDayLesB : STATE.lbPeriod === 'week' ? pace.reqWeekLesB : pace.reqMonthLesB;
-      const req = STATE.unit === 'hours' ? reqPer : reqPerL;
-      if (req != null) {
-        datasets.push({ type: 'line', label: 'Required', data: out.values.map((_, i) => i === out.gapIdx ? req : null), borderColor: '#f43f5e', pointRadius: 4, pointBackgroundColor: '#f43f5e', showLine: false, order: -2 });
-      }
+    // Moving avg is its own dataset, computed purely from the bar values
+    // (model.js's `out.ma`) — it never touches the Required figure. The
+    // "glitch" reported was the old Required marker (a single floating red
+    // DOT with no line) sitting exactly on the blue moving-avg trace at the
+    // same x/y, reading as a spike in the average itself. Fixed by giving
+    // Required its own full-width dashed reference line (a flat "required
+    // pace" line, not a single point) so it's visually a distinct channel
+    // instead of a glitch-looking dot fused onto the moving average.
+    datasets.push({ type: 'line', label: 'Moving avg', data: out.ma, borderColor: '#38bdf8', borderWidth: 1.6, pointRadius: 0, tension: .2, order: -1, stack: undefined });
+    const req = outputRequiredInfo(model);
+    if (req) {
+      datasets.push({ type: 'line', label: 'Required', data: out.values.map(() => req.req), borderColor: '#f43f5e', borderDash: [7, 4], borderWidth: 1.6, pointRadius: 0, tension: 0, order: -2, spanGaps: true, stack: undefined });
     }
     return {
       type: 'bar', data: { labels, datasets },
@@ -2042,9 +2074,62 @@
     return img;
   }
 
+  // Lesson Completion Matrix (ref V4) — a compact, print-safe HTML/CSS grid
+  // (not the live section's canvas, which needs a real pointer for hit-
+  // testing) fit to the report's fixed 703px content width via a <colgroup>
+  // of equal-width columns, one per curriculum lesson, plus one wider name
+  // column. A phase-colored band sits above the grid; each SP's row shades a
+  // cell by phase color when that lesson was completed, else a neutral grey.
+  function buildReportLessonMatrix(model) {
+    const count = model.curriculum.count || 96;
+    const contentW = 639; // report sheet is 703px wide, minus its 32px×2 padding
+    const nameW = 76;
+    const cellW = Math.max(3, (contentW - nameW) / count);
+    const table = el('table', { style: `border-collapse:collapse;table-layout:fixed;width:${Math.round(nameW + cellW * count)}px;` });
+    const colgroup = el('colgroup', {}, [el('col', { style: `width:${nameW}px` })].concat(
+      Array.from({ length: count }, () => el('col', { style: `width:${cellW}px` }))));
+    table.appendChild(colgroup);
+    // Phase band — consecutive same-phase lessons merged into one colspan'd
+    // cell rather than one <td> per lesson, so 96 columns don't need 96 tiny
+    // borders to read as a band.
+    const byNumAsc = model.curriculum.byNumAsc || model.curriculum.lessons.filter(l => l.num != null).sort((a, b) => a.num - b.num);
+    const segs = [];
+    byNumAsc.forEach(l => {
+      const c = l.phase ? l.phase.c : '#6b7280', label = l.phase ? l.phase.label : 'Other';
+      const last = segs[segs.length - 1];
+      if (last && last.c === c) last.n++; else segs.push({ c, label, n: 1 });
+    });
+    const phaseRow = el('tr', {}, [el('td', { style: 'padding:0' }, [''])].concat(
+      segs.map(sg => el('td', { colspan: sg.n, style: `background:${sg.c};height:9px;padding:0;`, title: sg.label }, []))));
+    table.appendChild(el('thead', {}, [phaseRow]));
+    const tbody = el('tbody', {});
+    Model.sortStudents(model.students, STATE.sortKey).forEach(sp => {
+      const cells = [el('td', { style: 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 3px;font-size:7px;' }, [sp.shortName])];
+      for (let n = 1; n <= count; n++) {
+        const hit = (sp.flownByNum && sp.flownByNum[n]) || null;
+        const bg = hit ? (hit[0].phase ? hit[0].phase.c : '#e88aff') : 'var(--v5-bd)';
+        const retake = hit && hit.length > 1;
+        cells.push(el('td', { style: `background:${bg};padding:0;height:8px;${retake ? 'box-shadow:inset 0 0 0 1px #38bdf8' : ''}` }, []));
+      }
+      tbody.appendChild(el('tr', {}, cells));
+    });
+    table.appendChild(tbody);
+    return el('div', {}, [
+      el('div', { style: 'font-size:9px;color:var(--v5-tx3);margin-bottom:4px' }, [`${count} lessons × ${model.students.length} SP · phase-colored when completed, grey when not; blue outline = retaken.`]),
+      table,
+    ]);
+  }
+
   function buildReportSheet(theme) {
     const model = MODEL;
-    const sheet = el('div', { class: 'v5-report-sheet' + (theme === 'dark' ? ' v5-report-dark' : '') });
+    // Report defaults to DARK, matching the site's own cockpit theme (round-3
+    // feedback: "Change them to be dark theme corresponding to the site
+    // theme"). 'light' is kept reachable (not currently exposed by a UI
+    // toggle) since the print stylesheet forces a light/ink-friendly page
+    // regardless of this class — see the @media print override in
+    // cohort-v5.css.
+    const isLight = theme === 'light';
+    const sheet = el('div', { class: 'v5-report-sheet' + (isLight ? ' v5-report-light' : '') });
     sheet.appendChild(el('h1', {}, ['AP127 Progress Report']));
     sheet.appendChild(el('div', { class: 'v5-report-meta' }, [`Batch AP-127 · CATC CPL/IR Integrated Course · Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC · Data as of ${fd(model.asOf)}${model.isLive ? ' (live)' : ' (time travel)'}`]));
 
@@ -2055,8 +2140,15 @@
 
     sheet.appendChild(el('h2', {}, ['Executive summary']));
     const kpiGrid = el('div', { class: 'v5-report-kpis' });
-    layoutCfg.current.kpis.forEach(key => { const def = KPI_DEFS[key]; if (!def) return; const d = def(model); kpiGrid.appendChild(el('div', { class: 'v5-report-kpi' }, [el('div', { class: 'l' }, [d.label]), el('div', { class: 'v' }, [d.fmt(d.value)]), el('div', { style: 'font-size:8px;color:#8b949e' }, [d.sub()])])); });
+    layoutCfg.current.kpis.forEach(key => { const def = KPI_DEFS[key]; if (!def) return; const d = def(model); kpiGrid.appendChild(el('div', { class: 'v5-report-kpi' }, [el('div', { class: 'l' }, [d.label]), el('div', { class: 'v' }, [d.fmt(d.value)]), el('div', { style: 'font-size:8px;color:var(--v5-tx3)' }, [d.sub()])])); });
     sheet.appendChild(kpiGrid);
+    // Batch hours-done / total-hours-required + hours remaining — the report's
+    // KPI tiles are admin-configurable and can omit this, so it's spelled out
+    // explicitly here regardless of which tiles are picked (round-3 feedback).
+    const bhDone = model.batch.hoursDone, bhTotal = model.batch.hourSlots, bhRem = Math.max(0, bhTotal - bhDone);
+    sheet.appendChild(el('div', { class: 'v5-report-block', style: 'font-size:10.5px;color:var(--v5-tx2)' }, [
+      `Hours done: `, el('b', {}, [fH(bhDone) + ' / ' + fH(bhTotal)]), ` (${bhTotal ? (bhDone / bhTotal * 100).toFixed(1) : '0.0'}%) · Remaining: `, el('b', {}, [fH(bhRem)]),
+    ]));
     const insights = generateInsights(model);
     if (insights.length) {
       const ul = el('div', { style: 'font-size:10px;line-height:1.7' });
@@ -2066,15 +2158,20 @@
 
     sheet.appendChild(el('h2', {}, ['Pace vs target']));
     const pace = model.pace, act = model.actualPace;
-    const ptbl = el('table', {}, [el('thead', {}, [el('tr', {}, ['Period', 'Req (h)', 'Act (h)', 'Gap (h)'].map(t => el('th', {}, [t])))]),
+    const ptbl = el('table', {}, [el('thead', {}, [el('tr', {}, ['Period', 'Required (h)', 'Actual (h)', 'Gap (h)'].map(t => el('th', {}, [t])))]),
       el('tbody', {}, [['Month', pace && pace.reqMonthHrsB, act.actMonthHrsB], ['Week', pace && pace.reqWeekHrsB, act.actWeekHrsB], ['Day', pace && pace.reqDayHrsB, act.actDayHrsB]].map(([l, req, actv]) =>
         el('tr', {}, [el('td', {}, [l]), el('td', {}, [req == null ? '—' : fH(req)]), el('td', {}, [fH(actv)]), el('td', {}, [req == null ? '—' : signed(actv - req, fH)])])))]);
     sheet.appendChild(el('div', { class: 'v5-report-block' }, [ptbl]));
 
     sheet.appendChild(el('h2', {}, ['Roster']));
+    // Report roster drops Call sign / Last lesson / Day Δ / vs target — round-3
+    // feedback ("Remove these columns...") — without touching the live People
+    // panel's own admin-configurable column set, which keeps them.
+    const REPORT_HIDE_COLS = ['nick', 'lastLesson', 'dayDelta', 'vsTarget'];
+    const reportCols = layoutCfg.current.columns.filter(c => !REPORT_HIDE_COLS.includes(c));
     const rtbl = el('table', {}, [
-      el('thead', {}, [el('tr', {}, layoutCfg.current.columns.map(c => el('th', {}, [COL_DEFS[c] ? COL_DEFS[c].label : c])))]),
-      el('tbody', {}, Model.sortStudents(model.students, STATE.sortKey).map((s, i) => el('tr', {}, layoutCfg.current.columns.map(c => el('td', { html: COL_DEFS[c] ? COL_DEFS[c].render(s, i) : '' }))))),
+      el('thead', {}, [el('tr', {}, reportCols.map(c => el('th', {}, [COL_DEFS[c] ? COL_DEFS[c].label : c])))]),
+      el('tbody', {}, Model.sortStudents(model.students, STATE.sortKey).map((s, i) => el('tr', {}, reportCols.map(c => el('td', { html: COL_DEFS[c] ? COL_DEFS[c].render(s, i) : '' }))))),
     ]);
     sheet.appendChild(el('div', { class: 'v5-report-block' }, [rtbl]));
 
@@ -2089,6 +2186,21 @@
     sheet.appendChild(el('div', { class: 'v5-report-block' }, [renderOffscreenChartImg(progressChartCfg(model), 660, 300)]));
     sheet.appendChild(el('h2', {}, ['Output']));
     sheet.appendChild(el('div', { class: 'v5-report-block' }, [renderOffscreenChartImg(outputChartCfg(model), 660, 260)]));
+
+    // Individual Lead/Lag vs Plan (ref V4) — every SP's own gap-to-plan line,
+    // forced to per-SP/gap regardless of whatever the live command bar is
+    // currently set to, so the report always carries this view (round-3
+    // feedback: "Add lead/lag chart (ref to V4)").
+    sheet.appendChild(el('h2', {}, ['Individual lead/lag vs plan']));
+    sheet.appendChild(el('div', { class: 'v5-report-block' }, [
+      el('div', { style: 'font-size:9px;color:var(--v5-tx3);margin-bottom:4px' }, ['Hours behind plan per SP over time (floored at 0 — a lead reads as flat zero).']),
+      renderOffscreenChartImg(progressChartCfg(model, { level: 'gap', scope: 'sp', students: model.students }), 660, 300),
+    ]));
+
+    // Lesson Completion Matrix (ref V4) — SP × lesson-number, phase-colored,
+    // fit to report width rather than cropped/rotated (round-3 feedback).
+    sheet.appendChild(el('h2', {}, ['Lesson completion matrix']));
+    sheet.appendChild(el('div', { class: 'v5-report-block' }, [buildReportLessonMatrix(model)]));
 
     // No page number here — this single footer div is part of the flowing
     // sheet content, so it only physically appears once (at the very bottom),
@@ -2113,7 +2225,7 @@
     bar.appendChild(el('button', { class: 'v5-btn v5-primary', onclick: downloadReportPdf }, ['⤓ Download PDF']));
     bar.appendChild(el('button', { class: 'v5-btn', onclick: closeReportPreview }, ['Close']));
     ov.appendChild(bar);
-    ov.appendChild(buildReportSheet('light'));
+    ov.appendChild(buildReportSheet('dark'));
     document.body.appendChild(ov);
   }
   function closeReportPreview() { $$('#d127v5-report-ov').forEach(n => n.remove()); }

@@ -3115,3 +3115,98 @@ live state cleanly, self-check 11/11 throughout, zero new console errors, V4 rel
 unchanged. `git diff --stat` on the three DB_Share-proxied files confirmed empty throughout.
 
 Files touched: `js/view-cohort-v5.js`, `js/ap127-v5-layout.js`, `css/cohort-v5.css`.
+
+## p175
+
+**AP127 Detail V5 — round 3 of user feedback: Trend accuracy + Report overhaul.**
+
+User feedback, verbatim:
+> Trend: Plane [Plan] should show up to the finish date not current date. Target should be change
+> to call "Revised-target". Output graph, moving avg have glitch, it include required (red) in it
+> graph. The required value should show in dash red line and show gap between it and actual.
+>
+> Report: Change them to be dark theme corresponding to the site theme. Exe sum: Add total done
+> hr / total hr, e.g. done 1000/5000 hr. Show remaining hour to be done. Pace vs Target: use full
+> word, e.g. use Required instead of Req. Roster: Remove these column: Call sign, last lesson, Day
+> delta, Vs target. Progress vs plan: Show plan up to the finish date not just current date. Change
+> "Target" to be "Revised-target". Output chart: Fix the glitch of moving avg which should not
+> include the required red value. Add lead/lag chart (ref to V4). Add LESSON COMPLETION MATRIX
+> (ref V4).
+
+All ten items shipped:
+
+1. **Progress vs Plan — Plan line now runs to the curriculum's finish date, not clipped to
+   today/asOf.** `buildSeries()` (`js/ap127-v5-model.js`) previously built one `plan` array walked
+   only over `upto` (dates ≤ asOf), same as Actual — correct for Actual (there's no real data past
+   today) but wrong for Plan, a static reference schedule that doesn't depend on how far the batch
+   has actually gotten. Added a second `planFull` array, cumulative over the FULL set of planned
+   dates regardless of asOf; `progressChartCfg()` now draws `s.planFull` instead of `s.plan`. Live
+   verified: Plan's last point now lands on 2026-11-27 (curriculum planEndDate) while Actual's last
+   point stays at 2026-08-26 (today) — was both stopping at today before.
+2. **"Target" → "Revised-target"** on the Progress vs Plan chart's dataset label (both live panel
+   and report, since the report embeds this same chart via `progressChartCfg()`).
+3. **Output chart moving-avg "glitch" fixed — was the Required marker, not a real bug in the
+   average itself.** `out.ma` (the moving average) was already computed purely from bar values,
+   never touching Required — but the old Required overlay was a single floating dot (`pointRadius:4,
+   showLine:false`) landing at the exact x/y the blue moving-avg line was also passing through,
+   reading as a spike/glitch fused onto the average. Required is now its own full-width dashed red
+   reference line (`out.values.map(() => req.req)`) — a flat "required pace" line, visually a
+   distinct channel instead of a dot merged onto the average. New `outputRequiredInfo(model)`
+   factors the Required/Actual/Gap figures out of the chart-config builder so the same numbers back
+   both the dashed line and a new plain-text gap readout under the chart
+   (`#d127v5-output-gap`: "Required 43.1h/period · Actual 0.00h · Gap −43.1h vs latest closed
+   period") — the actual "show the gap between required and actual" ask. Bug caught in verification:
+   the first version of the hint used a bare `+/-` sign check on `fH()`, which already takes
+   `Math.abs()` internally — a negative gap rendered as "Gap 43.1h" with no sign shown, reading as
+   positive; fixed to use the existing `signed()` helper, re-verified showing "Gap −43.1h" correctly.
+4. **Report — dark by default, matching the site's own cockpit theme.** The report sheet already
+   had a half-built `.v5-report-dark` class from the original design (never actually used —
+   `openReportPreview()` hardcoded `buildReportSheet('light')`) with several colors still hardcoded
+   light-only (KPI border, table borders, meta/footer text). Flipped the whole component: default is
+   now dark (`.v5-report-sheet` base styles use `var(--v5-s1)`/`var(--v5-tx)`/`var(--v5-bd)`
+   throughout), with a `.v5-report-light` opt-in (not currently exposed by a UI toggle, kept
+   reachable via `buildReportSheet('light')` for later) restoring the original look. The `@media
+   print` block now force-overrides back to light/ink-friendly with `!important` regardless of
+   which theme class is on the sheet, since a dark background on real paper wastes ink — print output
+   is unaffected by this change. Verified live: report background resolves to `rgb(22,27,34)`
+   (`--v5-s1`), all 7 section headers legible.
+5. **Executive summary — batch hours done/total + remaining, spelled out regardless of which KPI
+   tiles are configured.** New line under the KPI grid: "Hours done: 1158h / 5040h (23.0%) ·
+   Remaining: 3882h", from `model.batch.hoursDone` / `model.batch.hourSlots` (already-computed
+   batch totals — no new model math needed).
+6. **Pace vs Target — full words.** "Req"/"Act" → "Required"/"Actual" in both the live Pulse panel's
+   table and the report's Pace vs Target table headers.
+7. **Report Roster — 4 columns dropped** (Call sign, Last lesson, Day Δ, vs target) via a
+   report-only `REPORT_HIDE_COLS` filter over `layoutCfg.current.columns` — deliberately doesn't
+   touch the live People panel's own admin-configurable column set (not asked for), only what the
+   report prints.
+8. **New: Individual Lead/Lag vs Plan chart in the report** (ref V4's own panel of the same name).
+   `progressChartCfg()` gained an optional 2nd `overrides` param (`{level, scope, students}`) so a
+   caller can force per-SP/gap mode over ALL 28 students regardless of whatever the live command bar
+   currently has selected — the live panel itself is unchanged, still calling it with no overrides.
+   Report calls `progressChartCfg(model, {level:'gap', scope:'sp', students: model.students})`.
+9. **New: Lesson Completion Matrix in the report** (ref V4's own panel). Not a reuse of the live
+   Curriculum Grid's canvas (that needs a real pointer for hit-testing, not meaningful in a static
+   export) — new `buildReportLessonMatrix()` builds a compact print-safe HTML/CSS grid: a
+   `<colgroup>` of 96 equal-width lesson columns + 1 name column sized to the report's fixed 703px
+   content width (~5.9px/lesson column), a phase-colored band header (consecutive same-phase lessons
+   merged into one `colspan`), and per-SP rows shading each cell by phase color when completed
+   (grey when not; a thin blue inset outline flags a retake). Verified live: 97 `<col>` elements
+   (1 name + 96 lesson), 28 body rows, phase band visually matches the 4-phase palette used
+   elsewhere in V5.
+
+Verified live (local dev server, `?nocache=` reload per this project's known stale-HTML-cache
+gotcha): Trend section — `Chart.getChart()` on both canvases confirms dataset labels
+`["Plan","Revised-target","Actual"]` / `["Hours","Moving avg","Required"]`; Plan's last point
+`{x:"2026-11-27", y:5040}` vs Actual's `{x:"2026-08-26", y:1157.67}`; Required dataset is a flat
+line (single distinct value repeated); gap hint text correct with sign. Report — opened via the
+Report button, `.v5-report-sheet` background resolves to `rgb(22,27,34)`, all 7 `<h2>` sections
+present in order (Executive summary, Pace vs target, Roster, Progress vs plan, Output, Individual
+lead/lag vs plan, Lesson completion matrix), Pace vs Target headers read
+`["Period","Required (h)","Actual (h)","Gap (h)"]`, Roster headers no longer include Call sign/
+Last lesson/Idle-day-delta/vs target, 3 chart images present (progress/output/lead-lag, all
+non-empty PNG data URIs), lesson matrix table has 97 `<col>` × 28 `<tbody>` rows. `git diff --stat`
+on the three DB_Share-proxied files confirmed empty. `node -c` clean on both changed plain-script
+files. Zero new console errors beyond the pre-existing local-dev CORS fallback.
+
+Files touched: `js/ap127-v5-model.js`, `js/view-cohort-v5.js`, `css/cohort-v5.css`, `index.html`.

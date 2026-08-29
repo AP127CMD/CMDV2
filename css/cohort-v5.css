@@ -272,28 +272,43 @@
 .v5-report-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:none;overflow-y:auto;padding:24px 0;}
 .v5-report-ov.show{display:block;}
 .v5-report-toolbar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;justify-content:center;padding:10px;background:var(--v5-s1);border-bottom:1px solid var(--v5-bd);margin-bottom:16px;}
-.v5-report-sheet{width:703px;max-width:94vw;margin:0 auto 24px;background:#fff;color:#0d1117;padding:32px 34px;border-radius:2px;box-shadow:0 8px 40px rgba(0,0,0,.5);font-family:'Nunito',sans-serif;}
-.v5-report-sheet.v5-report-dark{background:var(--v5-s1);color:var(--v5-tx);}
+/* Default = DARK, matching the site's own cockpit theme (round-3 feedback).
+   .v5-report-light (not currently exposed by a toggle, kept reachable via
+   buildReportSheet('light')) restores the original ink-friendly light look;
+   the @media print block below forces light regardless of either, since a
+   dark background on real paper wastes ink. */
+.v5-report-sheet{width:703px;max-width:94vw;margin:0 auto 24px;background:var(--v5-s1);color:var(--v5-tx);padding:32px 34px;border-radius:2px;box-shadow:0 8px 40px rgba(0,0,0,.5);font-family:'Nunito',sans-serif;}
+.v5-report-sheet.v5-report-light{background:#fff;color:#0d1117;}
 .v5-report-sheet h1{font-family:'Rajdhani',sans-serif;font-size:24px;margin:0 0 4px;}
-.v5-report-sheet h2{font-family:'JetBrains Mono',monospace;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#c04fd6;margin:18px 0 8px;}
-.v5-report-meta{font-size:11px;color:#6e7681;margin-bottom:14px;}
+.v5-report-sheet h2{font-family:'JetBrains Mono',monospace;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#e88aff;margin:18px 0 8px;}
+.v5-report-sheet.v5-report-light h2{color:#c04fd6;}
+.v5-report-meta{font-size:11px;color:var(--v5-tx3);margin-bottom:14px;}
+.v5-report-sheet.v5-report-light .v5-report-meta{color:#6e7681;}
 .v5-report-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0;}
-.v5-report-kpi{border:1px solid #d0d4da;border-radius:5px;padding:8px;text-align:center;}
-.v5-report-kpi .l{font-family:'JetBrains Mono',monospace;font-size:8px;color:#6e7681;text-transform:uppercase;}
+.v5-report-kpi{border:1px solid var(--v5-bd);border-radius:5px;padding:8px;text-align:center;}
+.v5-report-sheet.v5-report-light .v5-report-kpi{border-color:#d0d4da;}
+.v5-report-kpi .l{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--v5-tx3);text-transform:uppercase;}
 .v5-report-kpi .v{font-size:16px;font-weight:700;margin-top:2px;}
 .v5-report-block{margin-bottom:16px;break-inside:avoid;}
 .v5-report-sheet table{width:100%;border-collapse:collapse;font-size:9.5px;}
-.v5-report-sheet th,.v5-report-sheet td{border-bottom:1px solid #e2e4e9;padding:3px 5px;text-align:left;}
+.v5-report-sheet th,.v5-report-sheet td{border-bottom:1px solid var(--v5-bd);padding:3px 5px;text-align:left;}
+.v5-report-sheet.v5-report-light th,.v5-report-sheet.v5-report-light td{border-bottom-color:#e2e4e9;}
 .v5-report-sheet thead{display:table-header-group;}
 .v5-report-sheet img{max-width:100%;display:block;}
-.v5-report-footer{font-size:8.5px;color:#9aa0a8;display:flex;justify-content:space-between;margin-top:8px;border-top:1px solid #e2e4e9;padding-top:5px;}
+.v5-report-footer{font-size:8.5px;color:var(--v5-tx3);display:flex;justify-content:space-between;margin-top:8px;border-top:1px solid var(--v5-bd);padding-top:5px;}
+.v5-report-sheet.v5-report-light .v5-report-footer{color:#9aa0a8;border-top-color:#e2e4e9;}
 
 @media print{
   body *{visibility:hidden;}
   .v5-report-ov,.v5-report-ov *{visibility:visible;}
   .v5-report-ov{position:absolute;inset:0;background:#fff;padding:0;overflow:visible;}
   .v5-report-toolbar{display:none;}
-  .v5-report-sheet{box-shadow:none;margin:0;width:auto;max-width:none;}
+  /* Ink-friendly on real paper regardless of the on-screen dark default. */
+  .v5-report-sheet{box-shadow:none;margin:0;width:auto;max-width:none;background:#fff!important;color:#0d1117!important;}
+  .v5-report-sheet h2{color:#c04fd6!important;}
+  .v5-report-meta,.v5-report-footer{color:#6e7681!important;}
+  .v5-report-kpi{border-color:#d0d4da!important;}
+  .v5-report-sheet th,.v5-report-sheet td{border-bottom-color:#e2e4e9!important;}
   @page{size:A4;margin:12mm;}
   .v5-report-block{break-inside:avoid;}
 }
