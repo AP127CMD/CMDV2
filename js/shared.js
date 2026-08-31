@@ -190,6 +190,19 @@ window.FLIGHT_DATA.flights.forEach(f => {
 window.FLIGHT_DATA.flights.forEach(f => {
   if (/sim/i.test(f.type || '') || /\(sim\)/i.test(f.tail || '')) f.isSim = true;
 });
+// ── Non-flight bookings (2026-08-31) ────────────────────────────────────────
+// Upstream schedules meetings and ground school in the SAME feed as flights,
+// each with a real durMin and no aircraft, so every hours KPI here was
+// counting a 3-hour CATC meeting or a 7.5-hour ground-school block as flight
+// time (253.8 h of 9,632.6 h — 2.6% — across current history). User's call:
+// exclude them from flight HOURS. They deliberately stay VISIBLE in the
+// schedule views — they're real calendar events, and p116 specifically fixed
+// a bug that had hidden meeting rows.
+// ALWAYS use fMin()/fHrs() when summing hours; reading f.durMin directly in a
+// total silently bypasses the exclusion.
+const fMin = f => (f && f.isNonFlight) ? 0 : ((f && f.durMin) || 0);
+const fHrs = f => fMin(f) / 60;
+
 const FLIGHTS     = window.FLIGHT_DATA.flights;
 const INSTRUCTORS = window.FLIGHT_DATA.instructors;
 const RESOURCES   = window.FLIGHT_DATA.resources;

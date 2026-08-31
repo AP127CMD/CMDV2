@@ -223,7 +223,7 @@ function GanttBoard() {
             {/* Rows */}
             <div>
               {rows.map((r,ri)=>{
-            const totalMin = r.flights.reduce((a,b)=>a+(b.durMin||0),0);
+            const totalMin = r.flights.reduce((a,b)=>a+fMin(b),0);
             const dateLeaveMap = leavesOnDate(app.date);
             const rowOnLeave   = groupBy === 'instructor' && dateLeaveMap[r.key];
             const rowOnMaint   = groupBy === 'tail'       && isTailMaint(r.key);

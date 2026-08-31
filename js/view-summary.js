@@ -880,7 +880,11 @@
     const effectiveCredited = useMemo(() => sBuildEffectiveCreditSet(FLIGHTS), []);
     const hoursOf = useCallback(f => {
       if (f.status !== 'Completed') return 0;
-      if (metric !== 'effective') return (f.durMin || 0) / 60;
+      // Meetings / ground school are not flight hours (2026-08-31). Guard here
+      // too, not just in fHrs(): the 'effective' branch below bypasses fHrs()
+      // entirely and would otherwise credit a meeting its curriculum duration.
+      if (f.isNonFlight) return 0;
+      if (metric !== 'effective') return fHrs(f);
       // Effective hours: each curriculum lesson counts once per SP. A flight with no
       // lesson code can't be deduped (nothing to match against) and passes through.
       if (f.lesson && !effectiveCredited.has(f)) return 0;
@@ -922,7 +926,7 @@
         if (f.status === 'Canceled') s.canceled++;
         if (f.isStandby) s.standby++;
         if (f.isSim) s.sim++;
-        s.bookedHours += (f.durMin || 0) / 60;
+        s.bookedHours += fHrs(f);
         const h = hoursOf(f);
         if (f.isSim) {
           s.simHours += h;
@@ -953,7 +957,7 @@
         const b = f.batch || 'Unknown';
         if (!m[b]) m[b] = { batch: b, total: 0, pending: 0, completed: 0, canceled: 0, standby: 0, bookedHours: 0, completedHours: 0, realHours: 0, simHours: 0 };
         m[b].total++;
-        m[b].bookedHours += (f.durMin || 0) / 60;
+        m[b].bookedHours += fHrs(f);
         const h = hoursOf(f);
         m[b].completedHours += h;
         if (f.isSim) m[b].simHours += h; else m[b].realHours += h;
