@@ -359,6 +359,7 @@ Use the `ap127v2` preview (port 7423) + screenshots/snapshots; check console for
 
 | Date | Phase | Done | Notes / next |
 |------|-------|------|--------------|
+| 2026-08-31 | **Meetings/ground school excluded from flight hours (p176).** Upstream (CMD_CTR) now flags them as `isNonFlight`; new `fMin()`/`fHrs()` in `js/shared.js` are the single place the exclusion lives, and all 27 sites that summed `f.durMin` directly now route through them, plus `brdFlownMin`/`calFlownMin`/`view-summary`'s `hoursOf()`. `hoursOf()` needed its own guard — its 'effective' branch bypasses `fHrs()` and would otherwise credit a meeting its full curriculum duration. Meetings stay VISIBLE on schedules (p116's fix preserved); only hours drop. Impact is on SCHEDULED-hours figures only — all meeting hours are status Pending, so Completed-gated metrics were already unaffected. Verified live: May 2026 scheduled hours 1432.5 → 1327.0 (−105.5h). |
 | 2026-05-31 | v1 | iframe shell (Home/Operations/Progress/Cross-Check), reconcile.js, snapshots, Pages live | Worked but not "one app". `index.html` = v1, still live. |
 | 2026-05-31 | 0 | Full audit of both apps; wrote this REVAMP.md spec | — |
 | 2026-05-31 | **1 ✅** | Foundation built & verified: `css/theme.css` (3 themes), shared context, native role-aware Overview, shell (sidebar, top bar w/ Student-Lens picker + freshness + conflict badge + theme + sync, hash routing, mobile drawer), boot entry. | — |
