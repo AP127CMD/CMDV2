@@ -97,7 +97,21 @@ async function pickTarget(env) {
     const cfg = raw ? JSON.parse(raw) : {};
     const dests = cfg.destinations || [];
     const label = env.MONITOR_DEST_LABEL || 'Nu';
-    const pick = dests.find(d => d.label === label && d.chatId)
+    const exact = dests.find(d => d.label === label && d.chatId);
+    // Loud on mismatch. The fallbacks below are a genuine safety net — better to alert somewhere
+    // than nowhere — but they pick "first enabled destination", which in this config is the live
+    // AP127 STUDENT group. A typo'd label therefore misroutes ops alerts to students, silently.
+    // That was the real state of this worker from 2026-07-17 to 2026-09-02 (label "Nu" matched
+    // nothing); it never showed up because TELEGRAM_BOT_TOKEN was unset, so nothing ever sent.
+    // `wrangler tail` now says so explicitly.
+    if (!exact) {
+      console.error(
+        `MONITOR_DEST_LABEL="${label}" matches no destination in watchdog:config ` +
+          `(have: ${dests.map(d => d.label).join(', ')}). Falling back — alerts may go to the ` +
+          `wrong chat. Fix the var in watchdog-monitor/wrangler.toml.`
+      );
+    }
+    const pick = exact
       || dests.find(d => d.enabled !== false && d.chatId)
       || dests.find(d => d.chatId);
     if (pick) return { chatId: pick.chatId, threadId: pick.threadId || null };

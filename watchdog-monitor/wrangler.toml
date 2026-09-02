@@ -15,9 +15,14 @@ binding = "KV"
 id = "b42f3202c5364f91aef3837132d6ccd5"
 preview_id = "b42f3202c5364f91aef3837132d6ccd5"
 
-# Optional: which watchdog destination to alert into (defaults to the admin 'Nu' destination).
+# Which watchdog destination to alert into. MUST match a `label` in watchdog:config exactly —
+# check with: curl -s https://ap127-watchdog.anusorn-tanmetha.workers.dev/config
+# This was "Nu" until 2026-09-02, and NO destination has ever been labelled that. pickTarget()
+# silently fell through to "first enabled destination with a chatId", which is the live AP127
+# STUDENT group (thread 6) — so every monitor alert would have gone to the students. Nothing
+# surfaced it because the token was never set, so no alert was ever actually sent.
 [vars]
-MONITOR_DEST_LABEL = "Nu"
+MONITOR_DEST_LABEL = "Nu-Test AP127"
 
 # Secret (set once, copy the value from the main watchdog worker — NOT stored in this file):
 #   npx wrangler secret put TELEGRAM_BOT_TOKEN
