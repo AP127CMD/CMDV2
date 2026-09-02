@@ -1279,20 +1279,28 @@ Design: `docs/superpowers/specs/2026-07-29-ops-analytics-followup-design.md`; pl
   changes on the outage's calendar day can go permanently unnotified once the date rolls past — open decision,
   not yet fixed).
 - **KV free-tier limit is per-ACCOUNT, not per-namespace (2026-07-17).** The 1,000 writes/day ceiling is shared
-  across all 4 namespaces (`ap127-watchdog`, `AP127_STUDENT_DATA`, `AP127_CHAT_KV`, +preview). The watchdog's
+  across all namespaces — **2 as of 2026-09-02** (`ap127-watchdog`, `AP127_STUDENT_DATA`); the two
+  `AP127_CHAT_KV*` namespaces were deleted with the Chatbot. The watchdog's
   `/cf-usage` now queries **account-wide grouped by namespace** (`kv.*` = account totals, `kvByNamespace[]` =
   attribution) — it previously hardcoded the watchdog namespace and under-reported by ~2×. Measured normal day:
   writes 48% (watchdog ~221 + `AP127_STUDENT_DATA` ~220 [DB_Share, private/no local dir] + chat ~40); reads 1%.
-  Constrained dimension is **writes**. See AP127_Docs §6.9/§10.
+  Constrained dimension is **writes**. **2026-09-02: two large write sources removed** — the Chatbot's ~40/day
+  went with its deletion, and DB001's `push-to-kv.js` (up to 288/day, PUTting unchanged bytes every run) now
+  reads-then-compares and writes only on real change. See AP127_Docs §6.9/§10.
 - **Check `<script>` type per file before editing** — `view-overview.js` uses `type="text/babel"`; `shell.js`, `view-watchdog.js`, `view-cf-usage.js`, `view-crosscheck.js` are plain `<script>`. Run the grep above to confirm.
 - Cache-bust = bump `?v=pNN` on ALL `<script>` tags — use find-replace in `index.html`, NOT `?cb=`
 - Drive views in preview: `window.dispatchEvent(new CustomEvent('ap127-go',{detail:'viewId'}))` (not hash change)
 - Read `REVAMP.md` change log before making changes — avoids duplicating or breaking prior work
 - Watchdog worker redeploy: `cd /Users/nugui/AP127_V2/watchdog && npx wrangler deploy`
-- **Watchdog CORS (2026-07-10):** `watchdog/src/index.js` `ALLOWED_ORIGINS` now includes BOTH
-  `https://ap127-ngt2.pages.dev` (default/primary, unchanged) and `https://ap127-v3.pages.dev` — CMDV3
-  built its own Watchdog admin view consuming this worker's existing API unchanged. If adding more
-  consumers later, extend the Set the same way; `DEFAULT_ORIGIN` stays V2's URL as the ACO fallback.
+- **Watchdog CORS:** `watchdog/src/index.js` `ALLOWED_ORIGINS` contains only
+  `https://ap127-ngt2.pages.dev` as of **2026-09-02** — the `https://ap127-v3.pages.dev` entry added
+  2026-07-10 for CMDV3's own Watchdog admin view was removed when CMDV3 was retired. If adding a consumer
+  later, extend the Set the same way; `DEFAULT_ORIGIN` stays V2's URL as the ACO fallback.
+- **Watchdog now reports data freshness, not just its own liveness (2026-09-02).** It persists the feed's
+  `fetchedAt` into `watchdog:status` as `feedFetchedAt`, **carried forward and never refreshed on quiet
+  runs** — that divergence from `lastRun` is the signal that the pipeline died while the watchdog stayed
+  healthy. `watchdog-monitor` alerts on it at 60 min via its own `monitor:feedState`. Do not "helpfully"
+  refresh `feedFetchedAt` on skip runs; that would silently destroy the detector.
 - **CI (2026-06-29):** `scripts/refresh_snapshots.mjs` isolates each of the 3 upstreams — a transient blip (e.g. ap127-data-api 50-byte response) keeps the prior snapshot and continues; only a total outage fails. `refresh-data.yml` push is race-proof (retry + `rebase -X theirs`). Do NOT make a single source's failure fatal again.
 - **Watchdog "Exceeded CPU Limit" crash-loop (2026-07-11):** every 5-min cron tick was hard-killed by the CF runtime (silent — no catchable JS exception, so `lastError` in `/status` never shows it) following the CMD_CTR Ops Portal migration (see CMD_CTR/CLAUDE.md, AP127_Docs §10). Root cause never fully pinned down — ruled out diff/event-volume (reset `watchdog:snapshot` in KV to match live data, still crashed on a 0-event run) and ruled out any single computation step (added temporary per-step `console.log` timing via `wrangler tail`; every step measured sub-millisecond to a few hundred ms of I/O wait). A plain `wrangler deploy` (fresh isolate, no code change) resolved it — confirmed stable across 3 consecutive clean ticks. Likely an isolate-level issue tied to the stale, unusually-long-lived worker instance rather than the new code/data itself.
   - **If this recurs:** don't assume it's diff-size-related again — instrument with per-step `console.log(Date.now())` timing + `wrangler tail`, and try a plain redeploy (no code change needed) before spending time on data-volume theories.
