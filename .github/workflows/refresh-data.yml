@@ -86,3 +86,33 @@ jobs:
                 labels: ['refresh-failure'],
               });
             }
+
+      # Auto-close a stale refresh-failure issue once a run succeeds again.
+      #
+      # The step above only opens a NEW issue when none is already open, so an
+      # issue nobody ever closes silently swallows every future alert. CMD_CTR
+      # and DB001 both learned this the hard way (CMD_CTR issue #8 sat open
+      # 2026-07-18→08-25 and ate the alerts for a real 7.5 h portal outage) and
+      # both grew an auto-close step; this workflow was the last one still
+      # missing it. Added 2026-09-02.
+      - name: Close stale refresh-failure issue on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'refresh-failure',
+            });
+            for (const issue of issues) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Resolved — run ${context.runId} refreshed snapshots successfully. Auto-closing.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+            }

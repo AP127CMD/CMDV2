@@ -12,6 +12,7 @@
 // the shared KV under `monitor:*` so alerts fire on transitions only, never on every tick.
 
 const STATE_KEY = 'monitor:state';
+const FEED_STATE_KEY = 'monitor:feedState';
 
 // Healthy quiet runs only refresh the watchdog's status every ~25 min (its quiet-skip), so a gap up
 // to 25 min is normal; >30 min means the scheduled run is genuinely not completing.
@@ -34,6 +35,43 @@ export function evaluate(status, config, nowMs) {
   const staleMin = Math.round((nowMs - new Date(status.lastRun).getTime()) / 60000);
   if (staleMin > STALE_LIMIT_MIN) return { down: true, reason: `no run for ${staleMin} min (watchdog:status frozen)` };
   return { down: false, reason: 'ok' };
+}
+
+// ─── Second, independent detector: is the FLIGHT DATA itself stale? ─────────
+//
+// Added 2026-09-02 alongside the Pi-primary role inversion. Until now every
+// detector in the system watched the *machinery* (did the workflow run? did the
+// worker run? did the dispatch POST succeed?) and nothing watched the *product*.
+// That left a real blind spot: the watchdog's skip-on-unchanged path means a
+// totally frozen feed looks IDENTICAL to a healthy quiet period — same `lastRun`
+// ticking, same null `lastError`, no alert — so both the watchdog and this
+// monitor would happily report green while the data silently rotted. The
+// 2026-08-31→09-02 gap is exactly that shape.
+//
+// This reads `feedFetchedAt`, which ap127-watchdog now persists into
+// `watchdog:status` and deliberately does NOT refresh on quiet runs. Costs zero
+// extra subrequests and zero extra KV reads — `watchdog:status` is already read
+// above for the liveness verdict.
+//
+// 60 min is chosen to sit below BOTH fetch paths: the Pi fetches every ~5 min
+// (gate at 6 min) and the cloud fallback takes over at 35 min, so data older
+// than an hour means the Pi AND the GitHub Actions fallback have both failed.
+// With CONFIRM_DOWN=2 on a 10-min cron that pages at roughly 60-80 min.
+export const DATA_STALE_LIMIT_MIN = 60;
+
+export function evaluateFeed(status, config, nowMs) {
+  if (config && config.enabled === false) return { down: false, reason: 'disabled by config (intentional)' };
+  // Absent on a watchdog that hasn't done a full pass since this field shipped.
+  // Treat unknown as healthy: the liveness detector above already covers "the
+  // watchdog isn't running", and inventing a page out of a missing field would
+  // fire once on every deploy.
+  if (!status || !status.feedFetchedAt) return { down: false, reason: 'no feedFetchedAt yet' };
+  const ageMin = Math.round((nowMs - Date.parse(status.feedFetchedAt)) / 60000);
+  if (!Number.isFinite(ageMin)) return { down: false, reason: 'feedFetchedAt unparseable' };
+  if (ageMin > DATA_STALE_LIMIT_MIN) {
+    return { down: true, reason: `flight data is ${ageMin} min old (Pi and cloud fallback both appear down)`, ageMin };
+  }
+  return { down: false, reason: 'ok', ageMin };
 }
 
 // Pure transition machine: given the persisted state and this check's down-ness, decide whether to
@@ -98,14 +136,32 @@ export async function runMonitor(env, nowMs = Date.now()) {
   const prev = prevRaw ? JSON.parse(prevRaw) : { alertedDown: false, downStreak: 0 };
   const { state, alert } = decideAlert(prev, verdict.down);
 
-  if (alert && env.TELEGRAM_BOT_TOKEN) {
+  // Independent second channel, its own transition state, so "watchdog down" and
+  // "data stale" can alert and recover separately — they are different faults
+  // with different fixes (redeploy the worker vs. go look at the Pi).
+  const feedVerdict = evaluateFeed(status, config, nowMs);
+  const feedPrevRaw = await env.KV.get(FEED_STATE_KEY, 'text');
+  const feedPrev = feedPrevRaw ? JSON.parse(feedPrevRaw) : { alertedDown: false, downStreak: 0 };
+  const { state: feedState, alert: feedAlert } = decideAlert(feedPrev, feedVerdict.down);
+
+  if ((alert || feedAlert) && env.TELEGRAM_BOT_TOKEN) {
     const target = await pickTarget(env);
     if (target) {
-      const text = alert === 'down'
-        ? `🚨 AP127 Watchdog DOWN\n${verdict.reason}\nFlight notifications are NOT being sent — check ap127-watchdog.`
-        : `✅ AP127 Watchdog recovered\nIt is running normally again.`;
-      try { await sendTelegram(env.TELEGRAM_BOT_TOKEN, target.chatId, text, target.threadId); }
-      catch (e) { console.error('monitor alert send failed:', e.message); }
+      const messages = [];
+      if (alert) {
+        messages.push(alert === 'down'
+          ? `🚨 AP127 Watchdog DOWN\n${verdict.reason}\nFlight notifications are NOT being sent — check ap127-watchdog.`
+          : `✅ AP127 Watchdog recovered\nIt is running normally again.`);
+      }
+      if (feedAlert) {
+        messages.push(feedAlert === 'down'
+          ? `🚨 AP127 flight data STALE\n${feedVerdict.reason}\nPrimary is the Orange Pi (pi-native/); the GitHub Actions fallback should have taken over at 35 min and did not. Check the Pi first.`
+          : `✅ AP127 flight data flowing again\nFeed is fresh (${feedVerdict.ageMin} min old).`);
+      }
+      for (const text of messages) {
+        try { await sendTelegram(env.TELEGRAM_BOT_TOKEN, target.chatId, text, target.threadId); }
+        catch (e) { console.error('monitor alert send failed:', e.message); }
+      }
     }
   }
 
@@ -117,6 +173,17 @@ export async function runMonitor(env, nowMs = Date.now()) {
   if (changed || alert || heartbeatDue) {
     await env.KV.put(STATE_KEY, JSON.stringify({
       ...state, reason: verdict.reason, lastCheck: new Date(nowMs).toISOString(),
+    }));
+  }
+
+  // Same rationing for the feed channel — transitions and alerts only, NO
+  // heartbeat here (monitor:state above already proves the monitor is alive, and
+  // a second 6-hourly heartbeat would just double that cost for no new signal).
+  const feedChanged =
+    feedState.alertedDown !== feedPrev.alertedDown || feedState.downStreak !== feedPrev.downStreak;
+  if (feedChanged || feedAlert) {
+    await env.KV.put(FEED_STATE_KEY, JSON.stringify({
+      ...feedState, reason: feedVerdict.reason, lastCheck: new Date(nowMs).toISOString(),
     }));
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluate, decideAlert, CONFIRM_DOWN, HEARTBEAT_MS, runMonitor } from '../src/index.js';
+import { evaluate, evaluateFeed, decideAlert, CONFIRM_DOWN, DATA_STALE_LIMIT_MIN, HEARTBEAT_MS, runMonitor } from '../src/index.js';
 
 // Minimal in-memory KV that counts writes — lets us assert the write-budget behavior.
 function mockKV(seed = {}) {
@@ -119,5 +119,74 @@ describe('runMonitor KV write budget (free-tier: skip writes when nothing change
       'monitor:state': JSON.stringify({ alertedDown: false, downStreak: 0, lastCheck: new Date(NOW - 60000).toISOString() }),
     });
     return runMonitor({ KV: kv }, NOW).then(() => expect(kv.puts).toBe(1));
+  });
+});
+
+describe('evaluateFeed (flight-data staleness → down/up verdict)', () => {
+  const NOW = Date.parse('2026-09-02T08:00:00Z');
+  const ago = (min) => new Date(NOW - min * 60000).toISOString();
+  const st = (min) => ({ lastRun: ago(1), feedFetchedAt: ago(min) });
+
+  it('fresh feed is UP', () => {
+    const v = evaluateFeed(st(5), null, NOW);
+    expect(v.down).toBe(false);
+    expect(v.ageMin).toBe(5);
+  });
+
+  // The whole point of the detector: the Pi gates at 6 min and the cloud
+  // fallback takes over at 35, so anything under an hour is still a window in
+  // which the system is expected to self-heal without paging anyone.
+  it('stale but still inside the cloud-fallback window is UP', () => {
+    expect(evaluateFeed(st(40), null, NOW).down).toBe(false);
+    expect(evaluateFeed(st(DATA_STALE_LIMIT_MIN), null, NOW).down).toBe(false);
+  });
+
+  it('past the limit is DOWN and says both paths failed', () => {
+    const v = evaluateFeed(st(DATA_STALE_LIMIT_MIN + 1), null, NOW);
+    expect(v.down).toBe(true);
+    expect(v.reason).toMatch(/both appear down/);
+  });
+
+  // Must not page on every deploy just because the watchdog hasn't done a full
+  // pass yet — liveness is already covered by evaluate().
+  it('missing feedFetchedAt is treated as healthy, not as an alert', () => {
+    expect(evaluateFeed({ lastRun: ago(1) }, null, NOW).down).toBe(false);
+    expect(evaluateFeed(null, null, NOW).down).toBe(false);
+  });
+
+  it('an intentionally disabled watchdog never reports stale data', () => {
+    expect(evaluateFeed(st(999), { enabled: false }, NOW).down).toBe(false);
+  });
+
+  it('unparseable feedFetchedAt fails safe (no alert)', () => {
+    expect(evaluateFeed({ feedFetchedAt: 'not-a-date' }, null, NOW).down).toBe(false);
+  });
+});
+
+describe('feed staleness is an independent alert channel', () => {
+  const NOW = Date.parse('2026-09-02T08:00:00Z');
+  const ago = (min) => new Date(NOW - min * 60000).toISOString();
+
+  // A healthy watchdog reporting a dead feed is the exact blind spot this was
+  // added for — the liveness channel must stay quiet while the feed channel pages.
+  it('pages on a stale feed even though the watchdog itself is alive', async () => {
+    const kv = mockKV({
+      'watchdog:status': JSON.stringify({ lastRun: ago(2), feedFetchedAt: ago(300) }),
+    });
+    const sent = [];
+    const env = {
+      KV: kv,
+      TELEGRAM_BOT_TOKEN: 't',
+      TELEGRAM_CHAT_ID: '1',
+      fetch: undefined,
+    };
+    globalThis.fetch = async (_url, opts) => {
+      sent.push(JSON.parse(opts.body).text);
+      return { ok: true };
+    };
+    // CONFIRM_DOWN consecutive checks before it alerts.
+    for (let i = 0; i < CONFIRM_DOWN; i++) await runMonitor(env, NOW);
+    expect(sent.some((m) => /flight data STALE/.test(m))).toBe(true);
+    expect(sent.some((m) => /Watchdog DOWN/.test(m))).toBe(false);
   });
 });

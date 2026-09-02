@@ -18,7 +18,6 @@ const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flig
 // Sites allowed to call this Worker.
 const ALLOWED_ORIGINS = new Set([
   'https://ap127-ngt2.pages.dev',
-  'https://ap127-v3.pages.dev',
 ]);
 const DEFAULT_ORIGIN = 'https://ap127-ngt2.pages.dev';
 
@@ -187,6 +186,11 @@ async function runWatchdog(env) {
       lastError: null,
       runCount: (prevStatus.runCount || 0) + 1,
       feedSig: prevStatus.feedSig ?? null,
+      // Carried forward, like feedSig, so a quiet/skip run does NOT refresh it.
+      // That is the whole point: when the pipeline dies, `lastRun` keeps ticking
+      // (the watchdog is fine) while feedFetchedAt freezes — which is exactly the
+      // signal watchdog-monitor needs to tell "quiet day" apart from "feed dead".
+      feedFetchedAt: prevStatus.feedFetchedAt ?? null,
       anomalyStreak: prevStatus.anomalyStreak || 0,
       ...fields,
     }));
@@ -286,7 +290,13 @@ async function runWatchdog(env) {
     await appendLog(env.KV, logEntries, ts);
 
     // Feed changed → always persist the new sig (enables skip-on-unchanged next run) + reset streak.
-    await writeStatus({ force: true, changed: notifiable.length > 0, feedSig: sig, anomalyStreak: 0 });
+    await writeStatus({
+      force: true,
+      changed: notifiable.length > 0,
+      feedSig: sig,
+      feedFetchedAt: data.fetchedAt || null,
+      anomalyStreak: 0,
+    });
   } catch (err) {
     await env.KV.put('watchdog:status', JSON.stringify({
       ...prevStatus, lastRun: ts, lastError: err.message,
@@ -398,8 +408,6 @@ async function handleFetch(request, env) {
     // etc.). We query account-wide, grouped by namespaceId, and report both the account total (what
     // counts against the limit) and a per-namespace breakdown (who is spending it).
     const NS_NAMES = {
-      '718adf1e171842c7bf837421a14122c7': 'AP127_CHAT_KV',
-      'ef9a8ffa0d2141a188d59241484cf602': 'AP127_CHAT_KV_preview',
       'c5c88c813d8d4f668f6081506ad98bcd': 'AP127_STUDENT_DATA',
       'b42f3202c5364f91aef3837132d6ccd5': 'ap127-watchdog',
     };
