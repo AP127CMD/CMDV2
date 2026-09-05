@@ -916,16 +916,24 @@
   // Required-pace figure for the latest CLOSED period — shared by the chart
   // (dashed reference line) and the panel's plain-text gap readout below it,
   // so the two can never disagree.
+  // Picks the required figure matching the current period+unit out of any
+  // buildPace-shaped object (model.pace, or a requiredAt(date) snapshot).
+  function reqForPeriod(p) {
+    if (!p) return null;
+    const h = STATE.lbPeriod === 'day' ? p.reqDayHrsB : STATE.lbPeriod === 'week' ? p.reqWeekHrsB : p.reqMonthHrsB;
+    const l = STATE.lbPeriod === 'day' ? p.reqDayLesB : STATE.lbPeriod === 'week' ? p.reqWeekLesB : p.reqMonthLesB;
+    const v = STATE.unit === 'hours' ? h : l;
+    return v == null ? null : v;
+  }
   function outputRequiredInfo(model) {
     const out = model.output({ unit: STATE.unit, period: STATE.lbPeriod, showAll: STATE.lbShowAll, start: rangeStart(), end: model.asOf });
-    const pace = model.pace;
-    if (!pace || out.gapIdx < 0) return null;
-    const reqPer = STATE.lbPeriod === 'day' ? pace.reqDayHrsB : STATE.lbPeriod === 'week' ? pace.reqWeekHrsB : pace.reqMonthHrsB;
-    const reqPerL = STATE.lbPeriod === 'day' ? pace.reqDayLesB : STATE.lbPeriod === 'week' ? pace.reqWeekLesB : pace.reqMonthLesB;
-    const req = STATE.unit === 'hours' ? reqPer : reqPerL;
+    if (out.gapIdx < 0) return null;
+    // Required AT THAT PERIOD, not today's figure — the gap readout compares
+    // the latest closed period's output against what was required back then.
+    const req = reqForPeriod(model.requiredAt(out.keys[out.gapIdx]));
     if (req == null) return null;
     const actual = out.values[out.gapIdx];
-    return { req, actual, gap: +(actual - req).toFixed(2), gapIdx: out.gapIdx, keys: out.keys };
+    return { req, actual, gap: +(actual - req).toFixed(2), gapIdx: out.gapIdx, keys: out.keys, at: out.keys[out.gapIdx] };
   }
   // Standalone chart-config builder — same reasoning as progressChartCfg()
   // above: shared by the live panel and the report sheet so a chart embeds in
@@ -957,9 +965,17 @@
     // and turning Required into a full-width line made the same bug continuous
     // instead of fixing it. Corrected in p176.
     datasets.push({ type: 'line', label: 'Moving avg', data: out.ma, borderColor: '#38bdf8', borderWidth: 1.6, pointRadius: 0, tension: .2, order: -1, stack: 'ovl-ma' });
-    const req = outputRequiredInfo(model);
-    if (req) {
-      datasets.push({ type: 'line', label: 'Required', data: out.values.map(() => req.req), borderColor: '#f43f5e', borderDash: [7, 4], borderWidth: 1.6, pointRadius: 0, tension: 0, order: -2, spanGaps: true, stack: 'ovl-req' });
+    // Required pace is drawn as the MOVING TARGET it actually is: each period
+    // shows the rate that was required as of that period, computed from the
+    // work outstanding then and the days that remained. A flat line stamped
+    // with today's single figure implied the requirement had always been that
+    // high, which is wrong — it climbs as the batch falls behind.
+    const reqSeries = out.keys.map(k => {
+      const v = reqForPeriod(model.requiredAt(k));
+      return v == null ? null : +v.toFixed(2);
+    });
+    if (reqSeries.some(v => v != null)) {
+      datasets.push({ type: 'line', label: 'Required (at that time)', data: reqSeries, borderColor: '#f43f5e', borderDash: [7, 4], borderWidth: 1.6, pointRadius: 0, tension: 0, order: -2, spanGaps: false, stack: 'ovl-req' });
     }
     return {
       type: 'bar', data: { labels, datasets },
@@ -1197,6 +1213,187 @@
       ] },
     ]);
   }
+  // ─────────────────────────────────────────────────────────────────────────
+  // OPS ⇄ PROG record linkage
+  //
+  // Progress (PROG) says a lesson was completed; Operations (OPS) holds the
+  // actual booking — time, tail, instructor, block times, status, cancel
+  // reason. Clicking a Syllabus or Calendar cell shows BOTH, plus an explicit
+  // agreement check, rather than silently presenting one as the truth.
+  //
+  // Source is `window.FLIGHTS` — the shared, alias-normalised, DE-DUPLICATED
+  // array every Ops view reads — deliberately NOT the raw
+  // `FLIGHT_DATA.flights` that opsAugmentV5 walks: the raw feed still contains
+  // the duplicate ACTUAL_ONLY rows p116 strips, which would show a flight
+  // twice here. Matching reuses AP127Reconcile's own key helpers (the same
+  // ones opsAugmentV5 uses) so this can't drift into a second, different
+  // notion of "same student, same lesson".
+  //
+  // Measured against live data when built: of 972 PROG records across 28 SP,
+  // 939 match an OPS row on student+lesson+date, 19 match on student+lesson
+  // with a different date (known date drift), and 14 have no OPS row at all —
+  // all 14 inside the OPS feed's own coverage window, so they are genuine
+  // Progress-only records, not feed-window artefacts. The modal reports each
+  // of those three cases distinctly instead of implying data is missing.
+  let _opsIdx = null, _opsIdxSrc = null;
+  function opsIndex() {
+    const R = window.AP127Reconcile, F = window.FLIGHTS || [];
+    if (_opsIdx && _opsIdxSrc === F) return _opsIdx;
+    const byLesson = {}, byDate = {};
+    let min = null, max = null, rows = 0;
+    if (R) F.forEach(f => {
+      if (!f.student || !R.isAP127(f.batch)) return;
+      const k = R.ccNameNorm(f.student);
+      rows++;
+      if (f.date) {
+        if (!min || f.date < min) min = f.date;
+        if (!max || f.date > max) max = f.date;
+        const m = byDate[k] || (byDate[k] = {});
+        (m[f.date] || (m[f.date] = [])).push(f);
+      }
+      if (f.lesson) {
+        const m = byLesson[k] || (byLesson[k] = {});
+        const nl = R.normLesson(f.lesson);
+        (m[nl] || (m[nl] = [])).push(f);
+      }
+    });
+    _opsIdxSrc = F;
+    return (_opsIdx = { byLesson, byDate, window: min ? { min, max } : null, rows, ok: !!R });
+  }
+  function spOpsKey(sp) { const R = window.AP127Reconcile; return R && sp ? R.ccKeyFromFull(sp.name) : null; }
+  function opsForLesson(sp, lessonCode) {
+    const R = window.AP127Reconcile, ix = opsIndex(), k = spOpsKey(sp);
+    if (!R || !k || !lessonCode) return [];
+    return ((ix.byLesson[k] || {})[R.normLesson(lessonCode)] || []).slice()
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+  function opsForDate(sp, date) {
+    const ix = opsIndex(), k = spOpsKey(sp);
+    if (!k || !date) return [];
+    return ((ix.byDate[k] || {})[date] || []).slice()
+      .sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
+  }
+  // One OPS booking rendered as detail rows. Only fields the row actually
+  // carries are shown — a cancelled booking has no block times, a planned one
+  // has no actuals.
+  function opsBookingRows(f) {
+    const rows = [
+      ['Status', f.status + (f.isStandby ? ' · STANDBY' : '')],
+      ['Date', fd(f.date)],
+      ['Scheduled', (f.start || '—') + (f.end ? '–' + f.end : '')],
+      ['Duration', (f.durMin ? f.durMin + ' min' : '—') + (f.duration ? ' (' + f.duration + ')' : '')],
+      ['Aircraft', (f.tail || '—') + (f.isSim ? ' · SIM' : '')],
+      ['Instructor', f.instructor || '—'],
+      ['Lesson code', f.lesson || '—'],
+      // The Ops feed is inconsistent here — `type` carries an aircraft model on
+      // some rows ("DA40TDI") and a Dual/Solo classification on others, with
+      // `cond` sometimes holding the latter. Both are shown verbatim under a
+      // label that doesn't claim which is which.
+      ['Type / cond', [f.type, f.cond].filter(Boolean).join(' · ') || '—'],
+    ];
+    if (f.tkoff && f.tkoff !== '00:00') rows.push(['Block off/on', f.tkoff + '–' + (f.ldgTime || '—')]);
+    if (f.to || f.ldg) rows.push(['T/O · LDG', (f.to || 0) + ' · ' + (f.ldg || 0) + (f.inst ? ' · INST ' + f.inst : '')]);
+    if (f.airborne && f.airborne !== '00:00') rows.push(['Airborne', f.airborne]);
+    if (f.cancelReason) rows.push(['Cancel reason', f.cancelReason]);
+    if (f.cancelRemarks) rows.push(['Cancel remarks', f.cancelRemarks]);
+    rows.push(['Ops record id', f.id || '—']);
+    return rows;
+  }
+  // Blocks describing the OPS side of one PROG record (or of a whole day).
+  // `progFlights` are the PROG entries being explained; `opsRows` the candidate
+  // OPS bookings already narrowed by lesson or by date.
+  function opsBlocksFor(progFlights, opsRows, opts) {
+    const o = opts || {};
+    const ix = opsIndex();
+    const blocks = [];
+    if (!ix.ok) return [{ heading: 'Operations record', text: 'Ops data is not loaded in this session, so no booking can be shown.' }];
+    if (opsRows.length) {
+      opsRows.forEach((f, i) => blocks.push({
+        heading: 'Operations booking' + (opsRows.length > 1 ? ' ' + (i + 1) + ' of ' + opsRows.length : '') + ' · ' + f.status,
+        rows: opsBookingRows(f),
+      }));
+    }
+    // Agreement check between the two systems, stated explicitly.
+    const prog = (progFlights || [])[0];
+    const completed = opsRows.filter(f => f.status === 'Completed');
+    if (prog) {
+      if (!opsRows.length) {
+        const inWindow = ix.window && prog.date >= ix.window.min && prog.date <= ix.window.max;
+        blocks.push({
+          heading: 'Operations record',
+          text: inWindow
+            ? `No Ops booking found for this lesson. ${fd(prog.date)} falls inside the Ops feed's coverage (${fd(ix.window.min)} – ${fd(ix.window.max)}), so this is a genuine Progress-only record, not a gap caused by the feed's rolling window — the same "true gap" category the Cross-Check ledger reports.`
+            : `No Ops booking found. ${fd(prog.date)} lies outside the Ops feed's coverage (${ix.window ? fd(ix.window.min) + ' – ' + fd(ix.window.max) : 'unknown'}), which is a rolling window — older flights age out of it, so an absent booking here is expected rather than a discrepancy.`,
+        });
+      } else if (completed.length) {
+        const m = completed.find(f => f.date === prog.date) || completed[0];
+        const dateAgrees = m.date === prog.date;
+        const progMin = Math.round(prog.effMins);
+        const opsMin = m.durMin || 0;
+        const dMin = opsMin ? progMin - opsMin : null;
+        blocks.push({
+          heading: 'PROG ⇄ OPS check',
+          rows: [
+            ['Date', dateAgrees ? 'agree · ' + fd(prog.date)
+              : `differ · PROG ${fd(prog.date)} vs OPS ${fd(m.date)} (${Math.abs(Model.util.dateDiff(m.date, prog.date) || 0)}d apart)`],
+            ['Credited hours', `${progMin} min (curriculum standard for this lesson)`],
+            ['Ops logged', opsMin ? opsMin + ' min' : '—'],
+            ['Difference', dMin == null ? '—' : (dMin === 0 ? 'none' : signed(dMin, v => v + ' min') + ' — PROG credits the standard lesson duration, OPS logs real block time; a difference here is expected, not an error')],
+          ],
+        });
+      }
+    } else if (opsRows.length && o.noProgNote) {
+      blocks.push({ heading: 'Progress record', text: o.noProgNote });
+    }
+    return blocks;
+  }
+
+  // Calendar cell → everything that happened for this SP on this date, from
+  // BOTH systems. OPS is listed whole (including Cancelled/Pending bookings,
+  // which Progress never carries) so a blank-looking day can still explain
+  // itself — "cancelled, weather" rather than just "no flight".
+  function openDayCellModal(sp, date, model) {
+    const prog = (sp.flownByDate[date] || []);
+    const ops = opsForDate(sp, date);
+    const ix = opsIndex();
+    const hrs = prog.reduce((a, f) => a + f.effMins / 60, 0);
+    const blocks = [];
+    blocks.push({
+      heading: 'Progress record',
+      rows: prog.length
+        ? prog.map(f => [f.lesson + (f.isRetake ? ' · retake' : ''), Math.round(f.effMins) + ' min' + (f.fromOps ? ' · backfilled from Ops' : '')])
+        : [['—', 'No completed lesson recorded on this date']],
+    });
+    if (ops.length) {
+      ops.forEach((f, i) => blocks.push({
+        heading: 'Operations booking' + (ops.length > 1 ? ' ' + (i + 1) + ' of ' + ops.length : '') + ' · ' + f.status,
+        rows: opsBookingRows(f),
+      }));
+    } else {
+      const inWindow = ix.window && date >= ix.window.min && date <= ix.window.max;
+      blocks.push({
+        heading: 'Operations booking',
+        text: !ix.ok ? 'Ops data is not loaded in this session.'
+          : inWindow ? 'No Ops booking of any status for this SP on this date.'
+          : `This date is outside the Ops feed's coverage (${ix.window ? fd(ix.window.min) + ' – ' + fd(ix.window.max) : 'unknown'}), which is a rolling window — no booking is expected here.`,
+      });
+    }
+    // Cross-system agreement for the day as a whole.
+    const opsCompleted = ops.filter(f => f.status === 'Completed');
+    if (prog.length || opsCompleted.length) {
+      const opsMin = opsCompleted.reduce((a, f) => a + (f.durMin || 0), 0);
+      blocks.push({ heading: 'PROG ⇄ OPS check', rows: [
+        ['PROG completed', prog.length + (prog.length === 1 ? ' lesson' : ' lessons') + ' · ' + Math.round(hrs * 60) + ' min credited'],
+        ['OPS completed', opsCompleted.length + (opsCompleted.length === 1 ? ' booking' : ' bookings') + (opsMin ? ' · ' + opsMin + ' min logged' : '')],
+        ['Counts', prog.length === opsCompleted.length ? 'agree'
+          : `differ by ${Math.abs(prog.length - opsCompleted.length)} — ${prog.length > opsCompleted.length ? 'Progress has more' : 'Operations has more'}`],
+      ] });
+    }
+    openDetailModal(`${sp.shortName} · ${fd(date)}`,
+      prog.length ? `${prog.length} lesson${prog.length > 1 ? 's' : ''} · ${hrs.toFixed(2)}h credited` : (ops.length ? `${ops.length} Ops booking${ops.length > 1 ? 's' : ''} · no Progress record` : 'no activity'),
+      blocks);
+  }
+
   function openLessonCellModal(sp, num, model) {
     const l = model.curriculum.byNum[num];
     const flights = sp.flownByNum[num] || [];
@@ -1211,13 +1408,20 @@
       flights.length
         ? { heading: flights.length > 1 ? `Flown ${flights.length}× (retake)` : 'Flown', rows: flights.map((f, i) => [fd(f.date), Math.round(f.effMins) + ' min' + (i > 0 ? ' · retake' : '') + (f.fromOps ? ' · from Ops' : '')]) }
         : { heading: 'Not yet flown', text: num === sp.nextNum ? 'This is this SP’s next lesson.' : 'Still ahead of this SP.' },
+    ].concat(
+      // The actual Ops booking(s) behind this lesson — every status, so a
+      // cancelled or still-pending attempt at the same lesson shows up too.
+      flights.length || l ? opsBlocksFor(flights, opsForLesson(sp, l ? l.lesson : null), {
+        noProgNote: 'Operations has a booking for this lesson but Progress has not recorded it as completed.',
+      }) : []
+    ).concat([
       { heading: 'This SP', rows: [
         ['Lessons completed', `${sp.lessonsCompleted} / ${sp.total}`],
         ['Effective hours', sp.hoursEffective.toFixed(1) + 'h'],
         ['vs target', sp.vsTarget == null ? '—' : signed(sp.vsTarget, v => v + ' lessons')],
         ['ETC', sp.etcNever ? 'no measurable pace' : fd(sp.etcDate)],
       ] },
-    ]);
+    ]));
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1455,6 +1659,22 @@
         { color: 'var(--v5-acc)', label: 'today' },
       ]));
 
+      // Range totals, ABOVE the table. The per-day totals row used to be
+      // pinned to the bottom of the scroll box so a summary was always in
+      // view; that floated over the grid rows while scrolling, so the footer
+      // is now plain and the always-visible summary lives here instead.
+      const rangeTot = sps.reduce((acc, s) => {
+        days.forEach(d => { const fl = s.flownByDate[d]; if (fl) { acc.les += fl.length; acc.hrs += fl.reduce((a, f) => a + f.effMins / 60, 0); } });
+        return acc;
+      }, { hrs: 0, les: 0 });
+      const activeDays = days.filter(d => sps.some(s => s.flownByDate[d])).length;
+      host.appendChild(el('div', { class: 'v5-rt-summary' }, [
+        el('b', {}, [fH(rangeTot.hrs)]), ' flown · ',
+        el('b', {}, [String(rangeTot.les)]), ' lessons · ',
+        el('b', {}, [String(activeDays)]), ` of ${days.length} days had activity · avg `,
+        el('b', {}, [fH(activeDays ? rangeTot.hrs / activeDays : 0)]), '/active day across ', String(sps.length), ' SP',
+      ]));
+
       // rows, optionally grouped by instructor
       let rows = sps.map(s => ({ sp: s }));
       if (STATE.calGroupBy === 'instructor') {
@@ -1554,10 +1774,13 @@
             : idleCell[di] === 2 ? `${sp.shortName} · ${fd(d)} — still idle (${openGap}d since last flight)`
             : idleCell[di] === 1 ? `${sp.shortName} · ${fd(d)} — inside an idle gap`
             : `${sp.shortName} · ${fd(d)} — no flight`;
+          // Every cell is clickable, not just flown ones: an empty cell can
+          // still have a cancelled or pending Ops booking behind it, which is
+          // exactly what someone clicking an unexpected blank day wants to see.
           tr.appendChild(el('td', {
-            class: cls.join(' '), title,
-            style: `width:${CELL_W}px;height:21px;background:${bg};border:${brd};${fl ? 'cursor:pointer' : ''}`,
-            onclick: fl ? () => openSPDrawer(sp.catc_id) : undefined,
+            class: cls.join(' '), title: title + ' — click for the Ops + Progress record',
+            style: `width:${CELL_W}px;height:21px;background:${bg};border:${brd};cursor:pointer`,
+            onclick: () => openDayCellModal(sp, d, model),
           }, [hv > 0 && CELL_W >= 20 ? el('span', { style: 'font-size:7px;font-weight:600;color:' + (hv / maxH > 0.55 ? 'rgba(255,255,255,.92)' : 'var(--v5-tx2)') }, [hv.toFixed(1)]) : null]));
         });
         tbody.appendChild(tr);

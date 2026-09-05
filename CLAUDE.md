@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p182` (all currently at p181)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p184` (all currently at p183)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -124,7 +124,29 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p181` (2026-09-05 — **AP127 Detail V5 — round-4 feedback: Pulse
+**Last known:** all files `p183` (2026-09-05 — **AP127 Detail V5 — round-5 feedback: required
+pace becomes a moving target, calendar footer unpinned, Syllabus/Calendar cells linked to real Ops
+bookings.** (1) **TREND** — the Required line was one flat line stamped with today's figure across
+all history; new `buildRequiredAt()` in the model evaluates the same formula `buildPace()` uses but
+against the work outstanding on each date and the days remaining from it, so the line now climbs
+27.4h/day (07 Jun) → 45.8h/day (today) as the batch falls behind. New self-check invariant
+`required-at-now` pins `requiredAt(asOf)` to the Pace panel's own figure (self-check now **12/12**).
+Hand-verified at 4 points; the one apparent mismatch was root-caused to my console recompute using
+the raw PROGRESS feed while the panel applies `opsAugmentV5()` — 7 Ops-completed lessons not yet
+posted to Progress, worth exactly the 13.3h difference. (2) **CALENDAR** — `.v5-rt tfoot td` was
+`position:sticky;bottom:0` and floated over the grid rows while scrolling; now plain, with the
+range totals moved above the table as a summary line. The identity column keeps its horizontal
+stickiness (that was never the complaint). (3) **SYLLABUS + CALENDAR cells now open the real Ops
+booking** — new OPS⇄PROG linkage reading `window.FLIGHTS` (the shared de-duplicated array, NOT raw
+`FLIGHT_DATA.flights` which still holds the duplicate ACTUAL_ONLY rows p116 strips) and reusing
+`AP127Reconcile`'s own key helpers so it can't drift from `opsAugmentV5()`'s matching. Measured
+before building UI on it: of 972 PROG records, 939 match on student+lesson+date, 19 match on
+lesson with a different date, 14 have no Ops row — and all 14 fall INSIDE the Ops feed's coverage
+window, so they are genuine Progress-only records ("true gap"), not rolling-window artefacts; the
+modal says exactly that. Syllabus cells show every Ops booking for the lesson (any status) plus a
+date/duration agreement check; Calendar cells show the whole day from both systems and are
+clickable even when empty, so a blank cell can reveal a cancelled booking with its reason and
+remarks. Full write-up: REVAMP.md's p183 entry.) p181 (2026-09-05 — **AP127 Detail V5 — round-4 feedback: Pulse
 rebuilt as a situation report + a real Chart.js stacking bug.** (1) **TREND — the moving average
 was genuinely drawn in the wrong place, and this invalidates p175's explanation of the same
 symptom.** Measured before touching anything: the rendered y-value equalled `ma + Required` to the

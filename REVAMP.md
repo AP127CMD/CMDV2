@@ -3327,3 +3327,113 @@ and reload; that is what each intermediate bump was for. Disk content was confir
 `grep` each time before re-bumping, so no change was ever "lost" — only re-served.
 
 Files touched: `js/view-cohort-v5.js`, `js/ap127-v5-layout.js`, `css/cohort-v5.css`, `index.html`.
+
+## p183
+
+**AP127 Detail V5 — round 5 of user feedback: required pace becomes a moving target, calendar
+footer unpinned, and Syllabus/Calendar cells linked to the real Ops booking behind them.**
+
+User feedback, verbatim:
+> TREND: Make the required line dynamic and correspond with that point of time not the latest one.
+> CALENDAR: The last 2 row is stick with bottom and it float over other line while scrolling.
+> Make elements in SYLLABUS and CALENDAR link to the actual OPS flight data (e.g. click on a cell
+> and it should show detail of that flight record, both OPS and PROG). Make sure data is correct.
+
+### 1. TREND — required pace is now the moving target it actually is
+
+p175 drew Required as one flat line stamped with *today's* figure across all history, which implied
+the requirement had always been that high. New `buildRequiredAt()` in `js/ap127-v5-model.js`
+evaluates the same formula `buildPace()` uses, but against the work outstanding on each date and the
+days that remained from it — crediting each lesson once, on the date of its first completion
+(`!isRetake`), exactly as effective hours are credited elsewhere. The chart now plots one value per
+period (`Required (at that time)`), and the gap readout compares the latest closed period's output
+against what was required *then*, not now.
+
+Live on the current data the line climbs **27.4h/day (07 Jun) → 45.8h/day (today)** — 89 distinct
+values — which is the real story the flat line was hiding.
+
+**New self-check invariant (`required-at-now`, self-check now 12/12):** `requiredAt(asOf)` must
+equal the Pace panel's `reqDayHrsB`. Two code paths now produce a "required per day" figure, so the
+check pins them together rather than letting the chart quietly disagree with the panel.
+
+Hand-verified against first principles at four points on the curve — `(totalHours × 28 − effective
+hours done by that date) ÷ days remaining to plan end`: 07 Jun 27.42 vs 27.42 ✓, 07 Jul 29.46 vs
+29.46 ✓, 06 Aug 34.45 vs 34.46 ✓. The fourth (today) initially read 45.83 plotted vs 45.99
+hand-computed; root-caused rather than waved off — my console recomputation used the raw
+`PROGRESS_DATA` feed while the panel's model has `opsAugmentV5()` applied. Replaying that
+augmentation found **7 Ops-completed lessons Progress has not posted yet, worth 13.3h**, which is
+exactly the gap (3817.2h − 45.83×83 = 13.3h). The chart was right; the hand-check was the
+incomplete one.
+
+### 2. CALENDAR — footer no longer floats over the grid
+
+`.v5-rt tfoot td` was `position:sticky; bottom:0` (with a hardcoded `bottom:18px` on the first of
+the two rows) so a summary stayed visible. In practice it floated over the grid rows while
+scrolling and covered the bottom SPs. The footer is now plain — the totals sit at the natural end of
+the table. The identity column keeps its `position:sticky; left:0` (that one is for *horizontal*
+scrolling and was never the complaint; verified: footer data cells now compute to
+`position:static; bottom:auto`, footer name cell still `sticky/left:0`).
+
+So nothing is lost, the batch totals for the visible range moved **above** the table as a plain
+summary line: `952h flown · 716 lessons · 72 of 91 days had activity · avg 13.2h/active day across
+28 SP`.
+
+### 3. SYLLABUS + CALENDAR cells now open the real Ops booking
+
+New OPS ⇄ PROG linkage. Source is `window.FLIGHTS` — the shared, alias-normalised, **de-duplicated**
+array every Ops view reads — deliberately *not* the raw `FLIGHT_DATA.flights` that `opsAugmentV5()`
+walks, which still contains the duplicate `ACTUAL_ONLY` rows p116 strips and would show a flight
+twice. Matching reuses `AP127Reconcile`'s own key helpers (`ccKeyFromFull` / `ccNameNorm` /
+`normLesson`), the same ones `opsAugmentV5()` uses, so this can't drift into a second notion of
+"same student, same lesson".
+
+**Match rate measured on live data before building any UI on it** — 972 PROG records across 28 SP
+(28/28 SPs matched by name key):
+
+| outcome | count | handling |
+|---|---|---|
+| OPS row on same student + lesson + date | 939 (96.6%) | full booking shown + agreement check |
+| OPS row, same lesson, **different date** | 19 | shown, with both dates and the day delta |
+| **no OPS row at all** | 14 | explained, see below |
+
+All 14 no-match records fall **inside** the Ops feed's own coverage window (20 Apr – 02 Sep 26), so
+the rolling-window explanation does *not* cover them — they are genuine Progress-only records, the
+same "true gap" category the Cross-Check ledger reports. The modal says exactly that, rather than
+implying data is missing. Spot-checked one (Khobpong W., CDGL 12, 05 Jun) directly against both
+feeds: his CDGL 11 the day before matches Ops exactly (60 min both sides), so the matcher is sound
+and the gap is real.
+
+**Syllabus cell** → lesson detail + every Ops booking for that lesson (any status, so a cancelled or
+still-pending attempt shows too) + a `PROG ⇄ OPS check` block: date agree/differ, credited minutes
+vs Ops logged minutes, and an explicit note that a difference is *expected* (PROG credits the
+curriculum standard duration, OPS logs real block time) rather than an error.
+
+**Calendar cell** → everything for that SP on that date from both systems, with per-day count
+reconciliation. Every cell is now clickable, not just flown ones — a blank cell can have a
+cancelled booking behind it, which is precisely what someone clicking an unexpected gap wants. Live
+example: an empty cell for Awirut S. on 07 Jun opens as *"1 Ops booking · no Progress record ·
+Canceled · Operational / Schedule"* with the real remarks from the feed.
+
+Ops fields are rendered only when present (a cancelled booking has no block times, a planned one no
+actuals). The `Type / cond` row is labelled that way on purpose: the feed carries an aircraft model
+in `type` on some rows and a Dual/Solo classification on others, so both values are shown verbatim
+under a label that doesn't claim which is which.
+
+### Verification
+
+Live: required-line values hand-checked at 4 points (3 exact, 4th explained and reconciled to the
+cent); self-check **12/12** including the new invariant; parity harness **0 mismatches** across all
+28 SP; footer computed styles confirmed unpinned while the identity column stays pinned; three cell
+modals exercised end-to-end against real records (matched flight with 45+20=65 min agreeing on both
+sides, cancelled booking with reason + Thai remarks, and a Progress-only record correctly
+categorised); Report still builds all 7 sections with its 3 charts (it shares `outputChartCfg`,
+which changed); V4 reloaded unchanged (10 charts, 1236.2/5040.0 = 24.5%); 375px mobile shows no
+horizontal overflow (scrollWidth 375 = viewport); `node -c` clean; `git diff --stat` on the three
+DB_Share-proxied files empty; zero new console errors beyond the pre-existing local-dev CORS
+fallback.
+
+One bug caught in my own new code before shipping: a missing closing paren after refactoring
+`openLessonCellModal`'s block array into `.concat()` calls — caught by `node -c`, which is why
+every changed plain script gets syntax-checked before it reaches the browser.
+
+Files touched: `js/ap127-v5-model.js`, `js/view-cohort-v5.js`, `css/cohort-v5.css`, `index.html`.

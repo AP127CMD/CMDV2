@@ -207,12 +207,17 @@
 .v5-rt-today{outline:1px solid var(--v5-acc);outline-offset:-1px;}
 .v5-rt-grp td{padding:3px 7px;border-radius:3px;font-size:10px;font-weight:700;}
 .v5-rt-foot td{background:var(--v5-s2);font-size:7px;color:var(--v5-tx2);text-align:center;border-radius:2px;}
-/* Daily/lesson totals stay pinned to the bottom of the scroll box — otherwise
-   they sit below 28 rows of grid and are only reachable by scrolling the inner
-   container all the way down, which defeats the point of a summary row. */
-.v5-rt tfoot td{position:sticky;bottom:0;z-index:3;background:var(--v5-s2);}
-.v5-rt tfoot tr:first-child td{bottom:18px;}
-.v5-rt tfoot .v5-rt-name,.v5-rt tfoot .v5-rt-tot{z-index:5;}
+/* NOT sticky. These totals used to be pinned to the bottom of the scroll box
+   (position:sticky;bottom:0, with a hardcoded bottom:18px on the first of the
+   two rows) so a summary was always visible. In practice they floated over the
+   grid rows while scrolling and covered the bottom SPs — reported directly by
+   the user. The batch totals are surfaced above the table instead (see the
+   panel's summary line), so the footer can simply sit at the natural end of
+   the table where it belongs. */
+.v5-rt tfoot td{background:var(--v5-s2);}
+.v5-rt tfoot .v5-rt-name,.v5-rt tfoot .v5-rt-tot{z-index:4;}
+.v5-rt-summary{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--v5-tx3);background:var(--v5-s2);border-radius:6px;padding:6px 10px;margin-bottom:8px;}
+.v5-rt-summary b{color:var(--v5-tx);font-weight:700;}
 .v5-rt-legend{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--v5-tx2);margin-bottom:8px;}
 /* Zoom stepper — the "other technique" a grid switches to instead of shrinking
    cells below the readable minimum. */

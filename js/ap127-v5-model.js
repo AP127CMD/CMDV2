@@ -415,6 +415,49 @@
     });
   }
 
+  // Required pace AS OF ANY PAST DATE — the same formula buildPace() applies at
+  // asOf, but evaluated against the work that was actually outstanding on that
+  // date and the days that remained from it. Lets the Output chart draw the
+  // required line as the moving target it really is (it climbs as the batch
+  // falls behind) instead of stamping today's single figure across all history.
+  //
+  // Credits each lesson ONCE, on the date of its first completion (`!isRetake`)
+  // — the same effective-hours rule buildPace() uses — so requiredAt(asOf)
+  // reproduces pace.reqDayHrsB exactly. That equality is asserted in
+  // selfCheck(); if the two ever drift, the check fails loudly rather than the
+  // chart quietly disagreeing with the Pace panel.
+  function buildRequiredAt(sps, curModel) {
+    const byDate = {};
+    sps.forEach(s => s.flown.forEach(f => {
+      if (f.isRetake) return;                       // retake credits no new work
+      const e = byDate[f.date] || (byDate[f.date] = { hrs: 0, les: 0 });
+      e.hrs += f.effMins / 60; e.les += 1;
+    }));
+    const dates = Object.keys(byDate).sort();
+    const cumH = [], cumL = [];
+    let h = 0, l = 0;
+    dates.forEach(d => { h += byDate[d].hrs; l += byDate[d].les; cumH.push(h); cumL.push(l); });
+    const n = sps.length;
+    const totH = curModel.totalHours * n, totL = (curModel.count || 0) * n;
+    const planEnd = curModel.planEndDate;
+    return function requiredAt(dateStr) {
+      if (!dateStr || !planEnd || !n) return null;
+      let lo = 0, hi = dates.length - 1, idx = -1;   // last index with dates[i] <= dateStr
+      while (lo <= hi) { const mid = (lo + hi) >> 1; if (dates[mid] <= dateStr) { idx = mid; lo = mid + 1; } else hi = mid - 1; }
+      const doneH = idx >= 0 ? cumH[idx] : 0, doneL = idx >= 0 ? cumL[idx] : 0;
+      const remHrsB = Math.max(totH - doneH, 0), remLesB = Math.max(totL - doneL, 0);
+      const daysRem = dateDiff(planEnd, dateStr);
+      if (daysRem == null || daysRem <= 0) return null;   // past plan end: no rate to require
+      const rd = remHrsB / daysRem, rdl = remLesB / daysRem;
+      return {
+        date: dateStr, remHrsB, remLesB, daysRem,
+        reqDayHrsB: rd, reqDayLesB: rdl,
+        reqWeekHrsB: rd * 7, reqWeekLesB: rdl * 7,
+        reqMonthHrsB: rd * 30.44, reqMonthLesB: rdl * 30.44,   // avg Gregorian month, as buildPace
+      };
+    };
+  }
+
   function buildActualPace(sps, asOf) {
     // v4:508 — the same period-matched rolling windows the Pace panel uses:
     // Day = trailing 7d ÷ 7, Week = trailing 14d ÷ 2, Month = trailing 30d.
@@ -776,6 +819,7 @@
       students: sps,
       byId: Object.fromEntries(sps.map(s => [String(s.catc_id), s])),
       batch, pace, actualPace, etc, series, phases, distribution, targets,
+      requiredAt: buildRequiredAt(sps, curModel),
       keyPoints: keyPoints(curModel),
       phasesDef: PHASES, segmentsDef: SEGMENTS, typeColors: TYPE_COLORS,
       // lazily-derived views
@@ -845,6 +889,15 @@
     const dedupeOk = model.students.every(s => s.hoursEffective <= s.hoursLogged + 0.001);
     add('eff-vs-logged', 'effective hours ≤ logged hours for every SP',
       dedupeOk, model.batch.hoursDone.toFixed(1) + 'h eff vs ' + model.batch.hoursLogged.toFixed(1) + 'h logged');
+
+    // The Output chart's required line is drawn from requiredAt(); the Pace
+    // panel from buildPace(). Evaluated at asOf they are the same formula over
+    // the same work, so they must agree — this pins that.
+    const rNow = model.requiredAt(model.asOf);
+    const paceReq = model.pace ? model.pace.reqDayHrsB : null;
+    add('required-at-now', 'requiredAt(today) = Pace panel’s required/day',
+      (rNow == null && paceReq == null) || (rNow != null && paceReq != null && near(rNow.reqDayHrsB, paceReq, 0.001)),
+      rNow == null ? 'no rate (past plan end)' : rNow.reqDayHrsB.toFixed(3) + ' vs ' + (paceReq == null ? '—' : paceReq.toFixed(3)));
 
     return { pass: out.every(r => r.pass), checks: out };
   }
