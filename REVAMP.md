@@ -3211,3 +3211,119 @@ on the three DB_Share-proxied files confirmed empty. `node -c` clean on both cha
 files. Zero new console errors beyond the pre-existing local-dev CORS fallback.
 
 Files touched: `js/ap127-v5-model.js`, `js/view-cohort-v5.js`, `css/cohort-v5.css`, `index.html`.
+
+## p181
+
+**AP127 Detail V5 — round 4 of user feedback: Pulse redesigned as a real situation report, plus a
+genuine Chart.js stacking bug behind the "moving avg" complaint.**
+
+User feedback, verbatim:
+> PULSE: Headline, show total remaining hours and remaining day/week/month. And require rate per
+> day/ week. Redesign for more easy to understand at first glance. This is the key situation report.
+> TREND: Moving AVG position is not correct? It float at higher Y axis
+> SYLLABUS: Rotate the text of target (red) by 180 degree
+
+### 1. TREND — the moving average really was drawn in the wrong place (root cause found, and it
+### invalidates p175's explanation of the same symptom)
+
+The user was right and my p175 diagnosis was wrong. Measured live BEFORE touching anything:
+
+| index | raw `ma` | rendered y-value | `ma + Required` |
+|---|---|---|---|
+| 90 | 9.39 | **55.22** | 55.22 |
+| 88 | 10.21 | **56.04** | 56.04 |
+| 81 | 0.79 | **46.62** | 46.62 |
+
+The rendered value equals `ma + Required` **to the cent at every sampled index** — the Moving avg
+line was being drawn stacked on top of the Required line.
+
+**Cause:** this chart's y-axis is `stacked: true` (the Dual/Solo/Simulator bars need it), and
+Chart.js assigns a dataset with no explicit `stack` to a stack group keyed by its **type**. Both
+line overlays therefore landed in one shared `'line'` group and were summed. The bars were never
+affected — they carry `stack:'s'`, their own group. Fixed by giving each line overlay its own group
+(`stack:'ovl-ma'` / `'ovl-req'`); re-measured after the fix, rendered value now equals raw `ma`
+exactly at every index (9.39→9.39, 10.21→10.21, 0.79→0.79, 1.73→1.73), and re-verified with the
+"By type" breakdown ON (5 datasets: 3 bars in `'s'`, 2 lines in their own groups).
+
+**This is also the true root cause of the "moving avg glitch" reported against p174.** Back then
+`Required` was `null` at every index except one, so it lifted the average at exactly that one point
+— the "spike" the user saw. p175's changelog and code comment blamed an optical overlap of a
+floating dot and "fixed" it by turning Required into a full-width line, which made the same bug
+continuous instead of removing it. Both the code comment and this changelog are corrected here; the
+p175 entry's claim that "the average itself was already correct" was false.
+
+### 2. PULSE — Headline rebuilt into the tab's situation report
+
+The old headline was six generic KPI tiles. Rebuilt (panel id kept as `kpis` so saved layouts and
+`?v5layout=` share links still validate; title now "Situation") into a briefing that answers three
+questions in reading order, and **moved to the top of Pulse, above the Insight Reel**, since it is
+the key situation report.
+
+* **Verdict band** — one plain sentence, colour-coded, carrying the single most actionable number:
+  *"BEHIND REQUIRED PACE — 3804h left over 83d → needs 321h/week (11.5h/SP). Now flying 38.5h/week
+  — short by 282h/week."* Separate states for plan-end-passed (overdue) and no-plan-end.
+* **① Where we stand** — Progress (lessons) with both lesson and hour totals beneath, vs plan
+  today, vs revised-target.
+* **② What is left** — the explicit ask: **hours remaining** (batch + per SP + of total), lessons
+  remaining, and **time remaining expressed three ways: days · weeks · months**.
+* **③ What it takes** — the other explicit ask: **required rate per day / per week / per month**,
+  each showing batch hours, per-SP hours, required lessons, and the actual rate now with a signed
+  delta against it.
+* **Watch strip** — the decision-relevant counts that used to be tiles (at risk, idle ≥5d, never
+  flown, retakes), each still deep-linking to the section that explains it.
+
+Hours **and** lessons are shown together throughout, deliberately independent of the command bar's
+Hours/Lessons toggle — this is the one panel that must be readable without first checking which
+unit is selected.
+
+**Two real bugs caught in my own new code during verification, not shipped blind:**
+1. **The headline number rendered as a literal `0`.** The count-up tween seeds the element with a
+   `'0'` placeholder and fills in the real value from `requestAnimationFrame`; when rAF doesn't run
+   (throttled/hidden renderer — reproduced live here) the placeholder is what stays on screen, i.e.
+   actively wrong data on the panel that most needs to be trustworthy. Fixed by rendering the true
+   value immediately and treating the tween as pure enhancement (also skipped under
+   `prefers-reduced-motion`, and skipped on first paint when there is no prior value to count from).
+   Verified: renders `36.4%` = 979/2688, matching the model.
+2. **Doubled units in the sub-lines** — `fL()`/`fH()` append their own unit, so the copy read
+   "−673 les lessons" and "1236h / 5040h hours". Switched those two lines to a plain number
+   formatter.
+
+Also labelled the headline **"Progress (lessons)"**: `progressPct` is lessons-based (36.4%) and runs
+ahead of the hours-based figure (24.5%) because early lessons are short — both appear in the
+sub-lines, and the headline now says which one it is.
+
+### 3. SYLLABUS — target dates rotated 180°
+
+`.v5-rt-tgt-lbl` gains `transform:rotate(180deg)` on top of its `writing-mode:vertical-rl`, so the
+17 red target-checkpoint dates read bottom-to-top. Kept as a transform rather than
+`writing-mode:sideways-lr` so it renders identically in the html2canvas PDF path, which doesn't
+implement `sideways-lr`. Verified: computed transform `matrix(-1, 0, 0, -1, 0, 0)` on all 17
+labels. First attempt kept a directional `padding` that pushed every label 2.0px off its own column
+centre (18% of a cell at the 11px zoom floor); replaced with `margin:0 auto`, re-measured at
+0.01px drift.
+
+### Verification
+
+Live, on the local dev server: moving-avg rendered-vs-raw measured at 4 indices in both plain and
+"By type" modes (exact match after the fix, was `ma + 45.83` before); situation-report arithmetic
+hand-checked against the model (5040−1236=3804h remaining ✓, 3804/28=136h per SP ✓, 3804/83=45.8h
+required per day ✓, ×7=321h per week ✓, 83/7=11.9 weeks ✓, 83/30.44=2.7 months ✓); zero clipped or
+overflowing text nodes in the new panel at desktop **and** at 375px (bands collapse to one column,
+page scrollWidth 375 = viewport, no horizontal overflow); self-check 11/11 pass; parity harness 0
+mismatches across all 28 SP; Report still builds all 7 sections with its 6 KPI tiles intact
+(`KPI_DEFS` deliberately untouched — the report's Executive Summary reads it directly, not the
+panel); V4 reloaded afterwards, 10 charts, KPI "1236.2 / 5040.0 · 24.5% complete" matching V5's own
+hours figures exactly; `git diff --stat` on the three DB_Share-proxied files empty; `node -c` clean
+on both changed plain scripts; zero new console errors beyond the pre-existing local-dev CORS
+fallback.
+
+**Note on the token jump (p176 → p181).** Tokens p176-p180 were consumed during verification and
+never shipped. This dev environment's browser pane served a **stale body for a brand-new
+`?v=` asset URL** — `fetch()` of the same file with a throwaway query returned the new content
+while the `<script src>` request returned the old, i.e. the pane's asset cache is keyed by path and
+ignores the query for script subresources. The `?nocache=` trick recorded in p174 fixes the
+*document* but not this. The reliable workaround is to bump to a never-yet-requested `?v=` token
+and reload; that is what each intermediate bump was for. Disk content was confirmed correct with
+`grep` each time before re-bumping, so no change was ever "lost" — only re-served.
+
+Files touched: `js/view-cohort-v5.js`, `js/ap127-v5-layout.js`, `css/cohort-v5.css`, `index.html`.

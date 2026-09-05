@@ -8,10 +8,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="css/theme.css?v=p176"/>
-<link rel="stylesheet" href="css/progress.css?v=p176"/>
-<link rel="stylesheet" href="css/program.css?v=p176"/>
-<link rel="stylesheet" href="css/cohort-v5.css?v=p176"/>
+<link rel="stylesheet" href="css/theme.css?v=p181"/>
+<link rel="stylesheet" href="css/progress.css?v=p181"/>
+<link rel="stylesheet" href="css/program.css?v=p181"/>
+<link rel="stylesheet" href="css/cohort-v5.css?v=p181"/>
 </head>
 <body data-theme="cockpit">
 <div id="root">
@@ -47,34 +47,34 @@
 <!-- data: cross-check engine + bundled snapshots (progress also fetched live).
      Snapshots carry NO ?v= pin so the hourly refresh workflow propagates to
      clients via the Pages ~10-min cache (code assets stay version-pinned). -->
-<script src="assets/reconcile.js?v=p176"></script>
-<script src="js/crosscheck-monthly.js?v=p176"></script>
+<script src="assets/reconcile.js?v=p181"></script>
+<script src="js/crosscheck-monthly.js?v=p181"></script>
 <script src="flight-data.js"></script>
 <script src="progress-data.js"></script>
 <script src="ngt-data.js"></script>
-<script src="js/ap127-targets-data.js?v=p176"></script>
+<script src="js/ap127-targets-data.js?v=p181"></script>
 
 <!-- shared context + atoms (augmented Command Center app-shared) -->
-<script type="text/babel" src="js/shared.js?v=p176"></script>
+<script type="text/babel" src="js/shared.js?v=p181"></script>
 
 <!-- Operations views (reused from Command Center) -->
-<script type="text/babel" src="js/view-daily.js?v=p176"></script>
-<script type="text/babel" src="js/view-board.js?v=p176"></script>
-<script type="text/babel" src="js/view-gantt.js?v=p176"></script>
-<script type="text/babel" src="js/view-weekly.js?v=p176"></script>
-<script type="text/babel" src="js/view-summary.js?v=p176"></script>
-<script type="text/babel" src="js/view-roster.js?v=p176"></script>
-<script type="text/babel" src="js/view-calendar.js?v=p176"></script>
-<script type="text/babel" src="js/view-autoslotfinder.js?v=p176"></script>
-<script type="text/babel" src="js/view-aircraft.js?v=p176"></script>
+<script type="text/babel" src="js/view-daily.js?v=p181"></script>
+<script type="text/babel" src="js/view-board.js?v=p181"></script>
+<script type="text/babel" src="js/view-gantt.js?v=p181"></script>
+<script type="text/babel" src="js/view-weekly.js?v=p181"></script>
+<script type="text/babel" src="js/view-summary.js?v=p181"></script>
+<script type="text/babel" src="js/view-roster.js?v=p181"></script>
+<script type="text/babel" src="js/view-calendar.js?v=p181"></script>
+<script type="text/babel" src="js/view-autoslotfinder.js?v=p181"></script>
+<script type="text/babel" src="js/view-aircraft.js?v=p181"></script>
 
 <!-- Progress (AP127 Detail, ported from DashboardR1 into React — full dashboard) -->
-<script type="text/babel" src="js/view-cohort.js?v=p176"></script>
+<script type="text/babel" src="js/view-cohort.js?v=p181"></script>
 
 <!-- AP127 Detail V4 — redesigned duplicate of AP127 Detail (see REVAMP.md). Fully
      independent globals/DOM ids (V4-suffixed / d127v4- prefixed) so it can load
      alongside view-cohort.js without colliding. -->
-<script type="text/babel" src="js/view-cohort-v4.js?v=p176"></script>
+<script type="text/babel" src="js/view-cohort-v4.js?v=p181"></script>
 
 <!-- AP127 Detail V5 — redesigned successor built ON TOP of V4's data (never V4's
      code): consolidated panels, one global control bar, canvas-drawn grids,
@@ -82,27 +82,27 @@
      PDF/print report. Plain scripts (no JSX) — model/layout load before the
      view; all three are new files, nothing here touches view-cohort-v4.js,
      shared.js or progress.css. See REVAMP.md + the design spec. -->
-<script src="js/ap127-v5-model.js?v=p176"></script>
-<script src="js/ap127-v5-layout.js?v=p176"></script>
-<script src="js/view-cohort-v5.js?v=p176"></script>
+<script src="js/ap127-v5-model.js?v=p181"></script>
+<script src="js/ap127-v5-layout.js?v=p181"></script>
+<script src="js/view-cohort-v5.js?v=p181"></script>
 
 <!-- Training Program (full NGT_001 parity: Overview, Performance, Simulation).
      Pure JS (no JSX) embedding NGT_001's scheduler/render logic verbatim — loaded
      as a plain script so it skips Babel and is defined before the shell renders. -->
-<script src="js/view-program.js?v=p176"></script>
+<script src="js/view-program.js?v=p181"></script>
 
 <!-- Tutorial / user guide (pure JS, plain script) -->
-<script src="js/view-tutorial.js?v=p176"></script>
+<script src="js/view-tutorial.js?v=p181"></script>
 <!-- These views use React.createElement only (no JSX) — loaded as plain scripts so they skip Babel. -->
-<script src="js/view-watchdog.js?v=p176"></script>
-<script src="js/view-cf-usage.js?v=p176"></script>
-<script src="js/view-ap127-targets.js?v=p176"></script>
+<script src="js/view-watchdog.js?v=p181"></script>
+<script src="js/view-cf-usage.js?v=p181"></script>
+<script src="js/view-ap127-targets.js?v=p181"></script>
 
 <!-- Integrity + Home + Shell (no JSX — plain scripts, skip Babel) -->
-<script src="js/view-crosscheck.js?v=p176"></script>
-<script type="text/babel" src="js/view-overview.js?v=p176"></script>
-<script src="js/view-schedule.js?v=p176"></script>
-<script src="js/shell.js?v=p176"></script>
+<script src="js/view-crosscheck.js?v=p181"></script>
+<script type="text/babel" src="js/view-overview.js?v=p181"></script>
+<script src="js/view-schedule.js?v=p181"></script>
+<script src="js/shell.js?v=p181"></script>
 
 <!-- boot -->
 <script type="text/babel" data-presets="env,react">

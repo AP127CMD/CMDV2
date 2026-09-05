@@ -517,37 +517,158 @@
     }
     requestAnimationFrame(step);
   }
+  // ── Situation report (panel id stays 'kpis' so saved layouts/share links
+  // survive) ────────────────────────────────────────────────────────────────
+  // Redesigned in p176 from a row of 6 generic tiles into the tab's actual
+  // situation report, answering three questions in reading order: where we
+  // stand → what is left → what it takes. Hours AND lessons are shown side by
+  // side throughout, deliberately independent of the command bar's
+  // Hours/Lessons toggle: this is the one panel that has to be readable
+  // without first checking which unit is selected.
+  const nf0 = v => (v == null ? '—' : Math.round(v).toLocaleString('en-GB'));
+  function sitStat(label, big, bigColor, subs) {
+    return el('div', { class: 'v5-sit-stat' }, [
+      el('div', { class: 'v5-sit-l' }, [label]),
+      el('div', { class: 'v5-sit-v', style: bigColor ? 'color:' + bigColor : '' }, [big]),
+    ].concat((subs || []).filter(Boolean).map(s => el('div', { class: 'v5-sit-s', html: s }))));
+  }
   registerPanelV5({
-    id: 'kpis', title: 'Headline', estHeight: 90, deps: ['unit', 'scope', 'range', 'asOf'],
+    id: 'kpis', title: 'Situation', estHeight: 250, deps: ['unit', 'scope', 'range', 'asOf'],
+    subtitle: () => 'where the batch stands · what is left · what it takes — hours and lessons shown together',
     mount(container, model) {
-      const row = el('div', { class: 'v5-kpirow' });
-      layoutCfg.current.kpis.forEach(key => {
-        const def = KPI_DEFS[key]; if (!def) return;
-        const d = def(model);
-        const tile = el('div', { class: 'v5-kpi', onclick: () => goSection(d.section || 'pulse') }, [
-          el('div', { class: 'v5-kpi-l' }, [d.label]),
-          el('div', { class: 'v5-kpi-v', 'data-kpi': key, style: 'color:' + d.color }, [typeof d.value === 'number' ? '0' : d.fmt(d.value)]),
-          el('div', { class: 'v5-kpi-s' }, [d.sub()]),
+      const b = model.batch, pace = model.pace, act = model.actualPace;
+      const n = Math.max(1, b.n);
+      const wrap = el('div', { class: 'v5-sit' });
+
+      // ── Verdict line ─────────────────────────────────────────────────────
+      // One plain sentence with the single most actionable number in it, so
+      // the situation is legible before the eye reaches any figure below.
+      const gapWk = (pace && pace.reqWeekHrsB != null && act) ? act.actWeekHrsB - pace.reqWeekHrsB : null;
+      let vClass = 'ok', vTitle = 'ON TRACK', vMsg = '';
+      if (!pace) { vClass = 'ok'; vTitle = 'NO DATA'; vMsg = 'Pace cannot be computed — no students in scope.'; }
+      else if (pace.overdue) {
+        vClass = 'bad'; vTitle = 'PLAN END PASSED';
+        vMsg = `Plan end date <b>${fd(pace.planEndDate)}</b> passed <b>${pace.daysOverdue}d</b> ago with <b>${fH(pace.remHrsB)}</b> (${nf0(pace.remLesB)} lessons) still to fly.`;
+      } else if (gapWk == null) {
+        vClass = 'warn'; vTitle = 'NO PLAN END'; vMsg = 'Plan end date unavailable — required pace cannot be computed.';
+      } else if (gapWk < 0) {
+        vClass = 'bad'; vTitle = 'BEHIND REQUIRED PACE';
+        vMsg = `<b>${fH(pace.remHrsB)}</b> left over <b>${pace.daysRem}d</b> → needs <b>${fH(pace.reqWeekHrsB)}/week</b> (${fH(pace.reqWeekHrsB / n)}/SP). Now flying ${fH(act.actWeekHrsB)}/week — short by <b>${fH(Math.abs(gapWk))}/week</b>.`;
+      } else {
+        vClass = 'ok'; vTitle = 'AT OR ABOVE REQUIRED PACE';
+        vMsg = `<b>${fH(pace.remHrsB)}</b> left over <b>${pace.daysRem}d</b> → needs ${fH(pace.reqWeekHrsB)}/week; now flying <b>${fH(act.actWeekHrsB)}/week</b> (+${fH(gapWk)}).`;
+      }
+      wrap.appendChild(el('div', { class: 'v5-sit-verdict v5-sit-' + vClass }, [
+        el('span', { class: 'v5-sit-vt' }, [vTitle]),
+        el('span', { class: 'v5-sit-vm', html: vMsg }),
+      ]));
+
+      // ── Three bands ──────────────────────────────────────────────────────
+      const bands = el('div', { class: 'v5-sit-bands' });
+
+      // 1. DONE
+      const doneBand = el('div', { class: 'v5-sit-band' }, [el('div', { class: 'v5-sit-h' }, ['① Where we stand'])]);
+      const doneGrid = el('div', { class: 'v5-sit-grid' });
+      // Rendered with its REAL value, not a '0' placeholder for the count-up to
+      // fill in: if requestAnimationFrame never runs (background/hidden tab,
+      // throttled renderer, reduced-motion), a placeholder would leave the
+      // headline number reading "0" permanently — actively wrong on the one
+      // panel that has to be trustworthy at a glance. The tween below is a
+      // pure enhancement layered on top of an already-correct value.
+      // Labelled "(lessons)" on purpose: progressPct is lessons-complete /
+      // lesson-slots, which runs ahead of the hours-based figure (36.4% vs
+      // 24.5% on live data, since early lessons are short). Both are shown in
+      // the sub-lines; the headline says which one it is.
+      doneGrid.appendChild(sitStat('Progress (lessons)', b.progressPct.toFixed(1) + '%', 'var(--v5-acc)', [
+        `${nf0(b.lessonsDone)} / ${nf0(b.lessonSlots)} lessons`,
+        // nf0, not fH — fH appends its own 'h', which read as "1236h / 5040h
+        // hours" next to the lessons line above it.
+        `${nf0(b.hoursDone)} / ${nf0(b.hourSlots)} hours`,
+      ]));
+      doneGrid.appendChild(sitStat('vs plan today', signed(b.hoursDelta, fH), b.hoursDelta >= 0 ? 'var(--v5-good)' : 'var(--v5-bad)', [
+        // likewise fL would render "−673 les lessons".
+        signed(b.lessonsDelta, nf0) + ' lessons',
+        (b.hoursDelta >= 0 ? 'ahead of' : 'behind') + ' curriculum plan',
+      ]));
+      const vt = b.vsTargetToday;
+      doneGrid.appendChild(sitStat('vs revised-target', vt ? vt.behindCount + ' SP' : '—', vt && vt.behindCount ? 'var(--v5-rose)' : 'var(--v5-good)', [
+        vt ? 'behind target L' + Math.round(b.targetLessonToday) : 'no target set',
+        `${nf0(b.n)} SP in batch`,
+      ]));
+      doneBand.appendChild(doneGrid);
+      bands.appendChild(doneBand);
+
+      // 2. REMAINING — the "total remaining hours + remaining day/week/month" ask
+      const remBand = el('div', { class: 'v5-sit-band' }, [el('div', { class: 'v5-sit-h' }, ['② What is left'])]);
+      const remGrid = el('div', { class: 'v5-sit-grid' });
+      remGrid.appendChild(sitStat('Hours remaining', pace ? fH(pace.remHrsB) : '—', 'var(--v5-tx)', [
+        pace ? `${fH(pace.remHrsB / n)} per SP` : null,
+        pace ? `of ${fH(b.hourSlots)} total` : null,
+      ]));
+      remGrid.appendChild(sitStat('Lessons remaining', pace ? nf0(pace.remLesB) : '—', 'var(--v5-tx)', [
+        pace ? `${(pace.remLesB / n).toFixed(1)} per SP` : null,
+        pace ? `of ${nf0(b.lessonSlots)} total` : null,
+      ]));
+      // Time left expressed three ways — the explicit day/week/month ask.
+      const dRem = pace ? pace.daysRem : null;
+      remGrid.appendChild(sitStat('Time remaining', dRem == null ? '—' : dRem + 'd',
+        pace && pace.overdue ? 'var(--v5-bad)' : 'var(--v5-tx)', [
+          dRem == null ? null : `${(dRem / 7).toFixed(1)} weeks · ${(dRem / 30.44).toFixed(1)} months`,
+          pace ? (pace.overdue ? `overdue ${pace.daysOverdue}d past ${fd(pace.planEndDate)}` : `to plan end ${fd(pace.planEndDate)}`) : null,
+        ]));
+      remBand.appendChild(remGrid);
+      bands.appendChild(remBand);
+
+      // 3. REQUIRED RATE — per day and per week, batch and per SP, vs actual.
+      const reqBand = el('div', { class: 'v5-sit-band' }, [el('div', { class: 'v5-sit-h' }, ['③ What it takes'])]);
+      const reqGrid = el('div', { class: 'v5-sit-grid' });
+      const rateStat = (label, reqH, reqL, actH) => {
+        if (reqH == null) return sitStat(label, '—', 'var(--v5-tx3)', ['plan end date passed']);
+        const d = actH == null ? null : actH - reqH;
+        return sitStat(label, fH(reqH), 'var(--v5-warn)', [
+          `${fH(reqH / n)} per SP · ${(reqL == null ? '—' : reqL.toFixed(1))} lessons`,
+          d == null ? null : `now ${fH(actH)} · <b style="color:${d >= 0 ? 'var(--v5-good)' : 'var(--v5-bad)'}">${signed(d, fH)}</b>`,
         ]);
-        row.appendChild(tile);
-      });
-      container.appendChild(row);
-      layoutCfg.current.kpis.forEach(key => {
-        const def = KPI_DEFS[key]; if (!def) return;
-        const d = def(model);
-        const vEl = $('.v5-kpi-v[data-kpi="' + key + '"]', row);
-        if (vEl && typeof d.value === 'number') {
-          const prev = KPI_PREV[key] == null ? 0 : KPI_PREV[key];
-          const dp = key === 'progress' ? 1 : 0;
-          tweenNumber(vEl, prev, d.value, dp, () => {
-            vEl.textContent = d.fmt(d.value);
-            vEl.classList.add('v5-flash');
-            setTimeout(() => vEl.classList.remove('v5-flash'), 500);
-          });
-          KPI_PREV[key] = d.value;
-        } else if (vEl) vEl.textContent = d.fmt(d.value);
-      });
-      return { row };
+      };
+      reqGrid.appendChild(rateStat('Required / day', pace && pace.reqDayHrsB, pace && pace.reqDayLesB, act && act.actDayHrsB));
+      reqGrid.appendChild(rateStat('Required / week', pace && pace.reqWeekHrsB, pace && pace.reqWeekLesB, act && act.actWeekHrsB));
+      reqGrid.appendChild(rateStat('Required / month', pace && pace.reqMonthHrsB, pace && pace.reqMonthLesB, act && act.actMonthHrsB));
+      reqBand.appendChild(reqGrid);
+      bands.appendChild(reqBand);
+      wrap.appendChild(bands);
+
+      // ── Watch strip — the decision-relevant counts that used to be tiles,
+      // each still deep-linking to the section that explains it.
+      const wl = model.watchlist();
+      const idleN = wl.filter(x => !x.neverFlown && x.idle >= 5).length;
+      const chips = el('div', { class: 'v5-sit-chips' });
+      const chip = (label, value, color, section) => chips.appendChild(
+        el('button', { class: 'v5-sit-chip', onclick: () => goSection(section), title: 'Open the ' + section + ' section' }, [
+          el('b', { style: 'color:' + color }, [String(value)]), ' ' + label,
+        ]));
+      chip('at risk of finishing late', model.etc.atRisk + '/' + b.n, model.etc.atRisk ? 'var(--v5-warn)' : 'var(--v5-good)', 'people');
+      chip('idle ≥ 5 days', idleN, idleN ? 'var(--v5-warn)' : 'var(--v5-good)', 'pulse');
+      chip('never flown', wl.filter(x => x.neverFlown).length, wl.filter(x => x.neverFlown).length ? 'var(--v5-bad)' : 'var(--v5-good)', 'people');
+      chip('retakes across the batch', b.retakes, 'var(--v5-tx2)', 'people');
+      wrap.appendChild(chips);
+
+      container.appendChild(wrap);
+
+      // Count-up on the headline number — enhancement only (the element already
+      // shows the correct value). Skipped entirely under reduced-motion, and
+      // skipped when there's no prior value to count up FROM, so a first paint
+      // shows the real figure immediately instead of sweeping up from zero.
+      const pEl = $('.v5-sit-v', wrap);
+      const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (pEl && !reduceMotion && KPI_PREV.progress != null && KPI_PREV.progress !== b.progressPct) {
+        tweenNumber(pEl, KPI_PREV.progress, b.progressPct, 1, () => {
+          pEl.textContent = b.progressPct.toFixed(1) + '%';
+          pEl.classList.add('v5-flash');
+          setTimeout(() => pEl.classList.remove('v5-flash'), 500);
+        });
+      }
+      KPI_PREV.progress = b.progressPct;
+      return { wrap };
     },
   });
 
@@ -819,18 +940,26 @@
     } else {
       datasets = [{ label: STATE.unit === 'hours' ? 'Hours' : 'Lessons', data: out.values, backgroundColor: '#e88aff', borderRadius: 2, stack: 's' }];
     }
-    // Moving avg is its own dataset, computed purely from the bar values
-    // (model.js's `out.ma`) — it never touches the Required figure. The
-    // "glitch" reported was the old Required marker (a single floating red
-    // DOT with no line) sitting exactly on the blue moving-avg trace at the
-    // same x/y, reading as a spike in the average itself. Fixed by giving
-    // Required its own full-width dashed reference line (a flat "required
-    // pace" line, not a single point) so it's visually a distinct channel
-    // instead of a glitch-looking dot fused onto the moving average.
-    datasets.push({ type: 'line', label: 'Moving avg', data: out.ma, borderColor: '#38bdf8', borderWidth: 1.6, pointRadius: 0, tension: .2, order: -1, stack: undefined });
+    // ── Line overlays MUST each carry their own `stack` group. ──────────────
+    // This y-axis is `stacked:true` (the Dual/Solo/Simulator bars need it), and
+    // Chart.js stacks a dataset with no explicit `stack` into a group keyed by
+    // its TYPE — so both line overlays defaulted into one shared 'line' group
+    // and the Moving avg was silently drawn at (ma + Required), floating well
+    // above its real value. Measured live before the fix: raw ma 10.21h
+    // rendered at y=56.04, exactly ma + Required(45.83); after giving each line
+    // its own group, the same point renders at 10.21. The bars were never
+    // affected — they're in their own 's' group.
+    //
+    // This is ALSO the true root cause of the "moving avg glitch" reported
+    // against p174: back then Required was null everywhere except one index, so
+    // it lifted the average at exactly that one point — the "spike". p175's
+    // comment here blamed an optical overlap of a floating dot; that was wrong,
+    // and turning Required into a full-width line made the same bug continuous
+    // instead of fixing it. Corrected in p176.
+    datasets.push({ type: 'line', label: 'Moving avg', data: out.ma, borderColor: '#38bdf8', borderWidth: 1.6, pointRadius: 0, tension: .2, order: -1, stack: 'ovl-ma' });
     const req = outputRequiredInfo(model);
     if (req) {
-      datasets.push({ type: 'line', label: 'Required', data: out.values.map(() => req.req), borderColor: '#f43f5e', borderDash: [7, 4], borderWidth: 1.6, pointRadius: 0, tension: 0, order: -2, spanGaps: true, stack: undefined });
+      datasets.push({ type: 'line', label: 'Required', data: out.values.map(() => req.req), borderColor: '#f43f5e', borderDash: [7, 4], borderWidth: 1.6, pointRadius: 0, tension: 0, order: -2, spanGaps: true, stack: 'ovl-req' });
     }
     return {
       type: 'bar', data: { labels, datasets },

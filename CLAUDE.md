@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p176` (all currently at p175)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p182` (all currently at p181)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -124,7 +124,38 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p175` (2026-08-12 — **AP127 Detail V5 — round-3 feedback: Trend
+**Last known:** all files `p181` (2026-09-05 — **AP127 Detail V5 — round-4 feedback: Pulse
+rebuilt as a situation report + a real Chart.js stacking bug.** (1) **TREND — the moving average
+was genuinely drawn in the wrong place, and this invalidates p175's explanation of the same
+symptom.** Measured before touching anything: the rendered y-value equalled `ma + Required` to the
+cent at every sampled index. Cause: the Output chart's y-axis is `stacked:true` (the
+Dual/Solo/Simulator bars need it) and Chart.js groups a dataset with no explicit `stack` by its
+TYPE — so both line overlays fell into one shared `'line'` group and were summed. Fixed by giving
+each overlay its own stack group; re-measured, rendered now equals raw exactly, in both plain and
+"By type" modes. **This was also the true cause of the p174 "moving avg glitch"** (Required was
+null everywhere except one index, lifting the average at exactly that point); p175 blamed an
+optical overlap and "fixed" it by making Required a full-width line, which made the same bug
+continuous — code comment and changelog both corrected. (2) **PULSE — the Headline is now the
+tab's situation report**, moved above the Insight Reel: a colour-coded verdict sentence carrying
+the most actionable number, then three bands — ① where we stand, ② what is left (hours remaining
+batch + per SP, lessons remaining, and time remaining as days · weeks · months), ③ what it takes
+(required rate per day/week/month, batch + per SP + lessons, each against the actual rate now with
+a signed delta) — plus a watch strip of deep-linking counts. Hours and lessons are shown together
+throughout, independent of the Hours/Lessons toggle. Panel id stays `kpis` so saved layouts and
+share links still validate, and `KPI_DEFS` is untouched so the Report's Executive Summary is
+unaffected. Two bugs caught in the new code during verification: the headline rendered a literal
+`0` whenever `requestAnimationFrame` didn't run (the count-up seeded a placeholder — now the real
+value renders first and the tween is enhancement only), and doubled units in two sub-lines
+("−673 les lessons"). (3) **SYLLABUS — the 17 red target dates rotated 180°** via `transform` on
+top of `writing-mode:vertical-rl` (not `sideways-lr`, which html2canvas can't render for the PDF
+path); first attempt left every label 2px off its column centre, fixed to 0.01px. Verified live:
+self-check 11/11, parity 0 mismatches across 28 SP, no clipped text or horizontal overflow at
+desktop or 375px, Report builds all 7 sections, V4 unchanged (10 charts, 24.5% matching V5).
+**Note:** tokens p176-p180 were consumed during verification and never shipped — this dev
+environment's browser pane serves a stale body for a brand-new `?v=` asset URL (its script-subresource
+cache is keyed by path, ignoring the query; `fetch()` of the same file returns the new content).
+The p174 `?nocache=` trick fixes the document, not this; the workaround is to bump to a
+never-requested token. Full write-up: REVAMP.md's p181 entry.) p175 (2026-08-12 — **AP127 Detail V5 — round-3 feedback: Trend
 accuracy + Report overhaul.** Trend: Progress vs Plan's Plan line now runs to the curriculum's
 finish date (not clipped to today — new `series.*.planFull` in `js/ap127-v5-model.js`, computed
 over the full planned-date range regardless of asOf, vs Actual/lag which correctly stay clipped to

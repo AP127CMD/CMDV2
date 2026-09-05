@@ -33,9 +33,13 @@
     kpis: ['progress', 'hoursDelta', 'lessonsDelta', 'vsTarget', 'atRisk', 'daysLeft'],
     columns: ['rank', 'name', 'nick', 'se', 'fi', 'progress', 'hours', 'lessons', 'lastLesson', 'lastFlt', 'idle', 'dayDelta', 'hrsDelta', 'vsTarget'],
     sections: [
+      // 'kpis' (the Situation report) leads Pulse as of p176 — it is the key
+      // situation report, so it comes before the Insight Reel rather than
+      // after it. Panel ids are unchanged so saved layouts / share links
+      // encoded against the old order still validate.
       { id: 'pulse', label: 'Pulse', icon: 'pulse', visible: true, panels: [
-        { id: 'reel', span: 12, visible: true, opts: { autoplay: true } },
         { id: 'kpis', span: 12, visible: true, opts: {} },
+        { id: 'reel', span: 12, visible: true, opts: { autoplay: true } },
         { id: 'pace', span: 12, visible: true, opts: {} },
         { id: 'watchlist', span: 12, visible: true, opts: {} },
       ] },
