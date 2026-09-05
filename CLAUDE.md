@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p184` (all currently at p183)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p185` (all currently at p184)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -105,9 +105,27 @@ to either file (removed export, renamed `window.*` global, a new dependency on `
 another view) breaks DB_Share too. After editing either file, load
 `https://ap127-dashboardr1.pages.dev` and confirm it still renders. Design:
 `docs/superpowers/specs/2026-08-02-mirror-cmdv2-detail-v4-design.md`. **`js/view-cohort-v5.js` (new,
-2026-08-12) is NOT part of this mirror** — DB_Share only proxies the two files named above; V5 is
-additive and doesn't touch either of them (verify with `git diff --stat js/view-cohort-v4.js
-js/shared.js css/progress.css` before every commit — must stay empty).
+2026-08-12) and `js/view-cohort-v6.js` (new, 2026-09-06) are NOT part of this mirror** — DB_Share
+only proxies the two files named above; V5 and V6 are additive and don't touch either of them
+(verify with `git diff --stat js/view-cohort-v4.js js/shared.js css/progress.css` before every
+commit — must stay empty).
+
+## The three AP127 Detail tabs — what each one is for
+- **AP127 Detail** (`js/view-cohort.js`) — the original DashboardR1 port. Frozen.
+- **AP127 Detail V4** (`js/view-cohort-v4.js`) — 16 stacked panels, ~25 rounds of additive feedback.
+  Frozen, and **live-proxied by DB_Share**, so it must not be touched.
+- **AP127 Detail V5** (`js/view-cohort-v5.js` + `ap127-v5-model.js` + `ap127-v5-layout.js`) — the
+  consolidated 5-section rebuild with the admin-customisable layout. **`js/ap127-v5-model.js` is the
+  shared metrics engine: V5 AND V6 both read every present-tense number from it.** A change there
+  moves both tabs — that is deliberate (they can never disagree), but it means the 12 invariants in
+  its `selfCheck()` are load-bearing for two tabs, not one.
+- **AP127 Detail V6** (`js/view-cohort-v6.js` + `ap127-v6-forecast.js` + `css/cohort-v6.css`) — the
+  scroll-through briefing (deck → history → situation → forecast → batch → integrity), with the
+  seeded prediction engine and the TG report. Adds no present-tense maths of its own.
+
+**`js/ap127-v6-forecast.js` is seeded on purpose.** The Monte Carlo uses a fixed-seed mulberry32 so
+the screen, the report preview and the exported PDF always show the same dates. Do not "improve" it
+with `Math.random()` — a forecast that moves on every render cannot be put in front of a TG.
 
 ## Verify actual state — run before starting
 ```bash
@@ -124,7 +142,49 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p183` (2026-09-05 — **AP127 Detail V5 — round-5 feedback: required
+**Last known:** all files `p184` (2026-09-06 — **New tab: AP127 Detail V6 — "Flight Recorder".**
+A third, independent Detail tab alongside V4 and V5, both untouched. Built as a scroll-through
+briefing in six acts (00 Flight deck · 01 History · 02 Situation · 03 Forecast · 04 The batch ·
+05 Integrity) with a fixed act rail, reveal-on-scroll, an animated completion gauge, a draggable
+history playhead with a "Play the story" animation, a zoom/pan canvas curriculum matrix, a
+cross-panel focus bus, and a live what-if simulator.
+
+**Accuracy design:** V6 computes NO present-tense figure of its own — every current-state number
+comes from `js/ap127-v5-model.js` (the same engine V5 uses, same `opsAugment` step, same
+`AP127Reconcile` helpers) so the two tabs cannot disagree. Everything forward-looking comes from a
+new pure, Node-runnable, **seeded** engine `js/ap127-v6-forecast.js` (moving-block bootstrap: last
+90 days of real output resampled in whole 7-day blocks, 1,500 runs, fixed seed → byte-identical
+output every render). 33 invariants total (12 model + 16 forecast + 5 view) render live in Act 05
+and print in the report.
+
+**Three accuracy problems found by measuring, then fixed:** (1) per-SP projection on isolated
+trailing rates produced completion dates spanning 2027–**2034** — measured that 27 of 28 SP flew in
+the 31 Aug–05 Sep catch-up push, i.e. the school flies a shared line, so projections now allocate
+the batch's forecast output by each SP's share of it, shrunk halfway to an equal share, with shares
+summing to exactly 1 (spread collapsed 7 years → 184 days); (2) the deck quoted the EWMA rate next
+to a P50 date the 90-day mean produced, so the arithmetic on screen didn't close —
+`verdict.actualRate` is now the rate the simulation actually runs on, EWMA survives as `paceNow`,
+and every rate is listed with its exact window in Act 03; (3) the what-if at 1.00× used a different
+sim count and rate basis than the headline, so "change nothing" moved the date by 5 days — it now
+shares the headline's seed and sim count, pinned by the `whatif-neutral` invariant.
+
+**Six bugs found in live verification:** phase funnel rendering `undefined` (the model nests
+label/colour under `.phase`); reveal-on-scroll via IntersectionObserver observed returning
+`revealed: 0 of 29` — i.e. a blank page — replaced with a rAF+timer geometry sweep plus a 4s safety
+net, and the deferred chart-mount pass hardened the same way; `cssv()` reading
+`document.documentElement` so canvases ignored the light theme (**this is the app-wide
+theme-invariance limitation documented above — V6 fixes it for its own colours by reading from
+`document.body`, and is the first Detail tab that actually follows the light theme**); the PDF
+export iframe having no web fonts so headings fell back; the forecast cone pushing the y-axis 40%
+above the course total (now capped); and Chart.js summing two un-`stack`ed line overlays on a
+stacked axis (same trap as p181 — each overlay gets its own stack group, verified by reading the
+rendered pixel back through the scale).
+
+**Verified:** 33/33 self-check live and time-travelled; PDF decoded from a real intercepted
+`.save()` and inspected with `pdfinfo`/`pdftoppm` — valid 5-page A4, 1.8 MB, both charts, all 28
+roster rows, matrix, correct per-page footer; mobile 375px zero horizontal overflow; V4 (10 charts)
+and V5 (12/12) reloaded unchanged; `git diff --stat` on the DB_Share-proxied files and every V5 file
+empty. Console harness: `ap127V6Audit()`. Full write-up: REVAMP.md's p184 entry.) p183 (2026-09-05 — **AP127 Detail V5 — round-5 feedback: required
 pace becomes a moving target, calendar footer unpinned, Syllabus/Calendar cells linked to real Ops
 bookings.** (1) **TREND** — the Required line was one flat line stamped with today's figure across
 all history; new `buildRequiredAt()` in the model evaluates the same formula `buildPace()` uses but

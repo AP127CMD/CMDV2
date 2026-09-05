@@ -3437,3 +3437,128 @@ One bug caught in my own new code before shipping: a missing closing paren after
 every changed plain script gets syntax-checked before it reaches the browser.
 
 Files touched: `js/ap127-v5-model.js`, `js/view-cohort-v5.js`, `css/cohort-v5.css`, `index.html`.
+
+---
+
+## p184
+
+**New tab: AP127 DETAIL V6 — "Flight Recorder". A third, independent Detail tab alongside V4 and
+V5, both untouched.**
+
+User brief, verbatim:
+> Now I want to develop new tab "AP127 DETAIL V6" which is a new version of the V4 and V5. Pls study
+> in deep detail of the website and come up with the brandnew AP127 DETAIL V6. It should be a
+> completely brand new design with dynamic animated scrolling, zooming and all the fancy modern UI
+> stuff while keep all the useful function and features, best practice UX UI. With in mind of focus
+> on the history/ situation and prediction of AP127 batch progress. Intuitive dashboard and charts.
+> Pdf report ready for TG to review the current situation and records. Interactive and interconnect
+> all the data cells. Data accuracy is very important. I want the new design feel lively fancy while
+> all the important data are all there.
+
+### The shape
+
+V4 is 16 stacked panels. V5 consolidated those into 5 sections behind one command bar. Both answer
+"what are the numbers" very well; neither answers "so what" without the reader assembling the story
+themselves. V6 is built as a **narrative the reader falls through**, in the order a briefing is
+actually given, driven by scroll with a fixed act rail:
+
+| Act | Question it answers |
+|-----|---------------------|
+| **00 Flight deck** | The verdict, on one screen — animated completion gauge, colour-coded verdict sentence, four headline stats, six sparkline vital signs |
+| **01 History** | How the batch got here — cumulative flown-vs-plan-vs-target with a draggable **playhead** and a "Play the story" animation, output-rhythm bars split by sortie type with the moving target overlaid, an auto-detected turning-point timeline, and a month ribbon |
+| **02 Situation** | Exactly where it stands — a three-band situation report (where we stand / what is left / what it takes), a clickable phase funnel, the required-vs-actual table, and a zoom/pan **curriculum matrix** (28 SP × 96 lessons on canvas) |
+| **03 Forecast** | Where it ends up — a P10–P90 **forecast cone**, a completion-date distribution, the full rate card with straight-line projections, a live **what-if simulator**, and a per-SP completion ladder |
+| **04 The batch** | The same story per student — a 28-card constellation with progress rings and sparklines, plus a sortable roster |
+| **05 Integrity** | Whether any of it can be trusted — all 33 invariants, evaluated live, plus provenance and the report button |
+
+### Data accuracy — the part that mattered most
+
+**V6 computes no present-tense figure of its own.** Every current-state number comes from
+`js/ap127-v5-model.js` — the model already audited line-by-line against V4, carrying 12 invariants —
+through byte-for-byte the same `opsAugment` step V5 applies (same `AP127Reconcile` key helpers, so
+the two tabs cannot disagree about the same batch on the same day).
+
+Everything forward-looking comes from a new engine, **`js/ap127-v6-forecast.js`**: pure, no DOM,
+runs unmodified under Node, and **seeded** — the same model always produces byte-identical output,
+because a forecast that changed on every render could never be put in a PDF and defended. It carries
+16 invariants of its own; the view adds 5 more. All 33 are rendered in Act 05 and printed in the
+report. Shown, not asserted.
+
+Method: a **moving-block bootstrap**. The last 90 days of real daily batch output are resampled in
+whole 7-day blocks — preserving the weekly rhythm the school actually flies, stand-downs included —
+and run forward 1,500 times until the remaining work is complete. No distribution is fitted and no
+growth is assumed; the batch's own days are the model.
+
+### Three real problems found by measuring first, not by guessing
+
+1. **Per-SP projection on isolated rates is noise, and the first build proved it.** Projecting each
+   SP on their own trailing 45-day rate produced completion dates spanning 2027 to **2034** — one
+   extra or missing sortie inside a window that contained an 8-day batch-wide stand-down moved a
+   projected finish by years. Measured against the real snapshot: 27 of 28 SP flew in the 31 Aug –
+   05 Sep catch-up push, i.e. the school flies a shared *line* and the SPs move through it together.
+   Rebuilt to allocate the **batch's** forecast output by each SP's share of it, shrunk halfway
+   toward an equal share. Shares sum to exactly 1, so the per-SP rates sum back to the batch rate —
+   asserted by the `sp-share` and `sp-rate-sum` invariants. Spread collapsed from 7 years to
+   184 days, and the last SP to finish now agrees with the batch cone instead of contradicting it.
+2. **Two different "actual rates" were competing for the same headline.** The deck quoted the EWMA
+   (9.2h/day) next to a P50 date the 90-day mean (11.4h/day) had produced — a reader dividing the
+   remaining work by the rate shown would not land near the date shown. `verdict.actualRate` is now
+   the rate the simulation actually runs on; the EWMA survives as `paceNow` in the rate card. The
+   Situation table's trailing-window figures now name their own basis, and a note points at Act 03,
+   where every rate the page is allowed to print is listed with its exact window.
+   Sanity check now holds: 3,725h ÷ 11.4h/day = 325 days against a P50 of 343.
+3. **The what-if at 1.00× disagreed with the headline it sat beside.** It ran 600 simulations
+   against the headline's 1,500 and quoted an EWMA-derived rate, so "change nothing" produced a date
+   five days off. It now shares the headline's seed and simulation count, and the
+   `whatif-neutral` invariant pins neutral to the headline **exactly**.
+
+### Bugs found and fixed during live verification
+
+- **Phase funnel rendered `undefined — undefined` with invisible bars.** `buildPhaseFunnel()`
+  returns `{ phase, lessons, slots, done… }` — label/title/colour live on `.phase`, not the row.
+  Caught on screen, not in review.
+- **A decorative animation could hide the data.** Reveal-on-scroll was an IntersectionObserver;
+  observed live returning `revealed: 0 of 29`, i.e. a blank page. Replaced with a plain rAF+timer
+  geometry sweep that cannot get stuck, plus a 4-second safety net that reveals everything
+  regardless. The deferred chart/canvas mount pass got the same treatment (rAF **and** a timer,
+  guarded to run once) so a tab that never receives a frame still builds its charts.
+- **`cssv()` read `document.documentElement`, so canvases ignored the light theme.** This is the
+  app-wide theme-invariance limitation already documented in CLAUDE.md (`body[data-theme]`
+  overrides never reach `:root`). V6 owns its own stylesheet, so it is fixed properly here by
+  reading from `document.body` — custom properties still inherit, and the `body[data-theme="light"]`
+  block is finally visible to JS. A `MutationObserver` on `data-theme` rebuilds the charts and
+  repaints the matrix on a theme switch. **V6 is the first Detail tab that actually follows the
+  light theme**; V4 and V5 remain dark-only by design.
+- **The exported PDF did not match the sheet on screen.** html2canvas rasterises inside an isolated
+  iframe (the trick V5 needed so its clone never walks this app's `oklch()` theme) — and fonts do
+  not cross document boundaries, so Rajdhani/JetBrains Mono fell back. The iframe now loads its own
+  Google Fonts link and awaits `document.fonts.ready` (capped at 2.5s, so an offline client still
+  gets a PDF in fallback fonts rather than hanging).
+- **The forecast cone pushed the y-axis ~40% above the course total.** The simulation must keep
+  generating output past completion to find the finish day of its slowest runs, but a batch cannot
+  fly more than 100% of its own syllabus. Cone values are now capped at the total.
+- **Chart.js stacking.** The Output chart's overlays each get their own `stack` group. Chart.js
+  groups a `stack`-less dataset by TYPE, so two line overlays on a stacked axis get summed and drawn
+  in the wrong place — the exact bug V5 root-caused in p181. Verified here by reading the rendered
+  pixel back through the scale: raw 12.75 → rendered 12.75.
+
+### Verified live, end-to-end
+
+Self-check **33/33** on live data and on a time-travelled as-of (01 Jul 2026, which rebuilt the
+entire tab: 14.2%, 714h, forecast 08 Dec 2027). Focus bus confirmed cross-highlighting an SP in
+three places at once (card, ladder, roster) with the canvas matrix subscribing separately, since CSS
+cannot dim a canvas. Matrix cell click opens the full Ops⇄Progress provenance modal (curriculum ·
+Progress record · Ops booking · agreement check). Hours/Lessons toggle re-titles all four charts and
+the playhead readout. "Play the story" walks the playhead with the readouts following.
+**PDF export decoded from a real intercepted `.save()` and inspected with `pdfinfo`/`pdftoppm`:**
+valid 5-page A4, 1.8 MB, both charts embedded, all 28 roster rows, the completion matrix, "All 33
+invariants pass", and a correct per-page running footer. Mobile 375px: zero horizontal overflow
+anywhere, tables scroll inside their own containers, rail hidden. **V4 reloaded (10 charts) and V5
+reloaded (self-check 12/12) both unchanged**, and `git diff --stat` on the DB_Share-proxied files
+(`js/view-cohort-v4.js`, `js/shared.js`, `css/progress.css`) plus every V5 file is empty.
+
+Console harness: `ap127V6Audit()` prints all three invariant suites, the rate card and the per-SP
+table, so a discrepancy can be found without reading the DOM.
+
+Files: `js/ap127-v6-forecast.js` (new), `js/view-cohort-v6.js` (new), `css/cohort-v6.css` (new),
+`index.html`, `js/shell.js` (2 lines: nav entry + registry).
