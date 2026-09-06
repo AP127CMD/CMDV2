@@ -325,9 +325,11 @@ async function handleFetch(request, env, ctx) {
   // POST /notify — push trigger. A Pi/CI publish calls this so the diff runs
   // immediately instead of waiting up to one cron interval (*/2). runWatchdog()
   // already no-ops cheaply when extractFeedSig shows the feed is unchanged, so
-  // a duplicate or spurious notify is harmless.
+  // a duplicate or spurious notify is harmless. Gated by its own NOTIFY_KEY
+  // secret (falls back to WATCHDOG_API_KEY if NOTIFY_KEY isn't set).
   if (url.pathname === '/notify' && request.method === 'POST') {
-    if (request.headers.get('X-API-Key') !== env.WATCHDOG_API_KEY) {
+    const expected = env.NOTIFY_KEY || env.WATCHDOG_API_KEY;
+    if (!expected || request.headers.get('X-API-Key') !== expected) {
       return json({ error: 'unauthorized' }, 401);
     }
     if (ctx && ctx.waitUntil) ctx.waitUntil(runWatchdog(env));

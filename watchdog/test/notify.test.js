@@ -51,6 +51,18 @@ describe('POST /notify', () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 
+  it('prefers NOTIFY_KEY over WATCHDOG_API_KEY when set', async () => {
+    const e = { ...env(), NOTIFY_KEY: 'notify-secret' };
+    const wrong = await worker.fetch(
+      new Request('https://w/notify', { method: 'POST', headers: { 'X-API-Key': 'k' } }),
+      e, ctx);
+    expect(wrong.status).toBe(401);
+    const ok = await worker.fetch(
+      new Request('https://w/notify', { method: 'POST', headers: { 'X-API-Key': 'notify-secret' } }),
+      e, ctx);
+    expect(ok.status).toBe(202);
+  });
+
   it('GET /notify is not the push route (falls through to 404)', async () => {
     const res = await worker.fetch(
       new Request('https://w/notify', { method: 'GET' }),
