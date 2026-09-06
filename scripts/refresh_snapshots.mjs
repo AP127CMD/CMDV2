@@ -2,11 +2,15 @@
 /* ============================================================================
  * AP127_V2 — refresh bundled data snapshots.
  *
- * V2 is a MIRROR, not a scraper. It pulls two already-published upstreams:
- *   1. flight-data.js   ← Command Center's published copy (raw GitHub).
- *                          CC runs the Playwright scrape; we just track its output.
- *   2. progress-data.js  ← the ap127-data-api Cloudflare Worker (same endpoint the
+ * V2 is a MIRROR, not a scraper. It pulls already-published upstreams:
+ *   1. progress-data.js  ← the ap127-data-api Cloudflare Worker (same endpoint the
  *                          app fetches live; the snapshot is the offline fallback).
+ *   2. ngt-data.js       ← DB001's cache.json, via the ap127-data Worker.
+ *
+ * flight-data.js is NO LONGER mirrored here — since 2026-09-06 the browser loads
+ * it directly from the ap127-data Worker (proxies raw.githubusercontent.com), so
+ * there is nothing for CMDV2 to track. See
+ * ../docs/superpowers/specs/2026-09-06-r2-data-plane-decoupling-design.md
  *
  * No dependencies — uses Node 18+ global fetch. Run by .github/workflows/refresh-data.yml.
  * Writes files only when content changes; exits 0 always unless a fetch hard-fails.
@@ -16,13 +20,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flight-data.js';
 const PROGRESS_SRC = 'https://ap127-data-api.anusorn-tanmetha.workers.dev';
-// Use CF Pages URL instead of raw.githubusercontent.com for cache.json — CF Pages
-// deploys within ~60s of a DB001 push so the file is always fresh when CMDV2 runs
-// (~3-4 min after the dispatch cycle). raw.github CDN can lag 1-5 min and would
-// still serve the previous cycle's data.
-const NGT_SRC = 'https://ap127-db001.pages.dev/cache.json';
+// cache.json via the ap127-data Worker. fetchText() sends `cache-control: no-cache`,
+// which the Worker honours by bypassing both its own 60s edge cache and
+// raw.github's CDN — so this read reflects the latest DB001 push within seconds.
+const NGT_SRC = 'https://ap127-data.anusorn-tanmetha.workers.dev/cache.json';
 const RETRIES = 3, RETRY_DELAY_MS = 15_000;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -75,14 +77,7 @@ async function refreshSource(label, fn) {
   }
 }
 
-// ── 1. Operations: mirror Command Center's flight-data.js verbatim ──
-await refreshSource('flight-data', async () => {
-  const flightJs = await fetchText(FLIGHT_SRC, 'flight-data');
-  if (!/window\.FLIGHT_DATA\s*=/.test(flightJs)) throw new Error('upstream missing `window.FLIGHT_DATA =` — refusing to write');
-  writeIfChanged('flight-data.js', flightJs.trimEnd() + '\n');
-});
-
-// ── 2. Progress: fetch worker JSON, validate, wrap as window.PROGRESS_DATA ──
+// ── 1. Progress: fetch worker JSON, validate, wrap as window.PROGRESS_DATA ──
 await refreshSource('progress-data', async () => {
   const progressRaw = await fetchText(PROGRESS_SRC, 'progress-data');
   let progress;
@@ -97,7 +92,7 @@ await refreshSource('progress-data', async () => {
   writeIfChanged('progress-data.js', progressJs);
 });
 
-// ── 3. Training program: mirror NGT_001 cache.json (all 4 batches) as window.NGT_CACHE ──
+// ── 2. Training program: mirror NGT_001 cache.json (all 4 batches) as window.NGT_CACHE ──
 // powers the multi-batch Overview / School's Performance / Simulation views.
 await refreshSource('ngt-data', async () => {
   const ngtRaw = await fetchText(NGT_SRC, 'ngt-data');

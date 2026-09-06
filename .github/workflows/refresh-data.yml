@@ -1,8 +1,11 @@
 name: Refresh data snapshots
 
-# V2 is a mirror: it pulls Command Center's published flight-data.js and the
-# ap127-data-api progress worker, then commits any change. Pages (legacy /
-# deploy-from-branch) auto-rebuilds on push to main — no deploy step needed.
+# V2 is a mirror: it pulls the ap127-data-api progress worker and DB001's
+# cache.json (via the ap127-data Worker), then commits any change. Pages
+# (legacy / deploy-from-branch) auto-rebuilds on push to main.
+# flight-data.js is NO LONGER mirrored here (2026-09-06) — the browser loads it
+# straight from the ap127-data Worker. See
+# docs/superpowers/specs/2026-09-06-r2-data-plane-decoupling-design.md
 
 on:
   schedule:
@@ -31,14 +34,14 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Refresh snapshots (flight-data.js + progress-data.js)
+      - name: Refresh snapshots (progress-data.js + ngt-data.js)
         run: node scripts/refresh_snapshots.mjs
 
       - name: Commit & push if changed
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add flight-data.js progress-data.js ngt-data.js
+          git add progress-data.js ngt-data.js
           if git diff --cached --quiet; then
             echo "No snapshot changes — nothing to commit."
           else
@@ -78,8 +81,8 @@ jobs:
                   `Workflow run failed: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
                   '',
                   'The bundled snapshots may be stale. Likely causes:',
-                  '- Command Center `flight-data.js` raw URL changed or that repo went private',
-                  '- the `ap127-data-api` worker is down or changed its response shape',
+                  '- the `ap127-data` Worker or `ap127-data-api` worker is down or changed shape',
+                  '- DB001 cache.json unreachable via the ap127-data Worker',
                   '',
                   'Re-run manually from the Actions tab once the upstream is healthy.',
                 ].join('\n'),
