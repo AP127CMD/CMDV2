@@ -535,6 +535,36 @@ function AppProvider({ children, tweaks, setTweak, isMobile=false, setView=null 
     })();
     return () => { alive = false; };
   }, []);
+
+  // ── NGT_CACHE (Training Program feed): the bundled ngt-data.js is loaded
+  // synchronously by index.html, but since 2026-09-06 its refresh-data.yml
+  // commit carries [CI Skip] so the DEPLOYED copy only updates on a real code
+  // push. Refresh it at runtime from the ap127-data Worker (proxies DB001's
+  // cache.json) — same pattern as the progress feed above. Views that read
+  // window.NGT_CACHE per-render (Ops Analytics, Cross-Check, Aircraft) pick it
+  // up automatically; Curriculum Prog / School Perf cache it once, so they
+  // listen for the 'ap127-ngt-refreshed' event to re-init.
+  const [ngtSource, setNgtSource] = useState('snapshot');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch('https://ap127-data.anusorn-tanmetha.workers.dev/cache.json', { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        if (!alive) return;
+        if (Array.isArray(d.ap127) && d.ap127.length) {
+          window.NGT_CACHE = d;
+          window.dispatchEvent(new Event('ap127-ngt-refreshed'));
+          setNgtSource('live');
+        } else throw new Error('empty payload');
+      } catch (e) {
+        if (alive) setNgtSource('error');
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
   const reconciliation = useMemo(() => {
     try { return window.AP127Reconcile.reconcile(window.FLIGHT_DATA, progress); }
     catch (e) { return { rows: [], perStudent: [], totals: { conflict: 0, review: 0, ok: 0, consistency: 100, checked: 0, students: 0 } }; }
@@ -542,7 +572,8 @@ function AppProvider({ children, tweaks, setTweak, isMobile=false, setView=null 
   const freshness = useMemo(() => ({
     ops: { at: window.FLIGHT_DATA.fetchedAt || null, tz: window.FLIGHT_DATA.tz || 'Asia/Bangkok' },
     progress: { at: progress._updated || null, source: progressSource, students: (progress.ap127 || []).length },
-  }), [progress, progressSource]);
+    ngt: { at: (window.NGT_CACHE && window.NGT_CACHE._updated) || null, source: ngtSource },
+  }), [progress, progressSource, ngtSource]);
 
   // How many days FORWARD the Ops Portal has actually published, as of today. This is NOT a
   // freshness/fetch-success signal (that's `freshness.ops` above) — the scrape can be running

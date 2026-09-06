@@ -3252,7 +3252,17 @@ const MK_SIM3 = `
       });
     });
   }
-  function initG() { if (!G && window.NGT_CACHE) { G = window.NGT_CACHE; normalizeStudentDone(G); } return G; }
+  // Re-read when shared.js swaps window.NGT_CACHE for a fresh copy from the
+  // ap127-data Worker (the bundled ngt-data.js is [CI Skip]-frozen in the deploy
+  // since 2026-09-06). Ref-compare, not a null check, so a later refresh is
+  // picked up on the next tab visit; SIM_G/SIM2_G are cleared so the simulator
+  // recomputes from the new data.
+  function initG() {
+    if (window.NGT_CACHE && window.NGT_CACHE !== G) {
+      G = window.NGT_CACHE; normalizeStudentDone(G); SIM_G = SIM2_G = null;
+    }
+    return G;
+  }
   function destroy() {
     try { Object.values(CHARTS).forEach(c => { try { c && c.destroy?.(); } catch (e) {} }); } catch (e) {}
     try { (CHARTS._ro||[]).forEach(ro=>ro.disconnect()); CHARTS._ro=[]; } catch(e){}

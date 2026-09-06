@@ -100,7 +100,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p202` (all currently at p201)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p204` (all currently at p203; `ops/index.html` is on its own `?v=rNN`, now r42)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -156,7 +156,14 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p201` (2026-09-06 — **AP127 Detail V6 — the PDF report gains a
+**Last known:** all files `p203` (2026-09-06 — **NGT_CACHE + ASF cache repointed to the
+`ap127-data` Worker** (p203, ops r42). DB001's `cache.json` is now `[CI Skip]`-frozen in its
+Pages deploy, so `js/shared.js` refreshes `window.NGT_CACHE` at runtime from
+`ap127-data.anusorn-tanmetha.workers.dev/cache.json` (mirrors the progress-feed refresh; fires
+`ap127-ngt-refreshed`); `js/view-program.js` `initG()` re-reads on a ref change; both
+`view-autoslotfinder.js` files point `ASF_CACHE_URL` at the Worker. See REVAMP.md's 2026-09-06
+row and `flight-schedule-feed/docs/superpowers/specs/2026-09-06-r2-data-plane-decoupling-design.md`.)
+(2026-09-06 — **AP127 Detail V6 — the PDF report gains a
 light/dark option.** A **Sheet: Light | Dark** switch in the report toolbar; light stays the default
 and is the one to print, dark matches the screen. Choice is persisted. **A themed export touches four
 surfaces and missing any one leaves a half-dark document:** (1) the sheet's palette moved from
