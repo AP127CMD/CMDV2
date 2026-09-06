@@ -1226,7 +1226,7 @@
     const m = MODEL, fc = FCAST, v = fc.verdict, g = gradeOf();
     const mc = fc.monteCarlo.hours;
     const { sec, grid } = actShell('forecast', '03', 'Where this ends up',
-      'A moving-block bootstrap over the last ' + fc.window + ' days of real output: ' + fN(mc.sims) +
+      'A circular block bootstrap over the last ' + fc.window + ' days of real output: ' + fN(mc.sims) +
       ' simulated futures, resampled in whole weeks so the batch’s own flying rhythm is preserved. The seed is fixed, so this forecast is reproducible — the screen, the report and the PDF all show the same dates.');
 
     // ── cone ──
@@ -1605,7 +1605,8 @@
       ['Hours convention', 'EFFECTIVE — the curriculum’s standard duration for each lesson, credited once per SP even when the lesson is retaken'],
       ['Data as of', fdLong(m.asOf) + (m.isLive ? ' (live)' : ' — time travel, live is ' + fdLong(U.todayBKK()))],
       ['Latest flown record', fdLong(m.maxFlownDate)],
-      ['Forecast method', 'moving-block bootstrap, ' + fc.monteCarlo.hours.blockLen + '-day blocks over the last ' + fc.window + ' days, ' + fN(fc.monteCarlo.hours.sims) + ' simulations, seed ' + fc.monteCarlo.hours.seed],
+      ['Forecast method', 'circular block bootstrap, ' + fc.monteCarlo.hours.blockLen + '-day blocks over the last ' + fc.window + ' days, ' + fN(fc.monteCarlo.hours.sims) + ' simulations, seed ' + fc.monteCarlo.hours.seed],
+      ['Resampler check', 'runs drew ' + fc.monteCarlo.hours.drawnMean + ' h/day against the ' + fc.monteCarlo.hours.dailyMean + ' h/day quoted — circular blocks keep these identical'],
       ['Reproducibility', 'the seed is fixed in code — reloading, re-exporting or reprinting reproduces identical dates'],
     ].forEach(([k, v]) => { prov.appendChild(el('dt', {}, [k])); prov.appendChild(el('dd', {}, [v])); });
     grid.appendChild(card('Provenance', 'where every figure on this page came from', prov, 'v6-c7'));
@@ -1613,8 +1614,10 @@
     // ── report CTA ──
     const cta = el('div', {}, [
       el('div', { class: 'v6-note', style: 'margin-bottom:12px' }, [
-        'The report is a self-contained briefing document: verdict, situation, history, forecast with its method stated, the full roster and the completion matrix. ',
-        'It prints to A4 and downloads as a PDF, both from the same sheet, so what is reviewed on screen is what lands in the file.',
+        'The report is a self-contained briefing document: verdict, situation, history, forecast, the full roster and the completion matrix. ',
+        'It prints to A4 and downloads as a PDF, both from the same sheet, so what is reviewed on screen is what lands in the file. ',
+        'It carries the findings and none of the machinery — no method write-up, no simulation counts, no invariant listing; that all stays on this page. ',
+        'The one exception: if any check above fails, the report says so in a single line rather than quietly stating figures it cannot stand behind.',
       ]),
       el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, [
         el('button', { class: 'v6-btn v6-primary', onclick: openReport }, ['▤ Build the TG report']),
@@ -1877,6 +1880,17 @@
   // rasterises it inside an isolated iframe carrying only cohort-v6.css, and
   // because a page the TG prints should be ink-friendly regardless of whatever
   // theme the screen happens to be on.
+  //
+  // NO MACHINERY IN THIS DOCUMENT (user instruction, 2026-09-06: "Remove all
+  // behind the scenes from pdf report"). The report carries the situation and
+  // the records — findings, figures, charts, tables — and none of how they are
+  // produced: no method write-up, no simulation counts or seeds, no engine
+  // filenames, no invariant listing, no estimator footnotes. All of that stays
+  // on screen in Act 05, which is where someone auditing the tab looks.
+  // The ONE exception is deliberate: if an invariant actually FAILS, a single
+  // warning line is printed. Silence there would mean shipping a document that
+  // states figures a check had already flagged as wrong. It prints nothing in
+  // the normal, all-passing case.
   // ═════════════════════════════════════════════════════════════════════════
   let _rcCanvas = null;
   function resolveColor(c) {
@@ -1947,7 +1961,7 @@
     table.appendChild(tb);
     return el('div', {}, [
       el('div', { style: 'font-size:8px;color:#79839c;margin-bottom:3px' }, [
-        count + ' lessons × ' + MODEL.students.length + ' SP. Phase-coloured when the lesson is complete, grey when not; a blue inset outline marks a retake. Sorted as on screen (' + (SORTS[S.sortKey] || SORTS.etc).label + ').',
+        count + ' lessons × ' + MODEL.students.length + ' SP. Phase-coloured when the lesson is complete, grey when not; a blue inset outline marks a retake.',
       ]),
       table,
     ]);
@@ -1969,13 +1983,7 @@
       el('h1', {}, ['AP127 Batch Progress Review']),
       el('div', { class: 'rp-sub' }, ['CATC CPL/IR Integrated Course · ' + m.students.length + ' student pilots · situation as of ' + fdLong(m.asOf)]),
       el('div', { class: 'rp-meta' }, [
-        'Generated ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC from AP127 Command Center V2 · AP127 Detail V6',
-        el('br'),
-        'Progress feed ' + (m.updatedAt ? new Date(m.updatedAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'unknown') +
-        ' · Operations feed ' + (SYNC && SYNC.opsAt ? new Date(SYNC.opsAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'not loaded') +
-        ' · ' + (m.isLive ? 'LIVE' : 'TIME-TRAVEL VIEW'),
-        el('br'),
-        'Hours convention: EFFECTIVE — the curriculum’s standard duration per lesson, credited once per SP even on a retake.',
+        'Issued ' + fdLong(U.todayBKK()) + (m.isLive ? '' : ' · showing the batch as it stood on ' + fdLong(m.asOf)),
       ]),
     ]));
 
@@ -1986,7 +1994,7 @@
         v.p50 ? 'Forecast completion ' + fdLong(v.p50) + (v.slipDays > 0 ? ' — ' + fDays(v.slipDays) + ' beyond the ' + fd(v.planEnd) + ' plan date' : ' — within plan') : 'No completion forecast available',
       ]),
       el('div', {}, [
-        'The batch is producing ' + fH(v.actualRate, 1) + ' of training per day averaged over the last ' + v.rateWindow +
+        'The batch is producing ' + fH(v.actualRate, 1) + ' of training per day over the last ' + v.rateWindow +
         ' days, against the ' + fH(v.requiredRate, 1) +
         ' per day required to finish on plan — ' + (v.requiredRate ? (v.actualRate / v.requiredRate * 100).toFixed(0) : '0') +
         '% of the necessary rate. Closing the gap by the plan date would require sustaining ' +
@@ -2068,25 +2076,21 @@
     // ── forecast ──
     H2('4. Forecast');
     BLK([el('p', {}, [
-      'Method: a moving-block bootstrap. The last ' + fc.window + ' days of the batch’s own daily output are resampled in whole ' +
-      mc.blockLen + '-day blocks — so the weekly rhythm the school actually flies, stand-downs included, is preserved — and run forward ' +
-      fN(mc.sims) + ' times until the remaining ' + fH(mc.remaining, 0) + ' of training is complete. ' +
-      'No distribution is fitted and no growth is assumed. The random seed is fixed (' + mc.seed + '), so this forecast is reproducible: ' +
-      'rebuilding this report on the same data produces the same dates.',
+      'Projected on the batch’s output over the last ' + fc.window + ' days.',
     ])]);
     BLK([chartImg(coneCfg(), 684, 250)]);
     BLK([tbl(['Outcome', 'Completion date', 'vs plan (' + fd(v.planEnd) + ')'], [
-      ['Optimistic (P10)', fdLong(mc.finish.p10), mc.finish.p10 ? sgn(U.dateDiff(mc.finish.p10, v.planEnd), x => x.toFixed(0) + 'd') : '—'],
-      ['Most likely (P50)', fdLong(mc.finish.p50), mc.finish.p50 ? sgn(U.dateDiff(mc.finish.p50, v.planEnd), x => x.toFixed(0) + 'd') : '—'],
-      ['Pessimistic (P90)', fdLong(mc.finish.p90), mc.finish.p90 ? sgn(U.dateDiff(mc.finish.p90, v.planEnd), x => x.toFixed(0) + 'd') : '—'],
-      ['Probability of finishing on plan', mc.probOnPlan == null ? '—' : (mc.probOnPlan * 100).toFixed(1) + '%', ''],
+      ['Optimistic', fdLong(mc.finish.p10), mc.finish.p10 ? sgn(U.dateDiff(mc.finish.p10, v.planEnd), x => x.toFixed(0) + 'd') : '—'],
+      ['Most likely', fdLong(mc.finish.p50), mc.finish.p50 ? sgn(U.dateDiff(mc.finish.p50, v.planEnd), x => x.toFixed(0) + 'd') : '—'],
+      ['Pessimistic', fdLong(mc.finish.p90), mc.finish.p90 ? sgn(U.dateDiff(mc.finish.p90, v.planEnd), x => x.toFixed(0) + 'd') : '—'],
+      ['Chance of finishing on plan', mc.probOnPlan == null ? '—' : (mc.probOnPlan * 100).toFixed(1) + '%', ''],
     ])]);
-    BLK([el('h3', {}, ['Straight-line projections, for cross-checking']),
+    BLK([el('h3', {}, ['If the batch holds each of these rates']),
       tbl(['Rate', 'h / day', 'Finishes', 'vs plan'], fc.rateCard.map(r => {
         const isReq = r.key === 'required';
         const proj = isReq ? null : FC.projectAtRate(m.pace.remHrsB, r.value, m.asOf, 3650);
         const slip = isReq ? 0 : (proj && proj.date ? U.dateDiff(proj.date, v.planEnd) : null);
-        return [r.label + ' — ' + r.basis, fH(r.value, 2), isReq ? fd(v.planEnd) : (proj && proj.date ? fd(proj.date) : 'never'),
+        return [r.label, fH(r.value, 2), isReq ? fd(v.planEnd) : (proj && proj.date ? fd(proj.date) : 'never'),
           slip == null ? '—' : sgn(slip, x => x.toFixed(0) + 'd')];
       }))]);
     // Capacity ladder — the actionable half of the forecast.
@@ -2097,9 +2101,7 @@
         r.probOnPlan == null ? '—' : (r.probOnPlan * 100).toFixed(0) + '%'];
     });
     BLK([el('h3', {}, ['What each level of capacity would buy']),
-      tbl(['Scenario', 'Implied rate', 'Forecast completion', 'vs plan', 'Chance on plan'], ladderRows),
-      el('div', { style: 'font-size:8px;color:#79839c;margin-top:3px' }, [
-        'Each row re-runs the same bootstrap with every resampled day scaled by the multiplier — 400 simulations per row. A multiplier scales flying days and leaves stand-down days at zero, so it represents flying harder, not flying more often.'])]);
+      tbl(['Scenario', 'Implied rate', 'Forecast completion', 'vs plan', 'Chance on plan'], ladderRows)]);
 
     // ── the batch ──
     H2('5. Student pilots');
@@ -2108,28 +2110,21 @@
         fH(r.hoursDone, 1), sgn(r.sp.hrsDelta, x => fH(x, 0)), fd(r.sp.lastDate),
         r.idleDays == null ? '—' : r.idleDays + 'd', fd(r.etcDate),
         r.vsCohortDays == null ? '—' : sgn(r.vsCohortDays, x => x.toFixed(0) + 'd')]))]);
-    BLK([el('div', { style: 'font-size:8px;color:#79839c' }, [
-      'Projected finish allocates the batch’s forecast output to each SP by their share of recent batch output, shrunk halfway toward an equal share. Shares sum to 1, so the per-SP rates sum back to the batch rate. "vs cohort" is the gap to the median SP’s projected finish.'])]);
     BLK([el('h3', {}, ['Lesson completion matrix']), reportMatrix()]);
 
-    // ── integrity ──
-    H2('6. Data integrity');
-    const suites = [['Metrics model', Model.selfCheck(m)], ['Forecast engine', FC.selfCheck(fc, m)], ['View', viewChecks()]];
-    const pass = suites.reduce((x, [, s]) => x + s.checks.filter(c => c.pass).length, 0);
-    const all = suites.reduce((x, [, s]) => x + s.checks.length, 0);
-    BLK([el('p', { class: pass === all ? 'rp-good' : 'rp-bad' }, [
-      pass === all ? '✓ All ' + all + ' invariants pass against the data in this report.'
-        : '✕ ' + (all - pass) + ' of ' + all + ' invariants FAIL — figures in this report are unverified.'])]);
-    BLK([tbl(['Suite', 'Invariant', 'Result'], suites.flatMap(([name, s]) =>
-      s.checks.map(c => [name, c.label, c.pass ? 'PASS' : 'FAIL'])))]);
-    BLK([el('h3', {}, ['Sources']),
-      tbl(['Source', 'Detail'], [
-        ['Progress feed', (m.updatedAt || 'unknown') + ' · ' + m.students.length + ' SP · ' + m.curriculum.count + ' lessons'],
-        ['Operations feed', (SYNC && SYNC.opsAt) || 'not loaded'],
-        ['Ops → Progress credit', SYNC ? SYNC.extraLessons + ' lessons for ' + SYNC.syncCount + ' SP' : '—'],
-        ['Metrics engine', 'js/ap127-v5-model.js — shared with AP127 Detail V5'],
-        ['Forecast engine', 'js/ap127-v6-forecast.js — seeded, reproducible'],
+    // ── data-quality warning, and ONLY on failure ──
+    // The invariant listing itself is machinery and stays on screen. But a
+    // report that states figures a check has already flagged would be worse
+    // than one that admits it, so a failure gets one line here.
+    const failed = [Model.selfCheck(m), FC.selfCheck(fc, m), viewChecks()]
+      .reduce((a, suite) => a.concat(suite.checks.filter(c => !c.pass)), []);
+    if (failed.length) {
+      BLK([el('p', { class: 'rp-bad' }, [
+        '⚠ Data-quality warning: ' + failed.length + ' internal consistency ' +
+        plural(failed.length, 'check') + ' did not pass when this report was produced (' +
+        failed.map(c => c.label).join('; ') + '). Treat the figures above as unverified.',
       ])]);
+    }
 
     sheet.appendChild(el('div', { class: 'v6-report-foot' }, [
       el('span', {}, ['AP127 Batch Progress Review · ' + (m.isLive ? 'live' : 'as of ' + fd(m.asOf))]),

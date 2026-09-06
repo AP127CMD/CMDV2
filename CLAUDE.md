@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p185` (all currently at p184)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p186` (all currently at p185)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -142,7 +142,42 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p184` (2026-09-06 — **New tab: AP127 Detail V6 — "Flight Recorder".**
+**Last known:** all files `p185` (2026-09-06 — **AP127 Detail V6 — round-1 feedback: forecast
+window cut to 14 days, and all machinery removed from the PDF report.** User: "For future prediction,
+change to use just stat from last 14days" + "Remove all behind the scenes from pdf report".
+
+(1) **`DEFAULT_WINDOW` in `js/ap127-v6-forecast.js` is now 14** — one named constant driving the
+bootstrap pool, the headline rate, the per-SP share split and the what-if. Measured: the 90-day
+window averaged the mid-August 8-day stand-down together with the catch-up surge and read 11.4h/day;
+the last 14 days alone read 12.3h/day. P50 moved 13 Aug 2027 → 05 Jul 2027.
+
+(2) **The shorter window exposed a real estimator bug that had shipped in p184.** A plain
+*moving*-block bootstrap only allows start indices `0…n-blockLen`, so edge days appear in fewer
+blocks than middle days and the simulation runs at the block-weighted mean, not the window mean it
+prints. Measured on the live 14-day window: **quoted 12.29 h/day, actually simulated 14.06 —
+a 14.3% overstatement**, invisible at 90 days (84 blocks) and glaring at 14 (8 blocks, quiet days on
+one edge, surge on the other). Fixed with a **circular** block bootstrap (pool wraps, every day
+appears in exactly `blockLen` blocks, block mean ≡ window mean). The headline arithmetic now closes
+exactly: 3,700h ÷ 12.9h/day = 287d, P50 = 287d (was 302 vs 264). New invariant **`mc-unbiased`**
+compares what the runs drew against what the page quotes so this can never return silently —
+forecast suite now **17 checks, 34 total**. Also added a `blockLen` guard (never more than half the
+window). **Known consequence, flagged not tuned away:** per-SP spread widens 155d → 367d on a
+fortnight of data; the 0.5/0.5 shrinkage is deliberately unchanged rather than retuned to flatter
+the output.
+
+(3) **The PDF report now carries findings only.** Removed: the whole §6 Data integrity section
+(invariant table + sources naming engine files), the bootstrap method paragraph, all seed/simulation
+-count/block-length mentions, P10/P50/P90 notation (now Optimistic / Most likely / Pessimistic), the
+rate table's `basis` column and "for cross-checking" framing, the capacity-ladder and share-
+allocation footnotes, and the cover's tool attribution + feed timestamps + hours-convention line.
+Sections renumbered 1–5; 5 pages → 4. **One deliberate exception:** a failing invariant still prints
+a single warning line, because silence would mean shipping figures a check had already flagged —
+verified both ways. All machinery remains on screen in Act 05, unchanged.
+
+**Verified:** PDF decoded from a real intercepted `.save()` and audited by text extraction —
+grep for bootstrap|seed|simulat|invariant|resampl|shrunk|P10|P50|P90|self-check|engine|.js|monte
+returns **zero matches**; valid 4-page A4, 1.27 MB, both charts, 28 roster rows, matrix, correct
+footer. Full write-up: REVAMP.md's p185 entry.) p184 (2026-09-06 — **New tab: AP127 Detail V6 — "Flight Recorder".**
 A third, independent Detail tab alongside V4 and V5, both untouched. Built as a scroll-through
 briefing in six acts (00 Flight deck · 01 History · 02 Situation · 03 Forecast · 04 The batch ·
 05 Integrity) with a fixed act rail, reveal-on-scroll, an animated completion gauge, a draggable

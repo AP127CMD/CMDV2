@@ -3562,3 +3562,88 @@ table, so a discrepancy can be found without reading the DOM.
 
 Files: `js/ap127-v6-forecast.js` (new), `js/view-cohort-v6.js` (new), `css/cohort-v6.css` (new),
 `index.html`, `js/shell.js` (2 lines: nav entry + registry).
+
+---
+
+## p185
+
+**AP127 Detail V6 — round-1 feedback: forecast window cut to 14 days, and all machinery removed
+from the PDF report.**
+
+User feedback, verbatim:
+> For future prediction, change to use just stat from last 14days.
+> Remove all behind the scenes from pdf report
+
+### 1. The forecast window is now 14 days, not 90
+
+`DEFAULT_WINDOW` in `js/ap127-v6-forecast.js` is a single named constant driving everything
+forward-looking — the bootstrap pool, the headline rate, the per-SP share split and the what-if.
+It is now 14.
+
+Measured before and after against the real snapshot: the batch had an 8-day total stand-down in
+mid-August followed by a hard catch-up push, so the 90-day window averaged a dead fortnight together
+with a surge and read 11.4h/day, while the last 14 days alone read 12.3h/day. P50 completion moved
+from 13 Aug 2027 to 05 Jul 2027. The shorter window tracks the batch as it is actually flying now,
+at the cost of reacting sharply to any single quiet fortnight — that is the intended trade.
+
+### 2. A real estimator bug the shorter window exposed — the bootstrap was 14.3% biased
+
+Shortening the window surfaced a defect that had been present since p184 and was invisible at 90
+days. A plain **moving**-block bootstrap only permits start indices `0 … n-blockLen`, so days at the
+EDGES of the window appear in fewer blocks than days in the middle (day 0 in 1 block, a middle day
+in `blockLen`). The simulation therefore runs at the block-weighted mean, not the window mean it
+prints beside the forecast date.
+
+Measured directly on the live 14-day window: **quoted 12.29 h/day, actually simulated 14.06 h/day —
+a 14.3% overstatement.** At 90 days it was ~0% (84 blocks, homogeneous window); at 14 days it was
+glaring (8 blocks, with the quiet days on one edge and the surge on the other).
+
+Fixed by switching to a **circular** block bootstrap — the pool wraps, so every start index is valid
+and every day appears in exactly `blockLen` blocks, making the block mean identically equal to the
+window mean. Verified: drawn 12.32 vs quoted 12.29 (0.2%, sampling noise). The headline arithmetic
+now closes exactly on screen: **3,700h ÷ 12.9h/day = 287 days, and the P50 is 287 days.** It was
+302 vs 264 before the fix.
+
+New invariant **`mc-unbiased`** compares what the runs actually drew against what the page quotes,
+so this class of bias can never return silently. Forecast suite is now **17 checks**, 34 total.
+A `blockLen` guard was added too — a block can never exceed half the window, or there would be too
+few distinct blocks to draw from.
+
+**Known consequence, flagged rather than tuned away:** on 14 days the per-SP split is noisier —
+cohort spread widens from 155 to 367 days, since a single quiet fortnight now moves an individual's
+projection a long way. The 0.5/0.5 shrinkage toward an equal share is deliberately left unchanged;
+tuning it to make the output look tidier would be exactly the kind of hidden fudge this tab exists
+to avoid. Every SP flew in the window (no degenerate rows) and shares run 2.2%–6.1%, so the result
+is explainable row by row.
+
+### 3. The PDF report now carries findings only
+
+Per the instruction, everything about *how* the numbers are produced is gone from the document. It
+keeps the situation and the records; the machinery stays on screen in Act 05, which is where someone
+auditing the tab looks.
+
+Removed: the entire **§6 Data integrity** section (the 33-row invariant table and the sources table
+naming the engine files); the bootstrap **method paragraph**; every mention of seeds, simulation
+counts and block lengths; the **P10/P50/P90** notation (now plain Optimistic / Most likely /
+Pessimistic); the `basis` column and the "for cross-checking" framing on the rate table (retitled
+"If the batch holds each of these rates"); the capacity-ladder footnote about resampling; the per-SP
+**share-allocation and shrinkage footnote**; the matrix caption's sort-order note; and the cover's
+tool attribution, feed timestamps and hours-convention line (cover meta is now one line: "Issued
+&lt;date&gt;"). Sections renumbered 1–5; the document dropped from 5 pages to 4.
+
+**One deliberate exception.** If an invariant actually FAILS, a single warning line is printed
+naming the failed checks. Silence there would mean shipping a document that states figures a check
+had already flagged as wrong. Verified both ways: forced a failure and confirmed the line appears;
+confirmed it prints nothing in the normal all-passing case.
+
+### Verified
+
+Node: 17/17 forecast invariants. Live: 34/34 on page, 0 failing; sanity check exact (287d vs 287d);
+resampler check drawn 12.93 vs quoted 12.90. **PDF decoded from a real intercepted `.save()` and
+audited by text extraction** — `pdftotext | grep -iE "bootstrap|seed|simulat|invariant|resampl|
+shrunk|P10|P50|P90|self-check|engine|\.js|monte|EFFECTIVE|reproduc"` returns **zero matches**; valid
+4-page A4, 1.27 MB, both charts, all 28 roster rows, matrix, correct per-page footer. On-screen Act
+05 unchanged and complete (17 forecast + 12 model + 5 view). One stale line of copy fixed: the
+report CTA still promised "forecast with its method stated".
+
+Files: `js/ap127-v6-forecast.js`, `js/view-cohort-v6.js`, `index.html`.

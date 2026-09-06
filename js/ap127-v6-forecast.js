@@ -34,6 +34,25 @@
 
   const DAY_MS = 86400000;
 
+  // ───────────────────────────────────────────────────────────────────────
+  // THE FORECAST WINDOW — the single most consequential number in this file.
+  //
+  // Everything forward-looking is built from the last DEFAULT_WINDOW days of
+  // real batch output: the bootstrap resamples that window, the headline rate
+  // is its mean, the per-SP split is each SP's share of it, and the what-if
+  // scales it. Nothing older influences a prediction.
+  //
+  // Set to 14 days on 2026-09-06 at the user's direction ("For future
+  // prediction, change to use just stat from last 14days"), down from 90.
+  // Measured against the real snapshot when the change was made: the batch had
+  // an 8-day total stand-down in mid-August followed by a hard catch-up push,
+  // so a 90-day window averaged a dead fortnight together with a surge and
+  // read 11.4h/day, while the last 14 days alone read 12.3h/day. The shorter
+  // window tracks the batch as it is flying now, at the cost of reacting
+  // sharply to any single quiet fortnight — that is the intended trade.
+  // ───────────────────────────────────────────────────────────────────────
+  const DEFAULT_WINDOW = 14;
+
   // Date helpers — deliberately re-derived here rather than reaching into
   // AP127V5Model.util, so this file has no load-order dependency and can be
   // required standalone under Node. Semantics are identical (UTC midnight
@@ -221,11 +240,25 @@
   // ───────────────────────────────────────────────────────────────────────
   // 4. MONTE CARLO — the forecast cone and the finish-date distribution
   //
-  // Method: a MOVING-BLOCK BOOTSTRAP over the last `window` calendar days of
+  // Method: a CIRCULAR BLOCK BOOTSTRAP over the last `window` calendar days of
   // real batch output. Whole 7-day blocks are resampled, not individual days,
   // so the weekly rhythm the batch actually flies (a dead Sunday, a heavy
   // Wednesday) survives into the simulation. Sampling single days would
   // destroy that autocorrelation and produce an unrealistically narrow cone.
+  //
+  // CIRCULAR, not plain moving-block, and this matters — it was a real bug.
+  // A plain moving block only allows start indices 0..n-blockLen, so days at
+  // the EDGES of the window appear in fewer blocks than days in the middle
+  // (day 0 appears in 1 block, a middle day in `blockLen`). The simulation
+  // therefore runs at the block-weighted mean, not the window mean it reports.
+  // Measured on the real 14-day window when the window was shortened from 90:
+  // reported 12.29 h/day, actually simulated 14.06 h/day — a 14.3% overstate,
+  // invisible at 90 days (84 blocks, homogeneous) and glaring at 14 (8 blocks,
+  // with the quiet days sitting on one edge and the surge on the other).
+  // Wrapping the pool means every day appears in exactly `blockLen` blocks, so
+  // the block mean equals the window mean identically. Asserted below by the
+  // `mc-unbiased` invariant, which compares what the runs actually produced
+  // against what `dailyMean` claims.
   //
   // Deliberately NOT fitted to a named distribution: the daily-output histogram
   // is a spike at zero plus a long right tail, which no tidy parametric family
@@ -241,15 +274,25 @@
     const v = series[unit];
     const sims = opts.sims || 1500;
     const seed = opts.seed == null ? 20260906 : opts.seed;
-    const blockLen = opts.blockLen || 7;
+    let blockLen = opts.blockLen || 7;
     const drift = opts.drift == null ? 1 : opts.drift;      // capacity multiplier
     const addPerDay = opts.addPerDay || 0;                  // absolute extra per day
     const remaining = Math.max(0, (unit === 'lessons' ? model.pace.remLesB : model.pace.remHrsB) - 0);
     const horizonCap = opts.horizonCap || 900;
 
-    const winDays = Math.min(v.length, opts.window || 90);
+    const winDays = Math.min(v.length, opts.window || DEFAULT_WINDOW);
     const pool = v.slice(v.length - winDays);
-    const nBlocks = Math.max(1, pool.length - blockLen + 1);
+    // A block can never exceed half the window, or there would be almost no
+    // distinct blocks to draw from and the cone would collapse to a handful of
+    // repeated futures. At the 14-day default this leaves blockLen at 7 (8
+    // distinct week-blocks) — measured stable: P10-P90 spread stayed within
+    // 63±7 days across blockLen 3-7, so the weekly block is kept for the
+    // rhythm it preserves rather than shortened for variety it doesn't need.
+    blockLen = Math.max(1, Math.min(blockLen, Math.floor(winDays / 2)));
+    // Circular: EVERY index is a valid block start, so there are `pool.length`
+    // blocks rather than `pool.length - blockLen + 1`, and no day is
+    // under-represented.
+    const nBlocks = Math.max(1, pool.length);
 
     const poolMean = mean(pool) * drift + addPerDay;
     // Expected horizon with 60% headroom, capped — long enough that the P90
@@ -262,6 +305,7 @@
     // cum[d * sims + s] — one flat Float32Array beats 900 separate arrays.
     const cum = new Float32Array(horizon * sims);
     const finishDay = new Int32Array(sims);
+    let drawnTotal = 0, drawnDays = 0;   // what the runs actually produced
 
     for (let s = 0; s < sims; s++) {
       let acc = 0, done = -1;
@@ -269,8 +313,9 @@
       let blockStart = 0;
       for (let d = 0; d < horizon; d++) {
         if (blockPos >= blockLen) { blockStart = Math.floor(rnd() * nBlocks); blockPos = 0; }
-        const raw = pool[blockStart + blockPos] || 0;
+        const raw = pool[(blockStart + blockPos) % pool.length] || 0;
         blockPos++;
+        drawnTotal += raw; drawnDays++;
         acc += raw * drift + addPerDay;
         cum[d * sims + s] = acc;
         if (done < 0 && acc >= remaining) done = d;
@@ -333,6 +378,10 @@
       hist,
       probOnPlan: onPlan,
       dailyMean: +poolMean.toFixed(3),
+      // The rate the runs ACTUALLY drew, before drift/addPerDay. With the
+      // circular bootstrap this converges to the plain window mean; any gap
+      // means the resampler is biased, which is what `mc-unbiased` checks.
+      drawnMean: drawnDays ? +(drawnTotal / drawnDays).toFixed(3) : 0,
     };
   }
 
@@ -367,7 +416,7 @@
   // ───────────────────────────────────────────────────────────────────────
   function perStudent(model, o) {
     const opts = o || {};
-    const winDays = opts.window || 90;
+    const winDays = opts.window || DEFAULT_WINDOW;
     const batchRate = opts.batchRate || 0;
     const asOf = model.asOf;
     const from = addDays(asOf, -winDays + 1);
@@ -576,7 +625,7 @@
     const unit = opts.unit === 'lessons' ? 'lessons' : 'hours';
     const mult = opts.sortieMultiplier == null ? 1 : opts.sortieMultiplier;
     const extra = opts.extraPerDay || 0;
-    const win = opts.window || 90;
+    const win = opts.window || DEFAULT_WINDOW;
     const mc = monteCarlo(model, series, {
       unit, drift: mult, addPerDay: extra,
       // Same simulation count and seed as the headline forecast by default, so
@@ -615,7 +664,7 @@
     const velL = velocity(series, { unit: 'lessons' });
     const scH = scenarios(model, velH, { unit: 'hours' });
     const scL = scenarios(model, velL, { unit: 'lessons' });
-    const mcWindow = opts.window || 90;
+    const mcWindow = opts.window || DEFAULT_WINDOW;
     const mcH = monteCarlo(model, series, { unit: 'hours', sims: opts.sims || 1500, seed: opts.seed, window: mcWindow });
     const mcL = monteCarlo(model, series, { unit: 'lessons', sims: opts.sims || 1500, seed: opts.seed, window: mcWindow });
     // Per-SP projections are allocated from the SAME batch rate the Monte Carlo
@@ -631,7 +680,7 @@
       { key: 'ewma', label: 'Pace now', value: velH.ewma, basis: 'exponentially weighted, 14-day half-life' },
       { key: 'w7', label: 'Last 7 days', value: velH.v7, basis: 'total hours ÷ 7 calendar days' },
       { key: 'w30', label: 'Last 30 days', value: velH.v30, basis: 'total hours ÷ 30 calendar days' },
-      { key: 'w90', label: 'Forecast basis', value: mcH.dailyMean, basis: 'mean of the ' + mcWindow + ' days the forecast resamples' },
+      { key: 'wfc', label: 'Last ' + mcWindow + ' days', value: mcH.dailyMean, basis: 'total hours ÷ ' + mcWindow + ' calendar days — this is the forecast basis' },
       { key: 'life', label: 'Since day one', value: velH.vAll, basis: 'total hours ÷ ' + series.dates.length + ' days since first flight' },
       { key: 'best', label: 'Best sustained', value: velH.best30, basis: 'the batch’s fastest 30-day stretch to date' },
       { key: 'required', label: 'Required', value: model.pace ? model.pace.reqDayHrsB : null, basis: 'remaining work ÷ days left to plan end' },
@@ -730,6 +779,14 @@
     add('p50-bracket', 'Median forecast sits between best- and worst-case sustained pace',
       p50d == null || (p50d >= fast - 2 && p50d <= slow + 2),
       'P50 ' + p50d + 'd · best30 ' + fast + 'd · worst30 ' + slow + 'd');
+
+    // The resampler must not be biased: what the runs drew has to match the
+    // window mean the page prints beside the forecast date. This is the check
+    // that caught the non-circular block bootstrap overstating by 14.3%.
+    const mcH2 = fc.monteCarlo.hours;
+    add('mc-unbiased', 'Simulated output matches the window mean the page quotes',
+      Math.abs(mcH2.drawnMean - mcH2.dailyMean) <= Math.max(0.05, mcH2.dailyMean * 0.01),
+      'drew ' + mcH2.drawnMean.toFixed(3) + ' vs quoted ' + mcH2.dailyMean.toFixed(3) + ' h/day');
 
     // Determinism: same seed, same answer.
     const again = monteCarlo(model, fc.series, { unit: 'hours', sims: 300, seed: 1234 });
