@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p200` (all currently at p199)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p201` (all currently at p200)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -142,7 +142,23 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p199` (2026-09-06 — **AP127 Detail V6 — round-7 feedback.**
+**Last known:** all files `p200` (2026-09-06 — **AP127 Detail V6 — round-8 feedback.**
+**Circular progress ring back**, as a roster cell rather than a separate card — it *replaces* the "%"
+column (percentage drawn inside it, so nothing is said twice) and turns green once an SP is at or past
+today's target lesson. **Vital-signs tiles are now interactive**: each opens the series full size
+(daily output + 7-day average, pace vs required + the whole rate card, flying-day record + every
+stand-down, shortfall + 14-day trend) or, for the two tiles that are counts of people, the list of who
+they are with click-through. `openModal()` gained an `after` hook so a block can carry a canvas
+Chart.js can only measure once it is in the document. **Sections 03/04 swapped** — *AP127 each SP* is
+03, *Future prediction* 04 (the batch is the evidence, the forecast the conclusion).
+**The briefing rail no longer disappears at zoom** — it was `display:none` below 900px, and browser
+zoom shrinks the CSS viewport exactly as a narrow window does. Below 1000px it is now a slide-in
+drawer over a scrim, opened by a ☰ button in the command bar. **The rail is a two-level tree**: every
+panel appears under its section (21 sub-entries), highlighting at both levels while scrolling, and the
+panel list is read OUT OF THE MOUNTED DOM rather than kept as a parallel array — so a panel cannot be
+added, renamed or removed without the navigation following it. Verified 35/35 both themes, all six
+vital modals, act order, 28 rings, drawer at 900px, V4/V5 unchanged. Full write-up: REVAMP.md's p200
+entry.) p199 (2026-09-06 — **AP127 Detail V6 — round-7 feedback.**
 **00 retitled "AP127 AS OF NOW"**, all panels full width. **Day of course now counts from 20 Apr 26,
 not the feed's first flown date** — the model's `batchStart` is 09 Apr, but that day was two sorties
 by two SP followed by a **ten-day stand-down**, with continuous training only starting 20 Apr (ramping

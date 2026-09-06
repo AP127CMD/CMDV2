@@ -4020,3 +4020,40 @@ target (17 checkpoints). Zero table and page overflow. V4 (10 charts) and V5 (12
 `git diff --stat` empty on every protected file.
 
 Files: `js/view-cohort-v6.js`, `index.html`.
+
+---
+
+## p200
+
+**AP127 Detail V6 — round-8 feedback: the progress ring returns, vital signs become interactive,
+sections 03/04 swap, and the briefing rail becomes a real navigation tree that survives zoom.**
+
+- **The circular progress ring is back.** It returns as a roster cell rather than a separate card,
+  which keeps last round's single-table structure: the ring *replaces* the "%" column (the percentage
+  is drawn inside it, so nothing is said twice) and turns green once the SP is at or past today's
+  target lesson. 28 rings, one per row.
+- **Every vital-signs tile is now a link into its own evidence.** A sparkline on a 160px tile can
+  show a shape and nothing else; clicking one opens the series full size — daily output with a 7-day
+  average, pace against the required rate with the whole rate card, the flying-day record with every
+  stand-down listed, the shortfall with its 14-day trend — or, for the two tiles that are really
+  counts of people, the actual list of who they are, each row clicking through to that SP.
+  `openModal()` gained an `after` hook so a block can carry a canvas that Chart.js can only measure
+  once it is in the document.
+- **Sections 03 and 04 swapped**: *AP127 each SP* is now 03 and *Future prediction* 04. The batch is
+  the evidence; the forecast is the conclusion drawn from it, so it reads better last.
+- **The briefing rail no longer disappears.** It was `display:none` below 900px — and browser zoom
+  shrinks the CSS viewport exactly as a narrow window does, which is why it vanished when zoomed with
+  no way to get it back. Below 1000px it now becomes a slide-in drawer over a scrim, opened by a new
+  ☰ button in the command bar. Verified at 900px: button visible, drawer slides to x=0, scrim active,
+  closes on scrim click.
+- **The rail is now a two-level tree.** Every panel appears under its section — 21 sub-entries across
+  the six sections — and the second level highlights along with the first as you scroll. The panel
+  list is read **out of the mounted DOM**, not kept as a parallel array, so a panel can never be
+  added, renamed or removed without the navigation following it.
+
+**Verified:** 35/35 invariants, 0 failing, dark and light. All six vital modals open with the right
+content (4 with charts, 2 with tables of 25 and 5 rows). Act order confirmed
+deck → history → situation → people → forecast → integrity. 28 rings render. Zero table and page
+overflow. V4 (10 charts) and V5 (12/12) unchanged; `git diff --stat` empty on every protected file.
+
+Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.

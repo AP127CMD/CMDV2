@@ -121,15 +121,25 @@ body[data-theme="light"] .v6-input{background:#fff;}
 /* ---- Layout: rail + scroller -------------------------------------------- */
 .v6-main{position:relative;z-index:1;flex:1;min-height:0;display:flex;}
 .v6-rail{
-  flex-shrink:0;width:170px;padding:22px 10px 22px 16px;border-right:1px solid var(--v6-bd);
-  display:flex;flex-direction:column;gap:2px;overflow:hidden;
+  flex-shrink:0;width:196px;padding:18px 8px 18px 14px;border-right:1px solid var(--v6-bd);
+  display:flex;flex-direction:column;gap:1px;overflow-y:auto;overflow-x:hidden;background:var(--v6-bg);
 }
+.v6-railscrim{display:none;}
 .v6-rail-t{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.14em;color:var(--v6-tx3);text-transform:uppercase;margin-bottom:8px;}
 .v6-rail button{
   position:relative;display:flex;align-items:center;gap:9px;width:100%;text-align:left;
-  padding:8px 9px;border:0;border-radius:8px;background:transparent;color:var(--v6-tx3);cursor:pointer;
+  padding:7px 9px;border:0;border-radius:8px;background:transparent;color:var(--v6-tx3);cursor:pointer;
   font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;transition:all .18s;
 }
+/* Panel-level entries under each section — the tree's second level. */
+.v6-rail button.v6-rail-sub{
+  padding:4px 9px 4px 30px;font-size:9px;letter-spacing:.03em;text-transform:none;
+  font-family:'Inter',system-ui,sans-serif;color:var(--v6-tx3);opacity:.85;
+}
+.v6-rail button.v6-rail-sub::before{content:'';position:absolute;left:18px;top:0;bottom:0;width:1px;background:var(--v6-bd);}
+.v6-rail button.v6-rail-sub:hover{opacity:1;color:var(--v6-acc);background:transparent;}
+.v6-rail button.v6-rail-sub.on{color:var(--v6-acc);background:transparent;}
+.v6-rail button.v6-rail-sub.on::before{background:var(--v6-acc);width:2px;left:17px;}
 .v6-rail button .v6-rail-n{width:17px;height:17px;flex-shrink:0;border-radius:50%;border:1px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:8px;}
 .v6-rail button:hover{color:var(--v6-tx2);background:var(--v6-glass);}
 .v6-rail button.on{color:var(--v6-acc);background:var(--v6-glass-2);}
@@ -325,6 +335,18 @@ body[data-theme="light"] .v6-pbar>b{text-shadow:0 0 4px rgba(255,255,255,.85);}
 .v6-t tr.v6-hot td{background:var(--v6-glass-2);}
 .v6-spark-cell{display:block;height:22px;}
 .v6-spark-cell svg{width:100%;height:100%;}
+/* The constellation's circular progress, brought back as a roster cell. */
+.v6-ring{position:relative;width:34px;height:34px;margin:0 auto;}
+.v6-ring svg{width:100%;height:100%;transform:rotate(-90deg);display:block;}
+.v6-ring span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:600;}
+.v6-t.v6-fit td.ring{padding:2px 2px;overflow:visible;}
+
+/* Vital tiles are buttons: each opens the full chart behind its number. */
+.v6-vital{cursor:pointer;transition:border-color .18s,transform .18s;}
+.v6-vital:hover{border-color:var(--v6-acc);transform:translateY(-2px);}
+.v6-vital:focus-visible{outline:2px solid var(--v6-acc);outline-offset:2px;}
+.v6-vital .more{position:absolute;top:7px;right:9px;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--v6-tx3);opacity:0;transition:opacity .18s;}
+.v6-vital:hover .more{opacity:1;}
 
 /* ---- Risk pills --------------------------------------------------------------- */
 .v6-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
@@ -500,8 +522,24 @@ table.v6-gt{border-collapse:separate;border-spacing:0;font-size:10px;table-layou
 }
 
 /* ---- Responsive ---------------------------------------------------------------------------- */
+/* The rail is a fixed 196px column, so on a narrow viewport — or, just as
+   often, a zoomed-in one, since browser zoom shrinks the CSS viewport — it has
+   to come out of the flow. It becomes a slide-in drawer with a scrim instead
+   of disappearing, and the HUD grows a ☰ button to open it. Previously it was
+   simply `display:none` below 900px, which is why it vanished at high zoom with
+   no way to get it back. */
+.v6-railbtn{display:none;}
+@media(max-width:1000px){
+  .v6-railbtn{display:inline-flex;}
+  .v6-rail{
+    position:fixed;left:0;top:0;bottom:0;width:230px;z-index:60;
+    transform:translateX(-102%);transition:transform .22s cubic-bezier(.2,.7,.3,1);
+    box-shadow:var(--v6-shadow);padding-top:16px;
+  }
+  .ap127-v6.v6-rail-open .v6-rail{transform:none;}
+  .ap127-v6.v6-rail-open .v6-railscrim{display:block;position:fixed;inset:0;z-index:55;background:rgba(3,5,12,.55);}
+}
 @media(max-width:900px){
-  .v6-rail{display:none;}
   .v6-scroll{padding:0 13px 70px;}
   .v6-act-n{font-size:38px;}
   .v6-act-ttl{font-size:22px;}

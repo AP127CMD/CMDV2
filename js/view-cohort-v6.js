@@ -348,12 +348,15 @@
   const COURSE_START = '2026-04-20';
   const COURSE_PLANNED_START = '2026-04-02';
 
+  // Order is the reading order of the briefing. `people` sits before `forecast`
+  // deliberately: the batch is the evidence, the forecast is the conclusion
+  // drawn from it.
   const ACTS = [
-    { id: 'deck', n: '00', label: 'Flight deck' },
+    { id: 'deck', n: '00', label: 'As of now' },
     { id: 'history', n: '01', label: 'History' },
     { id: 'situation', n: '02', label: 'Situation' },
-    { id: 'forecast', n: '03', label: 'Forecast' },
-    { id: 'people', n: '04', label: 'The batch' },
+    { id: 'people', n: '03', label: 'Each SP' },
+    { id: 'forecast', n: '04', label: 'Prediction' },
     { id: 'integrity', n: '05', label: 'Integrity' },
   ];
 
@@ -368,7 +371,10 @@
       $$('.v6-act', scroller).forEach(n => { if (n.offsetTop <= mid) active = n.id.replace('v6-act-', ''); });
       if (active === S.act) return;
       S.act = active;
-      $$('.v6-rail button', ROOT).forEach(b => b.classList.toggle('on', b.getAttribute('data-act') === active));
+      $$('.v6-rail button[data-act]', ROOT).forEach(b => b.classList.toggle('on', b.getAttribute('data-act') === active));
+      // Sub-entries follow their section, so the tree shows where you are at
+      // both levels.
+      $$('.v6-rail .v6-rail-sub', ROOT).forEach(b => b.classList.toggle('on', b.getAttribute('data-for') === active));
     };
     const onScroll = () => { if (queued) return; queued = true; requestAnimationFrame(run); setTimeout(run, 120); };
     scroller.addEventListener('scroll', onScroll, { passive: true });
@@ -527,14 +533,155 @@
     return s;
   }
 
-  function vitalTile(label, value, sub, vals, color, fill) {
-    const t = el('div', { class: 'v6-vital' }, [
+  // The constellation's circular progress, kept as a reusable cell. Percent is
+  // drawn inside the ring so the ring replaces the "%" column rather than
+  // sitting beside a number that says the same thing twice.
+  function progressRing(pct, size, color) {
+    const R = (size / 2) - 3, C = 2 * Math.PI * R;
+    const p = Math.max(0, Math.min(100, pct || 0));
+    return el('div', { class: 'v6-ring', style: 'width:' + size + 'px;height:' + size + 'px' }, [
+      svg('svg', { viewBox: '0 0 ' + size + ' ' + size }, [
+        svg('circle', { cx: size / 2, cy: size / 2, r: R, fill: 'none', stroke: cssv('--v6-bd', 'rgba(255,255,255,.1)'), 'stroke-width': 3.5 }),
+        svg('circle', {
+          cx: size / 2, cy: size / 2, r: R, fill: 'none', stroke: color || cssv('--v6-acc', '#e88aff'),
+          'stroke-width': 3.5, 'stroke-linecap': 'round', 'stroke-dasharray': C.toFixed(2),
+          style: 'stroke-dashoffset:' + (C * (1 - p / 100)).toFixed(2) + ';transition:stroke-dashoffset .9s cubic-bezier(.2,.7,.3,1)',
+        }),
+      ]),
+      el('span', {}, [p.toFixed(0) + '%']),
+    ]);
+  }
+
+  function vitalTile(label, value, sub, vals, color, fill, onOpen) {
+    const t = el('div', {
+      class: 'v6-vital', tabindex: onOpen ? '0' : null, role: onOpen ? 'button' : null,
+      title: onOpen ? 'Open the full detail behind this figure' : null,
+    }, [
       el('div', { class: 'l' }, [label]),
       el('div', { class: 'v', style: 'color:' + color }, [value]),
       el('div', { class: 's' }, [sub]),
+      onOpen ? el('span', { class: 'more' }, ['open →']) : null,
     ]);
     if (vals && vals.length) t.appendChild(sparkSvg(vals, 100, 36, color, { fill: fill !== false, min0: true }));
+    if (onOpen) {
+      t.addEventListener('click', onOpen);
+      t.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } });
+    }
     return t;
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // VITAL SIGNS — each tile opens the chart or the list behind its number
+  //
+  // A sparkline on a 160px tile can show a shape and nothing else. Clicking one
+  // opens the same series full size, or, for the two tiles that are really
+  // counts of people, the actual list of who they are.
+  // ═════════════════════════════════════════════════════════════════════════
+  const VITAL_CANVAS = 'v6-vital-chart';
+  function vitalChartBlock(cfgFn, height) {
+    const box = el('div', { class: 'v6-chart', style: 'height:' + (height || 260) + 'px' }, [el('canvas', { id: VITAL_CANVAS })]);
+    return { node: box, after: () => { const c = cfgFn(); if (c) mkChart(VITAL_CANVAS, c); } };
+  }
+  function dailyBarCfg(days, label, color, extraSets) {
+    const fc = FCAST, n = fc.series.dates.length;
+    const from = Math.max(0, n - days);
+    const xs = fc.series.dates.slice(from).map(d => new Date(d + 'T00:00:00Z').getTime());
+    const ys = fc.series.hours.slice(from);
+    return {
+      type: 'bar',
+      data: {
+        datasets: [{ label, data: ys.map((y, i) => ({ x: xs[i], y: +y.toFixed(2) })), backgroundColor: color, borderRadius: 2, order: 3, datalabels: { display: false } }]
+          .concat(extraSets ? extraSets(xs, ys) : []),
+      },
+      options: {
+        interaction: { mode: 'index', intersect: false },
+        scales: { x: timeScale({ time: { unit: 'week' } }), y: valScale('hours flown (batch)') },
+        plugins: { legend: { display: false }, tooltip: tooltipTheme({ callbacks: { label: c => c.dataset.label + ': ' + fH(c.parsed.y, 1) } }) },
+      },
+    };
+  }
+
+  function openVitalModal(kind) {
+    const m = MODEL, fc = FCAST;
+    const acc = cssv('--v6-acc', '#e88aff'), acc2 = cssv('--v6-acc2', '#22d3ee'), bad = cssv('--v6-bad', '#fb7185');
+    if (kind === 'output') {
+      const t30 = fc.series.hours.slice(-30), t60 = fc.series.hours.slice(-60);
+      openModal('Output · last 30 days', fH(t30.reduce((a, b) => a + b, 0), 1) + ' flown · ' + fH(fc.velocity.hours.v30, 1) + '/day average', [
+        vitalChartBlock(() => dailyBarCfg(60, 'Hours flown', acc2, (xs, ys) => {
+          const ma = movingAvg(ys, 7);
+          return [{ type: 'line', label: '7-day average', data: ma.map((y, i) => ({ x: xs[i], y })), borderColor: acc, borderWidth: 2.2, pointRadius: 0, tension: .3, fill: false, order: 1, datalabels: { display: false } }];
+        }), 280),
+        { heading: 'Reading it', text: 'Batch hours flown on each of the last 60 calendar days, with a 7-day average through them. Zero-days are drawn as gaps in the bars rather than skipped, so a stand-down reads as the blank stretch it was.' },
+        { rows: [['Last 7 days', fH(fc.velocity.hours.v7, 2) + '/day'], ['Last 14 days', fH(fc.velocity.hours.v14, 2) + '/day'],
+          ['Last 30 days', fH(fc.velocity.hours.v30, 2) + '/day'], ['Since day one', fH(fc.velocity.hours.vAll, 2) + '/day'],
+          ['Best 30-day stretch', fH(fc.velocity.hours.best30, 2) + '/day']] },
+      ]);
+    } else if (kind === 'pace') {
+      openModal('Pace now', fH(fc.velocity.hours.ewma, 2) + '/day · exponentially weighted, 14-day half-life', [
+        vitalChartBlock(() => dailyBarCfg(90, 'Hours flown', acc2 + '77', (xs, ys) => [
+          { type: 'line', label: '14-day average', data: movingAvg(ys, 14).map((y, i) => ({ x: xs[i], y })), borderColor: acc, borderWidth: 2.4, pointRadius: 0, tension: .3, fill: false, order: 1, datalabels: { display: false } },
+          { type: 'line', label: 'Required', data: xs.map(x => ({ x, y: +(m.pace ? m.pace.reqDayHrsB : 0).toFixed(2) })), borderColor: bad, borderWidth: 1.6, borderDash: [7, 4], pointRadius: 0, fill: false, order: 0, datalabels: { display: false } },
+        ]), 280),
+        { heading: 'Every rate the page may quote', rows: fc.rateCard.map(r => [r.label, (r.value == null ? '—' : fH(r.value, 2) + '/day') + ' — ' + r.basis]) },
+      ]);
+    } else if (kind === 'util') {
+      const v = fc.velocity.hours;
+      openModal('Flying-day rate', v.activeDays30 + ' of the last 30 days had flying', [
+        vitalChartBlock(() => dailyBarCfg(60, 'Hours flown', acc2), 240),
+        { heading: 'Reading it', text: 'The share of calendar days on which the batch flew at all. It separates two very different problems that a monthly total hides: a month can be thin because sorties were short, or because the line stood still for a fortnight.' },
+        { rows: [['Flying days, last 30', v.activeDays30 + ' of 30 (' + (v.utilisation30 * 100).toFixed(0) + '%)'],
+          ['Flying days, all time', v.activeDaysAll + ' of ' + fc.series.dates.length],
+          ['Output per flying day, last 30', fH(v.perActiveDay30, 2)],
+          ['Stand-downs of 3+ days', String((fc.history.standDowns || []).filter(r => r.days >= 3).length)]] },
+        { heading: 'Stand-downs', rows: (fc.history.standDowns || []).filter(r => r.days >= 4).slice(-8).map(r => [fd(r.start) + ' → ' + fd(r.end), r.days + ' days with no flying']) },
+      ]);
+    } else if (kind === 'lag') {
+      openModal('Shortfall against plan', fH(Math.max(0, -m.batch.hoursDelta), 0) + ' behind the curriculum plan', [
+        vitalChartBlock(() => lagCfg(), 280),
+        { heading: 'Reading it', text: 'Cumulative work owed to the curriculum plan, every day since the plan began, floored at zero. The dashed line is a 14-day average — the raw line is a sawtooth because the plan steps up on its own dates while flying arrives in bursts, and the average is what shows whether the gap is still widening.' },
+        { rows: [['Behind today', fH(Math.max(0, -m.batch.hoursDelta), 0) + ' · ' + fN(Math.abs(m.batch.lessonsDelta)) + ' lessons'],
+          ['Plan expects by today', fH(m.batch.plannedHoursToday, 0)],
+          ['Actually flown', fH(m.batch.hoursDone, 0)]] },
+      ]);
+    } else if (kind === 'idle') {
+      const rows = fc.students.rows.slice().filter(r => (r.idleDays || 0) > 0).sort((a, b) => (b.idleDays || 0) - (a.idleDays || 0));
+      const tbl = el('table', { class: 'v6-t' }, [
+        el('thead', {}, [el('tr', {}, ['SP', 'Idle', 'Last flight', 'Lessons', 'Instructor'].map(h => el('th', {}, [h])))]),
+        el('tbody', {}, rows.map(r => {
+          const tr = el('tr', {}, [
+            el('td', {}, [r.shortName]),
+            el('td', { class: 'n', style: (r.idleDays || 0) >= 7 ? 'color:var(--v6-warn)' : '' }, [(r.idleDays || 0) + 'd']),
+            el('td', { class: 'n' }, [fd(r.sp.lastDate)]),
+            el('td', { class: 'n' }, [r.lessonsDone + '/' + m.curriculum.count]),
+            el('td', {}, [r.sp.fiFull || '—']),
+          ]);
+          tr.addEventListener('click', () => openSPDrawer(r.catc_id));
+          return tr;
+        })),
+      ]);
+      openModal('Idle students', rows.filter(r => (r.idleDays || 0) >= 7).length + ' idle 7 days or more · ' + rows.length + ' with any gap since their last flight', [
+        { node: el('div', { class: 'v6-tw' }, [tbl]) },
+        { heading: 'Reading it', text: 'Days since each SP last flew. Seven days is the threshold the activity calendar marks as an idle run; click a row for that SP’s full record.' },
+      ]);
+    } else if (kind === 'ops') {
+      const extras = [];
+      m.students.forEach(sp => sp.flown.forEach(f => { if (f.fromOps) extras.push({ sp, f }); }));
+      extras.sort((a, b) => b.f.date.localeCompare(a.f.date));
+      const tbl = el('table', { class: 'v6-t' }, [
+        el('thead', {}, [el('tr', {}, ['SP', 'Lesson', 'Date', 'Hours'].map(h => el('th', {}, [h])))]),
+        el('tbody', {}, extras.map(x => {
+          const tr = el('tr', {}, [el('td', {}, [x.sp.shortName]), el('td', {}, [x.f.lesson]),
+            el('td', { class: 'n' }, [fd(x.f.date)]), el('td', { class: 'n' }, [(x.f.effMins / 60).toFixed(2)])]);
+          if (x.f.num != null) tr.addEventListener('click', () => openLessonModal(x.sp, x.f.num));
+          return tr;
+        })),
+      ]);
+      openModal('Flown in Operations, not yet in Progress',
+        extras.length + ' ' + plural(extras.length, 'lesson') + ' across ' + (SYNC ? SYNC.syncCount : 0) + ' SP', [
+        { heading: 'What this is', text: 'Lessons the Operations feed records as Completed but which the Progress system has not posted yet. This page credits them, using the curriculum’s own duration, so its totals do not lag behind reality — every figure on the tab includes these. The same rule is applied by AP127 Detail V5, so the two tabs agree.' },
+        extras.length ? { node: el('div', { class: 'v6-tw' }, [tbl]) } : { text: 'Both systems currently agree — nothing is outstanding.' },
+      ]);
+    }
   }
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -672,14 +819,16 @@
     const util = fc.velocity.hours.utilisation30;
     const idle = m.students.filter(s => (s.idleDays || 0) >= 7).length;
     const vitals = el('div', { class: 'v6-vitals' }, [
-      vitalTile('Output · last 30 days', fH(tail(30).reduce((a, b) => a + b, 0)), fH(fc.velocity.hours.v30, 1) + '/day average', tail(60), cssv('--v6-acc', '#e88aff')),
-      vitalTile('Pace now', fH(fc.velocity.hours.ewma, 1) + '/d', '14-day half-life weighted', tail(45), cssv('--v6-acc2', '#22d3ee')),
-      vitalTile('Flying-day rate', (util * 100).toFixed(0) + '%', fc.velocity.hours.activeDays30 + ' of last 30 days had flying', tail(30).map(v => v > 0 ? 1 : 0), cssv('--v6-info', '#38bdf8')),
-      vitalTile('Shortfall vs plan', fH(m.batch.hoursDelta < 0 ? -m.batch.hoursDelta : 0), 'cumulative, growing', lagSeries, cssv('--v6-bad', '#fb7185')),
-      vitalTile('SP idle ≥ 7 days', String(idle), 'of ' + m.students.length + ' students in the batch', null, idle ? cssv('--v6-warn', '#fbbf24') : cssv('--v6-good', '#34d399')),
-      vitalTile('Ops not yet in Progress', String(SYNC ? SYNC.extraLessons : 0), (SYNC && SYNC.syncCount ? SYNC.syncCount + ' SP affected · credited here' : 'both systems agree'), null, cssv('--v6-acc3', '#a78bfa')),
+      vitalTile('Output · last 30 days', fH(tail(30).reduce((a, b) => a + b, 0)), fH(fc.velocity.hours.v30, 1) + '/day average', tail(60), cssv('--v6-acc', '#e88aff'), true, () => openVitalModal('output')),
+      vitalTile('Pace now', fH(fc.velocity.hours.ewma, 1) + '/d', '14-day half-life weighted', tail(45), cssv('--v6-acc2', '#22d3ee'), true, () => openVitalModal('pace')),
+      vitalTile('Flying-day rate', (util * 100).toFixed(0) + '%', fc.velocity.hours.activeDays30 + ' of last 30 days had flying', tail(30).map(v => v > 0 ? 1 : 0), cssv('--v6-info', '#38bdf8'), true, () => openVitalModal('util')),
+      vitalTile('Shortfall vs plan', '−' + fH(m.batch.hoursDelta < 0 ? -m.batch.hoursDelta : 0), 'cumulative, growing', lagSeries, cssv('--v6-bad', '#fb7185'), true, () => openVitalModal('lag')),
+      vitalTile('SP idle ≥ 7 days', String(idle), 'of ' + m.students.length + ' students in the batch', null, idle ? cssv('--v6-warn', '#fbbf24') : cssv('--v6-good', '#34d399'), true, () => openVitalModal('idle')),
+      vitalTile('Ops not yet in Progress', String(SYNC ? SYNC.extraLessons : 0), (SYNC && SYNC.syncCount ? SYNC.syncCount + ' SP affected · credited here' : 'both systems agree'), null, cssv('--v6-acc3', '#a78bfa'), true, () => openVitalModal('ops')),
     ]);
-    grid.appendChild(card('Vital signs', 'six numbers that move first when something changes', vitals, 'v6-c12'));
+    grid.appendChild(card('Vital signs', 'six numbers that move first when something changes · click any for the detail behind it', vitals, 'v6-c12', { info: [
+      el('p', {}, ['Each tile is a link into the evidence, not just a figure. Clicking one opens the same series full size — daily output with its moving average, the shortfall with its trend, the flying-day record with its stand-downs — or, for the two tiles that are really counts of people, the list of exactly who they are.']),
+    ] }));
 
     return sec;
   }
@@ -1836,7 +1985,7 @@
   function buildForecastAct() {
     const m = MODEL, fc = FCAST, v = fc.verdict, g = gradeOf();
     const mc = fc.monteCarlo.hours;
-    const { sec, grid } = actShell('forecast', '03', 'Future prediction',
+    const { sec, grid } = actShell('forecast', '04', 'Future prediction',
       'A circular block bootstrap over the last ' + fc.window + ' days of real output: ' + fN(mc.sims) +
       ' simulated futures, resampled in whole weeks so the batch’s own flying rhythm is preserved. The seed is fixed, so this forecast is reproducible — the screen, the report and the PDF all show the same dates.');
 
@@ -2145,7 +2294,7 @@
 
   function buildPeople() {
     const m = MODEL, fc = FCAST;
-    const { sec, grid } = actShell('people', '04', 'AP127 each SP',
+    const { sec, grid } = actShell('people', '03', 'AP127 each SP',
       'The same story at individual level: one row per student pilot, ranked most-behind first, carrying the progress bar, the 60-day trend and the standing figures on the same line. Click a row for that SP’s full record.');
 
     // The constellation's cards are folded into the roster: one row per SP,
@@ -2310,7 +2459,10 @@
           el('b', {}, [r.lessonsDone + '/' + MODEL.curriculum.count]),
         ]);
       } },
-      { h: '%', w: '5.5%', key: null, n: true, cell: r => fPct(r.sp.pct) },
+      { h: 'Done', w: '5.5%', key: null, cls: 'ring', cell: r => {
+        const ahead = nowLesson != null && r.lessonsDone >= nowLesson;
+        return progressRing(r.sp.pct, 34, ahead ? cssv('--v6-good', '#34d399') : cssv('--v6-acc', '#e88aff'));
+      } },
       { h: 'Hours', w: '6.5%', key: 'hours', n: true, cell: r => fH(r.hoursDone, 1) },
       { h: 'vs plan', w: '7.5%', key: 'gap', n: true, tone: r => (r.sp.hrsDelta >= 0 ? 'good' : 'bad'), cell: r => sgn(r.sp.hrsDelta, x => fH(x, 0)) },
       { h: 'vs target', w: '7.5%', key: null, n: true, tone: r => (nowLesson == null ? '' : (r.lessonsDone >= nowLesson ? 'good' : 'bad')),
@@ -2349,7 +2501,7 @@
         const tr = el('tr', { 'data-sp': String(r.catc_id) }, COLS.map(c => {
           const v = c.cell(r, i);
           const tone = c.tone ? c.tone(r) : '';
-          return el('td', { class: (c.n ? 'n ' : '') + tone }, [typeof v === 'string' || typeof v === 'number' ? String(v) : v]);
+          return el('td', { class: (c.n ? 'n ' : '') + (c.cls || '') + ' ' + tone }, [typeof v === 'string' || typeof v === 'number' ? String(v) : v]);
         }));
         // Click-only, like the curriculum grid: no hover focus.
         tr.addEventListener('click', () => openSPDrawer(r.catc_id));
@@ -2603,6 +2755,9 @@
     const ov = el('div', { class: 'v6-ov', onclick: e => { if (e.target === ov) closeOverlays(); } }, [modal]);
     document.body.appendChild(ov);
     document.addEventListener('keydown', escClose);
+    // A block may carry a canvas, which Chart.js can only measure once it is in
+    // the document — hence the callback rather than building inside the block.
+    blocks.forEach(b => { if (b && typeof b.after === 'function') { try { b.after(); } catch (e) { console.error('[V6] modal block', e); } } });
   }
 
 
@@ -3104,6 +3259,12 @@
   function buildHud() {
     const m = MODEL;
     const hud = el('div', { class: 'v6-hud' });
+    // Always present in the markup; CSS reveals it whenever the rail cannot sit
+    // beside the content (narrow window OR zoomed in, which shrinks the CSS
+    // viewport the same way).
+    const railBtn = el('button', { class: 'v6-btn v6-railbtn', title: 'Show the briefing navigation', 'aria-label': 'Show the briefing navigation' }, ['☰']);
+    railBtn.addEventListener('click', () => { if (ROOT) ROOT.classList.toggle('v6-rail-open'); });
+    hud.appendChild(railBtn);
     hud.appendChild(el('div', { class: 'v6-brand' }, [
       el('span', {}, ['AP127']), el('b', {}, ['DETAIL']), el('span', { class: 'v6-vtag' }, ['V6']),
     ]));
@@ -3169,11 +3330,42 @@
     if (hist && hist._renderFrame) hist._renderFrame();
   }
 
+  function railClose() { if (ROOT) ROOT.classList.remove('v6-rail-open'); }
+
+  // The tree's second level is read OUT of the mounted DOM rather than kept as
+  // a parallel list: every panel that exists gets an entry, and one can never
+  // be added or renamed without the navigation following it.
+  function populateRailPanels() {
+    if (!ROOT) return;
+    const rail = $('.v6-rail', ROOT); if (!rail) return;
+    ACTS.forEach(a => {
+      const sec = $('#v6-act-' + a.id, ROOT);
+      const anchor = $('button[data-act="' + a.id + '"]', rail);
+      if (!sec || !anchor) return;
+      $$('.v6-rail-sub[data-for="' + a.id + '"]', rail).forEach(n => n.remove());
+      const cards = $$(':scope > .v6-grid > .v6-card', sec);
+      let prev = anchor;
+      cards.forEach((cardEl, i) => {
+        const t = cardEl.querySelector('.v6-card-t');
+        if (!t) return;
+        const id = 'v6-panel-' + a.id + '-' + i;
+        cardEl.id = cardEl.id || id;
+        const b = el('button', { class: 'v6-rail-sub', 'data-for': a.id, 'data-panel': cardEl.id, title: t.textContent }, [t.textContent]);
+        b.addEventListener('click', () => {
+          railClose();
+          cardEl.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+        });
+        prev.after(b);
+        prev = b;
+      });
+    });
+  }
+
   function buildRail() {
     const rail = el('nav', { class: 'v6-rail', 'aria-label': 'AP127 Detail V6 sections' });
     rail.appendChild(el('div', { class: 'v6-rail-t' }, ['The briefing']));
     ACTS.forEach(a => {
-      rail.appendChild(el('button', { class: a.id === S.act ? 'on' : '', 'data-act': a.id, onclick: () => gotoAct(a.id) }, [
+      rail.appendChild(el('button', { class: a.id === S.act ? 'on' : '', 'data-act': a.id, onclick: () => { railClose(); gotoAct(a.id); } }, [
         el('span', { class: 'v6-rail-n v6-mono' }, [a.n]), a.label,
       ]));
     });
@@ -3194,10 +3386,13 @@
     root.appendChild(el('div', { class: 'v6-aurora' }, [el('i', {})]));
     root.appendChild(buildHud());
     const scroller = el('div', { class: 'v6-scroll', id: 'v6-scroll' });
+    const scrim = el('div', { class: 'v6-railscrim' });
+    scrim.addEventListener('click', railClose);
+    root.appendChild(scrim);
     const main = el('div', { class: 'v6-main' }, [buildRail(), scroller]);
     root.appendChild(main);
 
-    const sections = [buildDeck(), buildHistory(), buildSituation(), buildForecastAct(), buildPeople(), buildIntegrity()];
+    const sections = [buildDeck(), buildHistory(), buildSituation(), buildPeople(), buildForecastAct(), buildIntegrity()];
     sections.forEach(s => scroller.appendChild(s));
 
     // Charts and canvases can only be built once their canvas is in the DOM
@@ -3210,6 +3405,7 @@
       if (mounted) return;
       mounted = true;
       sections.forEach(sn => { if (sn._afterMount) { try { sn._afterMount(); } catch (e) { console.error('[V6] mount failed for ' + sn.id, e); } } });
+      populateRailPanels();
       watchReveal(scroller);
       watchActs(scroller);
       watchTheme();
