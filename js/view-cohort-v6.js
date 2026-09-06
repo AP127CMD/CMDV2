@@ -331,6 +331,23 @@
     REVEAL_CLEANUP.push(() => clearTimeout(safety));
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // COURSE START — a stated fact, not a derived one.
+  //
+  // The metrics model's `batchStart` is the first flown date in the Progress
+  // feed, which is 09 Apr 26 — but that day was two sorties by two SP, followed
+  // by a ten-day stand-down with nothing at all. Continuous training begins
+  // 20 Apr, ramping 2 → 4 → 9 → 16 SP over its first four days, and that is the
+  // date the school counts the course from. The planned start was 02 Apr.
+  //
+  // Both dates come from the user, not from the feed; the ten-day gap above is
+  // the corroboration and can be seen in the activity calendar. This constant
+  // is used ONLY for the "Day of course" reading — every other figure on the
+  // page still derives its own start from the data, so nothing else moves.
+  // ─────────────────────────────────────────────────────────────────────────
+  const COURSE_START = '2026-04-20';
+  const COURSE_PLANNED_START = '2026-04-02';
+
   const ACTS = [
     { id: 'deck', n: '00', label: 'Flight deck' },
     { id: 'history', n: '01', label: 'History' },
@@ -525,8 +542,8 @@
   // ═════════════════════════════════════════════════════════════════════════
   function buildDeck() {
     const m = MODEL, fc = FCAST, v = fc.verdict, g = gradeOf();
-    const { sec, grid } = actShell('deck', '00', 'Flight deck',
-      'Everything a decision needs, on one screen. Every figure below is produced by the audited AP127 metrics model or the seeded forecast engine — never by this page.');
+    const { sec, grid } = actShell('deck', '00', 'AP127 AS OF NOW',
+      'Everything a decision needs, on one screen. Every figure below is produced by the audited AP127 metrics model or the seeded forecast engine — never by this page. Anything showing a delay or a shortfall is written as a negative number.');
 
     // ── the gauge ──
     const pctH = m.batch.hourSlots ? m.batch.hoursDone / m.batch.hourSlots * 100 : 0;
@@ -582,7 +599,10 @@
     ]);
 
     // ── headline stats ──
-    const daysIn = (U.dateDiff(m.asOf, m.batchStart) || 0) + 1;
+    // Counted from the course's real start (see COURSE_START above), not from
+    // the first stray sortie in the feed.
+    const daysIn = (U.dateDiff(m.asOf, COURSE_START) || 0) + 1;
+    const startSlip = U.dateDiff(COURSE_START, COURSE_PLANNED_START) || 0;
     const daysLeft = m.pace ? m.pace.daysRem : null;
     const stat = (cls, label, value, sub, click) => {
       const n = el('div', { class: 'v6-stat ' + cls, style: click ? 'cursor:pointer' : '' }, [
@@ -593,23 +613,57 @@
       if (click) n.addEventListener('click', click);
       return n;
     };
+    // Delays and shortfalls are written as negatives throughout.
+    const neg = (val, fmt) => '−' + fmt(Math.abs(val));
     const stats = el('div', { class: 'v6-statrow' }, [
       stat('acc', 'Day of course', String(daysIn),
-        'started ' + fd(m.batchStart) + ' · ' + (daysLeft == null ? '—' : daysLeft + ' days to plan end'),
+        'started ' + fd(COURSE_START) + ' · planned ' + fd(COURSE_PLANNED_START) + ' · ' + neg(startSlip, x => x.toFixed(0) + 'd') + ' late',
         () => gotoAct('history')),
-      stat(m.batch.hoursDelta < 0 ? 'bad' : 'good', 'Behind plan', fH(Math.abs(m.batch.hoursDelta)),
-        fN(Math.abs(m.batch.lessonsDelta)) + ' lessons behind the curriculum plan',
+      stat('bad', 'Days to plan end', daysLeft == null ? '—' : String(daysLeft),
+        'plan ends ' + fd(m.pace ? m.pace.planEndDate : null),
+        () => gotoAct('situation')),
+      stat(m.batch.hoursDelta < 0 ? 'bad' : 'good', 'Behind plan',
+        m.batch.hoursDelta < 0 ? neg(m.batch.hoursDelta, x => fH(x, 0)) : fH(m.batch.hoursDelta, 0),
+        (m.batch.lessonsDelta < 0 ? neg(m.batch.lessonsDelta, fN) : fN(m.batch.lessonsDelta)) + ' lessons against the curriculum plan',
         () => gotoAct('situation')),
       stat(rateGap < 0 ? 'bad' : 'good', 'Pace vs required', sgn(rateGap, x => fH(x, 1)) + '/d',
         fH(v.actualRate, 1) + '/day over ' + v.rateWindow + 'd · needs ' + fH(v.requiredRate, 1) + '/day',
-        () => gotoAct('forecast')),
-      stat(g.tone, 'Forecast finish', v.p50 ? fd(v.p50) : '—',
-        v.slipDays == null ? 'no forecast' : sgn(v.slipDays, x => x.toFixed(0) + 'd') + ' vs plan ' + fd(v.planEnd),
         () => gotoAct('forecast')),
     ]);
 
     const hero = el('div', { class: 'v6-hero v6-reveal' }, [gauge, el('div', { class: 'v6-hero-r' }, [verdict, stats])]);
     grid.appendChild(el('div', { class: 'v6-c12' }, [hero]));
+
+    // ── what it takes, against what is being done ──
+    // The same three periods Act 02's table carries, surfaced here because it is
+    // the question the deck exists to answer. Figures come from the same
+    // model.pace / model.actualPace the table reads, so the two cannot diverge.
+    const p2 = m.pace, a2 = m.actualPace;
+    const paceTile = (label, req, act, reqL, actL) => {
+      const gap = act - (req || 0);
+      return el('div', { class: 'v6-stat ' + (gap < 0 ? 'bad' : 'good') }, [
+        el('div', { class: 'l' }, ['Required / ' + label]),
+        el('div', { class: 'v', style: 'color:var(--v6-bad)' }, [fH(req, req >= 100 ? 0 : 1)]),
+        el('div', { class: 's' }, [
+          'actual ' + fH(act, act >= 100 ? 0 : 1) + ' · ',
+          el('b', { style: 'color:var(--v6-' + (gap < 0 ? 'bad' : 'good') + ')' }, [sgn(gap, x => fH(x, x >= 100 ? 0 : 1))]),
+        ]),
+        el('div', { class: 's', style: 'color:var(--v6-tx3)' }, [
+          fN(reqL) + ' lessons required · ' + fN(actL) + ' actual',
+        ]),
+      ]);
+    };
+    grid.appendChild(card('What it takes, against what is being done',
+      'batch totals · actual is a trailing window (7d / 14d halved / 30d)', [
+      el('div', { class: 'v6-statrow' }, [
+        paceTile('day', p2 && p2.reqDayHrsB, a2.actDayHrsB, p2 && p2.reqDayLesB, a2.actDayLesB),
+        paceTile('week', p2 && p2.reqWeekHrsB, a2.actWeekHrsB, p2 && p2.reqWeekLesB, a2.actWeekLesB),
+        paceTile('month', p2 && p2.reqMonthHrsB, a2.actMonthHrsB, p2 && p2.reqMonthLesB, a2.actMonthLesB),
+      ]),
+    ], 'v6-c12', { info: [
+      el('p', {}, ['What the whole batch must fly per day, per week and per month to finish by the plan date, set against what it is actually flying. The required side is recomputed every day against the work still outstanding, so it rises as the batch falls further behind.']),
+      el('p', { style: 'margin-top:8px' }, ['The actual side uses the metrics model\u2019s own trailing windows — 7 days for the daily figure, 14 halved for the weekly, 30 for the monthly — which is why it differs slightly from the ' + FCAST.window + '-day mean the forecast runs on. These are the same figures as the Required-against-actual table in section 02, read from the same source so the two cannot drift.']),
+    ] }));
 
     // ── vital signs ──
     const hrs = fc.series.hours, n = hrs.length;
@@ -769,7 +823,8 @@
       backgroundColor: 'transparent', borderWidth: 0, order: 4,
       datalabels: labelChip({
         display: ctx => totals[ctx.dataIndex] > 0,
-        anchor: 'end', align: 'end', offset: 8,
+        // Sits well clear above the bar rather than resting on it.
+        anchor: 'end', align: 'end', offset: 16,
         color: cssv('--v6-tx', '#eef2ff'), font: { size: 10, weight: '700', family: 'JetBrains Mono' },
         formatter: (v, ctx) => fmtV(totals[ctx.dataIndex]),
       }),
@@ -807,7 +862,7 @@
     return {
       data: { datasets: ds },
       options: {
-        layout: { padding: { top: 30 } },
+        layout: { padding: { top: 42 } },
         interaction: { mode: 'index', intersect: false },
         scales: {
           x: timeScale({ stacked: true, offset: true, time: { unit: period === 'day' ? 'week' : 'month' } }),
@@ -1708,6 +1763,13 @@
 
     const planEnd = m.curriculum.planEndDate;
     const requiredLine = planEnd ? [anchor, { x: px(planEnd), y: total }] : [];
+    // The two reference schedules, on the same batch-cumulative scale as the
+    // cone: the curriculum's original plan (drawn to its own finish date) and
+    // the revised target checkpoints. Without them the cone shows where the
+    // batch is going but not what it was ever meant to do.
+    const key2 = unit === 'lessons' ? 'lessons' : 'hours';
+    const planFull = (m.series[key2].planFull || []).map(p => ({ x: px(p.x), y: p.y }));
+    const targetPts = (m.series.target[key2] || []).map(p => ({ x: px(p.x), y: p.y }));
 
     return {
       type: 'line',
@@ -1718,6 +1780,8 @@
           { label: 'P90 (optimistic)', data: p90, borderColor: acc2 + '55', borderWidth: 1, fill: '-1', backgroundColor: acc2 + '20', pointRadius: 0, tension: .1, order: 5 },
           { label: 'P50 forecast', data: p50, borderColor: acc2, borderWidth: 2.4, borderDash: [5, 3], fill: false, pointRadius: 0, tension: .1, order: 1 },
           { label: 'Required to hit plan', data: requiredLine, borderColor: bad, borderWidth: 1.8, borderDash: [8, 4], fill: false, pointRadius: 3, order: 3 },
+          { label: 'Original plan', data: planFull, borderColor: t.tick, borderWidth: 1.8, borderDash: [6, 4], fill: false, pointRadius: 0, tension: .1, order: 4 },
+          { label: 'Revised target', data: targetPts, borderColor: cssv('--v6-acc3', '#a78bfa'), borderWidth: 1.6, borderDash: [2, 3], fill: false, pointRadius: 2, order: 4 },
           { label: 'Course total', data: requiredLine.length ? [{ x: actual.length ? actual[0].x : anchor.x, y: total }, { x: px(mc.cone.length ? mc.cone[mc.cone.length - 1].date : m.asOf), y: total }] : [], borderColor: t.tick, borderWidth: 1, borderDash: [2, 4], fill: false, pointRadius: 0, order: 6 },
         ],
       },
@@ -1781,7 +1845,8 @@
     grid.appendChild(card('Forecast cone', 'P10–P90 band · the shaded region is where 80% of simulated futures live', [
       coneBox,
       legendRow([[cssv('--v6-acc', '#e88aff'), 'Actual flown'], [cssv('--v6-acc2', '#22d3ee'), 'P50 forecast'],
-        [cssv('--v6-acc2', '#22d3ee') + '55', 'P10–P90 band'], [cssv('--v6-bad', '#fb7185'), 'Required to hit plan']]),
+        [cssv('--v6-acc2', '#22d3ee') + '55', 'P10–P90 band'], [cssv('--v6-bad', '#fb7185'), 'Required to hit plan'],
+        [cssv('--v6-tx3', '#65708c'), 'Original plan'], [cssv('--v6-acc3', '#a78bfa'), 'Revised target']]),
     ], 'v6-c12'));
 
     // ── finish summary ──

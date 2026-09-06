@@ -3974,3 +3974,49 @@ chart, calendar and roster still use; CSS brace balance re-checked at 0. V4 (10 
 (12/12) unchanged; `git diff --stat` empty on every protected file.
 
 Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.
+
+---
+
+## p199
+
+**AP127 Detail V6 — round-7 feedback: the deck rebuilt around what it takes, plus two chart fixes.**
+
+### 00 · AP127 AS OF NOW
+
+- **Retitled**, and every panel is now full width, one per row.
+- **Day of course is counted from 20 Apr 26, not from the feed's first flown date.** The metrics
+  model's `batchStart` is 09 Apr — but the data shows that day was **two sorties by two SP, followed
+  by a ten-day stand-down with nothing at all**, and continuous training only begins 20 Apr, ramping
+  2 → 4 → 9 → 16 SP over its first four days. The user's stated start (20 Apr) and planned start
+  (02 Apr) are held as `COURSE_START` / `COURSE_PLANNED_START` with that corroboration written next to
+  them, and they are used **only** for this reading — every other figure still derives its own start
+  from the data, so nothing else moved. The tile now reads "started 20 Apr 26 · planned 02 Apr 26 ·
+  −18d late".
+- **Forecast finish removed** from the deck; it remains the headline of section 03. Its slot is taken
+  by **Days to plan end**.
+- **New panel: "What it takes, against what is being done"** — required hours per day, week and month
+  with the actual beside each and a signed gap, plus the lesson counts. Read from the same
+  `model.pace` / `model.actualPace` that section 02's table uses, so the two cannot diverge; the info
+  note says explicitly why the actual figures differ slightly from the forecast's 14-day mean.
+- **Delays and shortfalls are written as negatives.** "Behind plan" now reads −1,229h / −615 lessons
+  rather than an unsigned magnitude, and the start slip reads −18d.
+
+### 01 · Output rhythm
+
+Total labels lifted clear of the bars — offset 8 → 16 with the chart's top padding raised to match,
+so the label sits above the bar rather than resting on it. (The backdrop chip added in p192 stays; it
+is what stops the label colliding with the required line on the weeks where the bar is taller.)
+
+### 03 · Forecast cone
+
+**The original plan and the revised target are now drawn on the cone.** Both are already published by
+the metrics model on the same batch-cumulative scale the cone uses, so they needed no new maths.
+Without them the chart showed where the batch is going but not what it was ever meant to do — the
+grey dashed plan running to 27 Nov 26 is now visible directly against the forecast that overshoots it.
+
+**Verified:** 35/35 invariants, 0 failing. Deck renders two full-width cards plus the hero; day-of-
+course reads 140 from 20 Apr; cone carries 8 series including Original plan (96 points) and Revised
+target (17 checkpoints). Zero table and page overflow. V4 (10 charts) and V5 (12/12) unchanged;
+`git diff --stat` empty on every protected file.
+
+Files: `js/view-cohort-v6.js`, `index.html`.

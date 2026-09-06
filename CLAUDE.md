@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p198` (all currently at p197)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p200` (all currently at p199)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -142,7 +142,22 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p197` (2026-09-06 — **AP127 Detail V6 — round-6 feedback.**
+**Last known:** all files `p199` (2026-09-06 — **AP127 Detail V6 — round-7 feedback.**
+**00 retitled "AP127 AS OF NOW"**, all panels full width. **Day of course now counts from 20 Apr 26,
+not the feed's first flown date** — the model's `batchStart` is 09 Apr, but that day was two sorties
+by two SP followed by a **ten-day stand-down**, with continuous training only starting 20 Apr (ramping
+2→4→9→16 SP in four days). The user's stated start (20 Apr) and planned start (02 Apr) are held as
+`COURSE_START`/`COURSE_PLANNED_START` with that corroboration written beside them, used ONLY for that
+one reading — every other figure still derives its start from the data. **Forecast finish removed**
+from the deck (still section 03's headline), replaced by **Days to plan end**. **New panel "What it
+takes, against what is being done"** — required per day/week/month with actual and a signed gap, read
+from the same `model.pace`/`model.actualPace` as section 02's table so they cannot diverge.
+**Delays and shortfalls are now written as negatives** (−1,229h, −615 lessons, −18d late).
+**01 Output rhythm:** total labels lifted clear of the bars (offset 8→16, top padding raised).
+**03 Forecast cone: the original plan and revised target are now drawn on it** — both already
+published by the model on the same batch-cumulative scale, so no new maths; the chart previously
+showed where the batch is going but not what it was meant to do. Verified 35/35, 8 cone series,
+V4/V5 unchanged. Full write-up: REVAMP.md's p199 entry.) p197 (2026-09-06 — **AP127 Detail V6 — round-6 feedback.**
 Act 04 retitled **"AP127 each SP"**; **the constellation is folded into the roster** (two surfaces
 listing the same 28 people, sorted the same way, was one too many) — a single table, one row per SP,
 carrying the progress bar and the 60-day trend the cards showed, with Call sign / Last flight / Next
