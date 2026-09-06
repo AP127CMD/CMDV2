@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p186` (all currently at p185)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p187` (all currently at p186)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -142,7 +142,47 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p185` (2026-09-06 — **AP127 Detail V6 — round-1 feedback: forecast
+**Last known:** all files `p186` (2026-09-06 — **AP127 Detail V6 — round-2 feedback: backdrop no
+longer tints content, and V4's race + idle charts return, redesigned.** User: "Pls remove the Magenta
+haze overly, keep it as background but not the overlay on top" + "Pls redesign and bring back the
+race charts and idle day chart from V4".
+
+(1) **The haze was the panels, not the backdrop.** The aurora was already at `z-index:0` behind
+everything; what made it read as an overlay is that every surface on top used
+`--v6-glass: rgba(255,255,255,.045)` + `backdrop-filter`, so the wash came through the cards, the HUD
+and the text. Fixed at the token — `--v6-glass`/`--v6-glass-2` are now **opaque** (`#0c111d`/`#141c2d`
+dark, `#ffffff`/`#f5f7fd` light), the two now-pointless `backdrop-filter`s removed (the modal/report
+scrims keep theirs), and the aurora dialled from `.30` to `.13` opacity. It remains a real backdrop,
+visible only between and behind panels.
+
+(2) **"The race"** (V4's Actual vs Planned) — per-SP cumulative on a time axis with plan + revised
+target + batch average, and a standings strip (leader / median / furthest back / spread). **Plan and
+target are divided by the student count** — the model publishes them as 28-SP totals and drawing one
+against 28 individual lines is the scaling bug V5 shipped once. The redesign is the isolation: V4
+needed a "solo" dropdown; here the lines hang off V6's focus bus, so hovering an SP anywhere (card,
+ladder, roster, band, or the chart) thickens their line and fades the other 27 across BOTH new charts
+at once.
+
+(3) **"Streaks & idle days"** (V4's Consecutive & Idle Streaks) — default view is now an **activity
+band**: one row per SP, one column per calendar day, coloured flew / idle / idle-run-of-7+. A
+batch-wide stand-down is a vertical stripe, one SP sitting out is a horizontal one; neither is
+legible in 28 overlapping lines. V4's line chart is kept verbatim behind a toggle, driven by
+`model.streaks()`. Band rows follow the page's current sort so band/matrix/constellation/roster
+always agree.
+
+**Three bugs found verifying:** the theme watcher repainted the matrix canvas but not the band (a
+canvas caches the colour it was drawn with — light theme left a dark gutter on a white page); both
+canvases only resized on `window.resize`, but **this app's sidebar collapse changes content width
+with no window event**, so both now use a `ResizeObserver` on their own container (verified 1022px →
+588px → 1022px); and "Best run now" showed "none" on any day nobody had flown yet — it now falls
+back to the longest run achieved.
+
+**Verified:** 34/34 invariants; 8 canvases live; focus bus measured across both new charts (2.8px hot
+/ 0.13 alpha dim, 3 DOM elements lit, clears on leave); streak toggle builds 29 datasets; light theme
+correct after the fix; mobile 375px zero overflow; V4 (10 charts) and V5 (12/12) unchanged;
+`git diff --stat` empty on all protected files. **PDF report deliberately unchanged** — it was
+curated to findings-only in p185, so nothing was added to it without asking. Full write-up:
+REVAMP.md's p186 entry.) p185 (2026-09-06 — **AP127 Detail V6 — round-1 feedback: forecast
 window cut to 14 days, and all machinery removed from the PDF report.** User: "For future prediction,
 change to use just stat from last 14days" + "Remove all behind the scenes from pdf report".
 

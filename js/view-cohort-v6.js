@@ -195,6 +195,7 @@
       updatedAt: RAW.updatedAt,
     });
     FCAST = FC.buildForecast(MODEL);
+    RACE = null; STREAKS = null;
     SCRUB_FRAMES = buildScrubFrames(MODEL, FCAST);
     S.scrubIdx = SCRUB_FRAMES.length - 1;
     return MODEL;
@@ -986,9 +987,27 @@
         else if (hit && hit.sp) openSPDrawer(hit.sp.catc_id);
       });
       window.addEventListener('resize', matrixResize);
+      observeWidth(cv.parentElement, matrixResize);
       MX._resizeBound = true;
     }
   }
+  // A window resize is NOT the only way these canvases change width — this app
+  // collapses its sidebar to an icon rail from the top bar, which resizes the
+  // content column with no window event at all. Both canvases therefore watch
+  // their own container, not the window.
+  function observeWidth(node, onChange) {
+    if (!window.ResizeObserver || !node) return;
+    let last = node.clientWidth;
+    const ro = new ResizeObserver(() => {
+      const w = node.clientWidth;
+      if (!w || Math.abs(w - last) < 2) return;
+      last = w;
+      onChange();
+    });
+    ro.observe(node);
+    REVEAL_CLEANUP.push(() => { try { ro.disconnect(); } catch (e) {} });
+  }
+
   function matrixResize() { if (!MX.canvas || !document.body.contains(MX.canvas)) return; matrixFit(); }
   function matrixFit() {
     const cv = MX.canvas; if (!cv) return;
@@ -1415,6 +1434,317 @@
     return out;
   }
 
+  // ═════════════════════════════════════════════════════════════════════════
+  // THE RACE  (V4's "Actual vs Planned", redesigned)
+  //
+  // V4 drew one cumulative line per SP against a dashed plan and a batch
+  // average, with a "solo" dropdown to isolate one student. The data question
+  // is the right one — who is pulling ahead, who is drifting back, and when did
+  // they separate — but 28 same-weight lines plus a separate solo control is a
+  // hard read. Here the same series hang off V6's existing focus bus instead:
+  // hovering ANY SP anywhere on the page (a constellation card, a ladder row, a
+  // roster row, this chart) thickens their line and fades the other 27, so
+  // isolation is a hover rather than a control, and it stays in sync with every
+  // other panel.
+  //
+  // Plan and Target are divided by the student count — the model publishes them
+  // as batch totals (×28), and drawing a 28-SP total against 28 individual
+  // lines is the scaling bug V5 shipped once and had to fix.
+  // ═════════════════════════════════════════════════════════════════════════
+  let RACE = null;
+  function raceData() {
+    const key = S.unit + '|' + MODEL.asOf;
+    if (RACE && RACE.key === key) return RACE;
+    const dates = FCAST.series.dates;
+    const at = {}; dates.forEach((d, i) => { at[d] = i; });
+    const isLes = S.unit === 'lessons';
+    const per = MODEL.students.map(sp => {
+      const step = new Float64Array(dates.length);
+      sp.flown.forEach(f => { const i = at[f.date]; if (i != null) step[i] += isLes ? 1 : f.effMins / 60; });
+      let run = 0;
+      const pts = dates.map((d, i) => { run += step[i]; return { x: new Date(d + 'T00:00:00Z').getTime(), y: +run.toFixed(2) }; });
+      return { sp, pts, final: +run.toFixed(2) };
+    });
+    const avg = dates.map((d, i) => ({
+      x: new Date(d + 'T00:00:00Z').getTime(),
+      y: +(per.reduce((a, p) => a + p.pts[i].y, 0) / (per.length || 1)).toFixed(2),
+    }));
+    const finals = per.map(p => p.final).sort((a, b) => a - b);
+    const med = finals.length ? finals[Math.floor(finals.length / 2)] : 0;
+    const lead = per.slice().sort((a, b) => b.final - a.final)[0];
+    const tail = per.slice().sort((a, b) => a.final - b.final)[0];
+    return (RACE = { key, dates, per, avg, median: med, leader: lead, laggard: tail, spread: finals.length ? finals[finals.length - 1] - finals[0] : 0 });
+  }
+
+  function raceCfg() {
+    const m = MODEL, unit = S.unit, r = raceData();
+    const key = unit === 'lessons' ? 'lessons' : 'hours';
+    const n = m.students.length || 1;
+    const px = ds => new Date(ds + 'T00:00:00Z').getTime();
+    const t = axisTheme();
+    const ds = [];
+    // Plan and Target, scaled to ONE student.
+    ds.push({
+      label: 'Curriculum plan / SP', data: (m.series[key].plan || []).map(p => ({ x: px(p.x), y: +(p.y / n).toFixed(2) })),
+      borderColor: t.tick, borderWidth: 2, borderDash: [6, 4], fill: false, pointRadius: 0, tension: .1, order: 2, _sp: null,
+    });
+    if (m.series.target[key] && m.series.target[key].length) {
+      ds.push({
+        label: 'Revised target / SP', data: m.series.target[key].filter(p => p.x <= m.asOf).map(p => ({ x: px(p.x), y: +(p.y / n).toFixed(2) })),
+        borderColor: cssv('--v6-bad', '#fb7185'), borderWidth: 1.6, borderDash: [2, 3], fill: false, pointRadius: 2, order: 1, _sp: null,
+      });
+    }
+    r.per.forEach(p => {
+      const base = 'hsla(' + p.sp.hue + ',80%,62%,0.62)';
+      ds.push({
+        label: p.sp.shortName, data: p.pts, borderColor: base, borderWidth: 1.3, fill: false,
+        pointRadius: 0, pointHoverRadius: 4, tension: .15, order: 4,
+        _sp: String(p.sp.catc_id), _base: base,
+        _hot: 'hsla(' + p.sp.hue + ',92%,66%,1)', _dim: 'hsla(' + p.sp.hue + ',35%,50%,0.13)',
+      });
+    });
+    ds.push({
+      label: 'Batch average', data: r.avg, borderColor: cssv('--v6-acc', '#e88aff'),
+      borderWidth: 2.6, fill: false, pointRadius: 0, tension: .15, order: 0, _sp: null,
+    });
+    return {
+      type: 'line', data: { datasets: ds },
+      options: {
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        onHover: (e, els, chart) => {
+          const d = els && els.length ? chart.data.datasets[els[0].datasetIndex] : null;
+          const id = d && d._sp ? d._sp : null;
+          if (id !== S.focusSp) setFocus(id);
+        },
+        onClick: (e, els, chart) => {
+          const d = els && els.length ? chart.data.datasets[els[0].datasetIndex] : null;
+          if (d && d._sp) openSPDrawer(d._sp);
+        },
+        scales: { x: timeScale(), y: valScale(unit === 'lessons' ? 'lessons per SP' : 'hours per SP') },
+        plugins: {
+          legend: { display: false },
+          tooltip: tooltipTheme({
+            callbacks: { label: c => c.dataset.label + ': ' + (unit === 'lessons' ? fN(c.parsed.y) + ' les' : fH(c.parsed.y, 1)) },
+          }),
+        },
+      },
+    };
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // STREAKS & IDLE DAYS  (V4's "Consecutive & Idle Streaks", redesigned)
+  //
+  // V4 plotted a running streak value per SP — positive while flying on
+  // consecutive days, negative while idle — as 28 overlapping lines. The signal
+  // is real but almost unreadable at that density, so the DEFAULT view here is
+  // an activity band: one row per SP, one column per calendar day, coloured by
+  // whether that day flew. A stand-down is then a vertical stripe across the
+  // whole batch, and one SP sitting out is a horizontal one — both visible at a
+  // glance, neither legible in the line chart. V4's line chart is kept behind a
+  // toggle for anyone who wants the original read.
+  //
+  // Both are walked from the BATCH's first flown date, not each SP's own, so a
+  // late starter reads as idle before they began. That is V4's behaviour and
+  // the model documents it; the panel note says so rather than leaving it to be
+  // misread as the whole batch stalling.
+  // ═════════════════════════════════════════════════════════════════════════
+  const LONG_IDLE = 7;
+  let STREAKS = null;
+  function streakData() {
+    if (STREAKS && STREAKS.asOf === MODEL.asOf) return STREAKS;
+    const st = MODEL.streaks();
+    const rows = st.perSP.map(p => {
+      const vals = p.series.map(x => x.y);
+      const cur = vals[vals.length - 1] || 0;
+      let bestRun = 0, worstIdle = 0;
+      vals.forEach(v => { if (v > bestRun) bestRun = v; if (v < worstIdle) worstIdle = v; });
+      return { sp: p.sp, vals, cur, bestRun, worstIdle: Math.abs(worstIdle), flyingDays: vals.filter(v => v > 0).length };
+    });
+    return (STREAKS = { asOf: MODEL.asOf, days: st.days, perSP: st.perSP, avg: st.avg, rows });
+  }
+
+  function streakCfg() {
+    const st = streakData();
+    const px = ds => new Date(ds + 'T00:00:00Z').getTime();
+    const ds = st.perSP.map(p => {
+      const base = 'hsla(' + p.sp.hue + ',80%,62%,0.5)';
+      return {
+        label: p.sp.shortName, data: p.series.map(q => ({ x: px(q.x), y: q.y })),
+        borderColor: base, borderWidth: 1.1, fill: false, pointRadius: 0, tension: .1, order: 3,
+        _sp: String(p.sp.catc_id), _base: base,
+        _hot: 'hsla(' + p.sp.hue + ',92%,66%,1)', _dim: 'hsla(' + p.sp.hue + ',35%,50%,0.12)',
+      };
+    });
+    ds.push({
+      label: 'Batch average', data: st.avg.map(q => ({ x: px(q.x), y: q.y })),
+      borderColor: cssv('--v6-acc', '#e88aff'), borderWidth: 2.6, fill: false, pointRadius: 0, order: 0, _sp: null,
+    });
+    return {
+      type: 'line', data: { datasets: ds },
+      options: {
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        onHover: (e, els, chart) => {
+          const d = els && els.length ? chart.data.datasets[els[0].datasetIndex] : null;
+          const id = d && d._sp ? d._sp : null;
+          if (id !== S.focusSp) setFocus(id);
+        },
+        onClick: (e, els, chart) => {
+          const d = els && els.length ? chart.data.datasets[els[0].datasetIndex] : null;
+          if (d && d._sp) openSPDrawer(d._sp);
+        },
+        scales: {
+          x: timeScale(),
+          y: valScale('days — above zero flying, below zero idle', { beginAtZero: false, grid: { color: c => (c.tick.value === 0 ? cssv('--v6-bd-2', 'rgba(255,255,255,.18)') : cssv('--v6-grid', 'rgba(255,255,255,.05)')) } }),
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: tooltipTheme({
+            callbacks: { label: c => c.dataset.label + ': ' + (c.parsed.y >= 0 ? c.parsed.y + ' consecutive flying ' + plural(c.parsed.y, 'day') : Math.abs(c.parsed.y) + ' idle ' + plural(c.parsed.y, 'day')) },
+          }),
+        },
+      },
+    };
+  }
+
+  // ── activity band (canvas) ───────────────────────────────────────────────
+  const BAND = { canvas: null, ctx: null, rows: [], rowH: 13, nameW: 118, headH: 20, hover: null };
+  // Ordered by whatever the page is currently sorted by, so the band, the
+  // matrix, the constellation and the roster always list the SPs in the same
+  // order — reading across panels is the whole point of this tab.
+  function bandRows() {
+    const byId = {};
+    streakData().rows.forEach(r => { byId[String(r.sp.catc_id)] = r; });
+    return forecastRows().map(f => byId[String(f.catc_id)]).filter(Boolean);
+  }
+  function mountBand() {
+    const cv = $('#v6-band', ROOT); if (!cv) return;
+    BAND.canvas = cv; BAND.ctx = cv.getContext('2d');
+    BAND.rows = bandRows();
+    sizeBand(); drawBand();
+    if (!cv._v6bound) {
+      cv._v6bound = true;
+      cv.addEventListener('pointermove', e => {
+        const hit = bandHit(e.offsetX, e.offsetY);
+        BAND.hover = hit; drawBand();
+        if (hit) {
+          if (S.focusSp !== String(hit.row.sp.catc_id)) setFocus(hit.row.sp.catc_id);
+          showTip(e.clientX, e.clientY, bandTip(hit));
+        } else hideTip();
+      });
+      cv.addEventListener('pointerleave', () => { BAND.hover = null; drawBand(); hideTip(); if (S.focusSp) setFocus(null); });
+      cv.addEventListener('click', e => { const hit = bandHit(e.offsetX, e.offsetY); if (hit) openSPDrawer(hit.row.sp.catc_id); });
+      onFocus(() => { if (BAND.ctx && document.body.contains(BAND.canvas)) drawBand(); });
+      window.addEventListener('resize', bandResize);
+      observeWidth(cv.parentElement, bandResize);
+      REVEAL_CLEANUP.push(() => window.removeEventListener('resize', bandResize));
+    }
+  }
+  function bandResize() { if (BAND.canvas && document.body.contains(BAND.canvas)) { sizeBand(); drawBand(); } }
+  function sizeBand() {
+    const cv = BAND.canvas; if (!cv) return;
+    const w = cv.parentElement.clientWidth || 800;
+    const hgt = BAND.headH + BAND.rows.length * BAND.rowH + 6;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.style.width = w + 'px'; cv.style.height = hgt + 'px';
+    cv.width = Math.round(w * dpr); cv.height = Math.round(hgt * dpr);
+    BAND.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    BAND.w = w; BAND.h = hgt;
+    BAND.cellW = (w - BAND.nameW - 6) / Math.max(1, streakData().days.length);
+  }
+  function bandHit(x, y) {
+    const ri = Math.floor((y - BAND.headH) / BAND.rowH);
+    if (ri < 0 || ri >= BAND.rows.length) return null;
+    const days = streakData().days;
+    const di = Math.floor((x - BAND.nameW) / BAND.cellW);
+    return { row: BAND.rows[ri], ri, di: (di >= 0 && di < days.length) ? di : null };
+  }
+  function bandTip(hit) {
+    const r = hit.row, days = streakData().days;
+    if (hit.di == null) {
+      return '<b>' + esc(r.sp.name) + '</b><br>' + r.flyingDays + ' flying days of ' + days.length +
+        '<br>longest run ' + r.bestRun + 'd · longest idle ' + r.worstIdle + 'd';
+    }
+    const d = days[hit.di], v = r.vals[hit.di];
+    const flew = r.sp.flownByDate && r.sp.flownByDate[d];
+    return '<b>' + esc(r.sp.shortName) + ' · ' + fd(d) + '</b><br>' +
+      (flew ? flew.length + ' ' + plural(flew.length, 'lesson') + ': ' + flew.map(f => esc(f.lesson)).join(', ')
+        : 'no flying — ' + Math.abs(v) + ' ' + plural(v, 'day') + ' into an idle run');
+  }
+  function drawBand() {
+    const c = BAND.ctx; if (!c) return;
+    const days = streakData().days, cw = BAND.cellW;
+    const tx = cssv('--v6-tx', '#eef2ff'), tx3 = cssv('--v6-tx3', '#65708c');
+    const bg = cssv('--v6-glass-2', '#141c2d');
+    const fly = cssv('--v6-acc2', '#22d3ee'), idle = cssv('--v6-bd', 'rgba(255,255,255,.1)'), bad = cssv('--v6-bad', '#fb7185');
+    c.clearRect(0, 0, BAND.w, BAND.h);
+
+    // month ticks
+    c.font = '8px "JetBrains Mono", monospace'; c.textAlign = 'left'; c.fillStyle = tx3;
+    let lastMonth = '';
+    days.forEach((d, i) => {
+      const mo = d.slice(0, 7);
+      if (mo === lastMonth) return;
+      lastMonth = mo;
+      const x = BAND.nameW + i * cw;
+      c.fillText(new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }), x + 1, BAND.headH - 7);
+      c.strokeStyle = idle; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(x + 0.5, BAND.headH - 5); c.lineTo(x + 0.5, BAND.h); c.stroke();
+    });
+
+    BAND.rows.forEach((r, ri) => {
+      const y = BAND.headH + ri * BAND.rowH;
+      const hot = S.focusSp && String(r.sp.catc_id) === S.focusSp;
+      c.globalAlpha = S.focusSp && !hot ? 0.28 : 1;
+      if (hot) { c.fillStyle = bg; c.fillRect(0, y, BAND.w, BAND.rowH); }
+      for (let i = 0; i < days.length; i++) {
+        const v = r.vals[i];
+        const x = BAND.nameW + i * cw;
+        if (v > 0) { c.fillStyle = fly; c.fillRect(x, y + 2, Math.max(1, cw - 0.4), BAND.rowH - 4); }
+        else if (v <= -LONG_IDLE) { c.fillStyle = bad; c.globalAlpha *= 0.55; c.fillRect(x, y + 4.5, Math.max(1, cw - 0.4), BAND.rowH - 9); c.globalAlpha = S.focusSp && !hot ? 0.28 : 1; }
+        else { c.fillStyle = idle; c.fillRect(x, y + 5.5, Math.max(1, cw - 0.4), BAND.rowH - 11); }
+      }
+      if (BAND.hover && BAND.hover.ri === ri && BAND.hover.di != null) {
+        c.strokeStyle = tx; c.lineWidth = 1;
+        c.strokeRect(BAND.nameW + BAND.hover.di * cw + 0.5, y + 1, Math.max(2, cw - 1), BAND.rowH - 2);
+      }
+      c.globalAlpha = 1;
+    });
+
+    // name gutter last, so the band slides under it
+    c.fillStyle = cssv('--v6-bg-2', '#080c18'); c.fillRect(0, 0, BAND.nameW, BAND.h);
+    c.font = '10px Inter, system-ui, sans-serif'; c.textAlign = 'left';
+    BAND.rows.forEach((r, ri) => {
+      const hot = S.focusSp && String(r.sp.catc_id) === S.focusSp;
+      c.fillStyle = hot ? cssv('--v6-acc', '#e88aff') : tx;
+      c.globalAlpha = S.focusSp && !hot ? 0.4 : 1;
+      c.fillText(r.sp.shortName, 6, BAND.headH + ri * BAND.rowH + BAND.rowH - 3.5);
+      c.globalAlpha = 1;
+    });
+    c.strokeStyle = idle; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(BAND.nameW - 0.5, 0); c.lineTo(BAND.nameW - 0.5, BAND.h); c.stroke();
+  }
+
+  // A chart rebuilt after a theme switch is a NEW Chart.js instance, so the
+  // focus subscription has to be re-pointed at it. The subscription itself is
+  // keyed by chart id and reads CHARTS[id] at call time, so re-binding is only
+  // needed when a rebuild happened outside bindChartFocus's own path.
+  function bindChartFocusRefresh(id) { if (S.focusSp) { const c = CHARTS[id]; if (c) c.update('none'); } }
+
+  // Both new charts restyle on focus — CSS can dim a card, not a Chart.js line.
+  function bindChartFocus(id) {
+    onFocus(fid => {
+      const c = CHARTS[id]; if (!c) return;
+      c.data.datasets.forEach(d => {
+        if (!d._sp) return;
+        const hot = fid && d._sp === fid;
+        d.borderColor = hot ? d._hot : (fid ? d._dim : d._base);
+        d.borderWidth = hot ? 2.8 : (fid ? 1 : (id === 'v6-race' ? 1.3 : 1.1));
+        d.order = hot ? -1 : 4;
+      });
+      c.update('none');
+    });
+  }
+
   function buildPeople() {
     const m = MODEL, fc = FCAST;
     const { sec, grid } = actShell('people', '04', 'The batch, student by student',
@@ -1474,10 +1804,86 @@
         persist();
         $$('button', sortSeg).forEach(b => b.classList.toggle('on', b.getAttribute('data-k') === S.sortKey));
         renderCards(); renderRoster(); MX.rows = sortedStudents(); drawMatrix();
+        if (BAND.ctx) { BAND.rows = bandRows(); drawBand(); }
       }, 'data-k': k }, [def.label])));
 
     grid.appendChild(card('Constellation', m.students.length + ' SP · click for the full record',
       [bandStrip, gridWrap], 'v6-c12', { tools: sortSeg }));
+
+    // ── the race (V4's Actual vs Planned, redesigned) ──
+    const raceBox = el('div', { class: 'v6-chart', style: 'height:360px' }, [el('canvas', { id: 'v6-race' })]);
+    const r = raceData();
+    const standing = (label, val, sub, spId) => {
+      const node = el('div', { class: 'v6-standing', 'data-sp': spId ? String(spId) : null }, [
+        el('div', { class: 'l' }, [label]), el('div', { class: 'v' }, [val]), el('div', { class: 's' }, [sub]),
+      ]);
+      if (spId) {
+        node.addEventListener('mouseenter', () => setFocus(spId));
+        node.addEventListener('mouseleave', () => setFocus(null));
+        node.addEventListener('click', () => openSPDrawer(spId));
+      }
+      return node;
+    };
+    const uv = v => (S.unit === 'lessons' ? fN(v) + ' les' : fH(v, 1));
+    const standings = el('div', { class: 'v6-standings' }, [
+      standing('Out in front', r.leader ? r.leader.sp.shortName : '—', r.leader ? uv(r.leader.final) : '', r.leader && r.leader.sp.catc_id),
+      standing('Batch median', uv(r.median), 'the middle of the pack', null),
+      standing('Furthest back', r.laggard ? r.laggard.sp.shortName : '—', r.laggard ? uv(r.laggard.final) : '', r.laggard && r.laggard.sp.catc_id),
+      standing('Front to back', uv(r.spread), 'gap across the batch', null),
+    ]);
+    grid.appendChild(card('The race', 'every SP’s own progress against the plan · hover to isolate, click for the record', [
+      raceBox,
+      legendRow([[cssv('--v6-acc', '#e88aff'), 'Batch average'], [cssv('--v6-tx3', '#65708c'), 'Curriculum plan / SP'],
+        [cssv('--v6-bad', '#fb7185'), 'Revised target / SP'], ['hsla(300,80%,62%,.7)', 'one line per SP']]),
+      standings,
+      el('div', { class: 'v6-note', style: 'margin-top:11px' }, [
+        'Plan and target are drawn per student — the model publishes them as ' + MODEL.students.length +
+        '-SP batch totals, and comparing a batch total against individual lines would put them ' +
+        MODEL.students.length + '× too high. Hovering any SP here, on a card, in the ladder or in the roster highlights them everywhere at once.',
+      ]),
+    ], 'v6-c12'));
+
+    // ── streaks & idle days (V4's Consecutive & Idle Streaks, redesigned) ──
+    const st = streakData();
+    const bandWrap = el('div', { class: 'v6-band-wrap' }, [el('canvas', { id: 'v6-band' })]);
+    const streakBox = el('div', { class: 'v6-chart', style: 'height:320px;display:none' }, [el('canvas', { id: 'v6-streak' })]);
+    const idleSeg = el('div', { class: 'v6-seg' }, [['band', 'Activity band'], ['line', 'Streak lines']].map(([k, lbl]) =>
+      el('button', { class: k === 'band' ? 'on' : '', 'data-v': k, onclick: () => {
+        $$('button', idleSeg).forEach(b => b.classList.toggle('on', b.getAttribute('data-v') === k));
+        bandWrap.style.display = k === 'band' ? '' : 'none';
+        streakBox.style.display = k === 'band' ? 'none' : '';
+        if (k === 'band') { sizeBand(); drawBand(); }
+        else if (!CHARTS['v6-streak']) { mkChart('v6-streak', streakCfg()); bindChartFocus('v6-streak'); }
+      } }, [lbl])));
+
+    const nowIdle = st.rows.filter(x => x.cur < 0).sort((a, b) => a.cur - b.cur);
+    const nowFlying = st.rows.filter(x => x.cur > 0).sort((a, b) => b.cur - a.cur);
+    const totalDays = st.days.length;
+    const flyRate = st.rows.reduce((a, x) => a + x.flyingDays, 0) / (st.rows.length * totalDays || 1);
+    const bestEver = st.rows.slice().sort((a, b) => b.bestRun - a.bestRun)[0];
+    const idleStats = el('div', { class: 'v6-standings' }, [
+      standing('Longest idle now', nowIdle.length ? Math.abs(nowIdle[0].cur) + 'd' : 'none',
+        nowIdle.length ? nowIdle[0].sp.shortName : 'every SP flew recently', nowIdle.length && nowIdle[0].sp.catc_id),
+      standing(nowFlying.length ? 'Best run now' : 'Longest run to date',
+        nowFlying.length ? nowFlying[0].cur + 'd' : (bestEver ? bestEver.bestRun + 'd' : '—'),
+        nowFlying.length ? nowFlying[0].sp.shortName : (bestEver ? bestEver.sp.shortName + ' · nobody is mid-run today' : ''),
+        nowFlying.length ? nowFlying[0].sp.catc_id : (bestEver && bestEver.sp.catc_id)),
+      standing('Idle ≥ ' + LONG_IDLE + 'd today', String(st.rows.filter(x => x.cur <= -LONG_IDLE).length),
+        'of ' + st.rows.length + ' SP', null),
+      standing('Flying-day rate', (flyRate * 100).toFixed(0) + '%', 'per SP across ' + totalDays + ' days', null),
+    ]);
+
+    grid.appendChild(card('Streaks & idle days', 'one row per SP, one column per calendar day', [
+      bandWrap, streakBox,
+      legendRow([[cssv('--v6-acc2', '#22d3ee'), 'flew that day'], [cssv('--v6-bd', 'rgba(255,255,255,.1)'), 'idle'],
+        [cssv('--v6-bad', '#fb7185'), 'idle run of ' + LONG_IDLE + '+ days']]),
+      idleStats,
+      el('div', { class: 'v6-note', style: 'margin-top:11px' }, [
+        'A vertical stripe across every row is a batch-wide stand-down; a horizontal one is a single SP sitting out. ',
+        'Streaks are walked from the batch’s first flown date (' + fd(MODEL.batchStart) + '), not each SP’s own — so an SP who started late reads as idle before they began, rather than the batch appearing to stall. ',
+        'Switch to Streak lines for the original per-SP view.',
+      ]),
+    ], 'v6-c12', { tools: idleSeg }));
 
     // ── roster table ──
     const COLS = [
@@ -1507,6 +1913,7 @@
           const go = () => {
             if (S.sortKey === key) S.sortDir *= -1; else { S.sortKey = key; S.sortDir = 1; }
             persist(); renderRoster(); renderCards(); MX.rows = sortedStudents(); drawMatrix();
+            if (BAND.ctx) { BAND.rows = bandRows(); drawBand(); }
             $$('.v6-seg button', sortSeg).forEach(b => b.classList.toggle('on', b.getAttribute('data-k') === S.sortKey));
           };
           th.addEventListener('click', go);
@@ -1543,7 +1950,12 @@
     grid.appendChild(card('Roster', 'click any row for the full record · click a header to sort',
       [el('div', { class: 'v6-tw' }, [table])], 'v6-c12'));
 
-    sec._rerender = () => { renderCards(); renderRoster(); };
+    sec._afterMount = () => {
+      mkChart('v6-race', raceCfg());
+      bindChartFocus('v6-race');
+      mountBand();
+    };
+    sec._rerender = () => { renderCards(); renderRoster(); BAND.rows = bandRows(); sizeBand(); drawBand(); };
     return sec;
   }
 
@@ -2295,6 +2707,9 @@
     if (CHARTS['v6-output']) mkChart('v6-output', outputCfg());
     if (CHARTS['v6-cone']) mkChart('v6-cone', coneCfg());
     if (CHARTS['v6-hist']) mkChart('v6-hist', histCfg());
+    // The race is per-SP cumulative in the selected unit; streak lines are day
+    // counts and are unit-free, so they are deliberately not rebuilt here.
+    if (CHARTS['v6-race']) { RACE = null; mkChart('v6-race', raceCfg()); bindChartFocus('v6-race'); }
     const hist = $('#v6-act-history', ROOT);
     if (hist && hist._renderFrame) hist._renderFrame();
   }
@@ -2368,7 +2783,13 @@
       if (now === last) return;
       last = now;
       redrawUnitDependent();
+      // Every canvas has to be repainted, not just the charts — a canvas caches
+      // whatever colour it was drawn with. Missing the band here left its name
+      // gutter dark on a white page.
       if (MX.ctx && MX.canvas && document.body.contains(MX.canvas)) drawMatrix();
+      if (BAND.ctx && BAND.canvas && document.body.contains(BAND.canvas)) drawBand();
+      if (CHARTS['v6-race']) bindChartFocusRefresh('v6-race');
+      if (CHARTS['v6-streak']) { mkChart('v6-streak', streakCfg()); bindChartFocus('v6-streak'); }
     });
     mo.observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
     REVEAL_CLEANUP.push(() => mo.disconnect());
@@ -2383,6 +2804,7 @@
     window.removeEventListener('resize', matrixResize);
     closeOverlays(); closeReport(); hideTip();
     MX.canvas = null; MX.ctx = null;
+    BAND.canvas = null; BAND.ctx = null;
   }
 
   function remount() {

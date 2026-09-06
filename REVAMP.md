@@ -3647,3 +3647,85 @@ shrunk|P10|P50|P90|self-check|engine|\.js|monte|EFFECTIVE|reproduc"` returns **z
 report CTA still promised "forecast with its method stated".
 
 Files: `js/ap127-v6-forecast.js`, `js/view-cohort-v6.js`, `index.html`.
+
+---
+
+## p186
+
+**AP127 Detail V6 — round-2 feedback: the backdrop stops tinting the content, and V4's race and
+idle charts come back, redesigned.**
+
+User feedback, verbatim:
+> Pls remove the Magenta haze overly, keep it as background but not the overlay on top.
+> Pls redesign and bring back the race charts and idle day chart from V4.
+
+### 1. The magenta haze was the panels, not the backdrop
+
+The aurora was already behind everything (`z-index: 0`, content at 1+). What made it read as an
+overlay was that every surface on top of it — cards, the HUD, stat tiles, SP cards — used
+`--v6-glass: rgba(255,255,255,.045)` with a `backdrop-filter`, i.e. nearly transparent glass. The
+magenta wash came straight through them and through the text sitting on them.
+
+Fixed at the token: `--v6-glass` / `--v6-glass-2` are now **opaque** (`#0c111d` / `#141c2d` dark,
+`#ffffff` / `#f5f7fd` light), and the two `backdrop-filter`s they no longer need are gone (the ones
+on the modal and report scrims stay — those *should* be translucent). The aurora is kept as a
+genuine backdrop, dialled from `opacity .30` to `.13` (light `.16` → `.07`) with a wider blur, so it
+now only shows in the page's own background between and behind the panels.
+
+### 2. "The race" — V4's Actual vs Planned, rebuilt on the focus bus
+
+Per-SP cumulative progress on a real time axis, with the curriculum plan and the revised target as
+references and the batch average over the top. **Plan and target are divided by the student count**
+— the model publishes them as 28-SP batch totals, and drawing a batch total against 28 individual
+lines is exactly the scaling bug V5 shipped once and had to fix.
+
+The redesign is in the isolation. V4 needed a separate "solo" dropdown to pull one student out of 28
+same-weight lines; here the series hang off V6's existing focus bus, so hovering an SP **anywhere**
+— a constellation card, a ladder row, a roster row, the band, or the chart itself — thickens their
+line to 2.8px and fades the other 27 to 13% alpha, in this chart and the streak chart simultaneously.
+Isolation is a hover, not a control, and it stays in sync with every other panel. Clicking any line
+opens that SP's record. A standings strip underneath names the leader, the batch median, the SP
+furthest back and the front-to-back spread, each hover-linked to the same bus.
+
+### 3. "Streaks & idle days" — V4's Consecutive & Idle Streaks, made readable
+
+V4 plotted a running streak per SP (positive while flying consecutive days, negative while idle) as
+28 overlapping lines. The signal is real and almost unreadable at that density, so the **default view
+is now an activity band**: one row per SP, one column per calendar day, coloured for flew / idle /
+idle run of 7+ days. A batch-wide stand-down becomes a vertical stripe and a single SP sitting out
+becomes a horizontal one — both obvious at a glance, neither legible in the line chart. **V4's line
+chart is kept verbatim behind a toggle** for anyone who wants the original read, driven by the same
+`model.streaks()` the V5 model already ported (walked from the batch's first flown date, not each
+SP's own — stated in the panel note rather than left to be misread as the whole batch stalling).
+
+Band rows follow the page's current sort, so the band, matrix, constellation and roster always list
+the SPs in the same order; hover highlights and click opens the record, like every other surface.
+
+### Bugs found and fixed while verifying
+
+- **The theme watcher repainted the matrix canvas but not the band**, so switching to the light theme
+  left the band's name gutter dark navy with white text on a white page. A canvas caches whatever
+  colour it was drawn with; the watcher now repaints every canvas and rebuilds the streak chart.
+- **Both canvases only resized on `window.resize`.** This app collapses its sidebar to an icon rail
+  from the top bar, which changes the content width with no window event at all, so a canvas would
+  have kept a stale width. Both now watch their own container with a `ResizeObserver` — verified by
+  shrinking the card to 620px (canvas followed to 588px) and restoring it (back to 1022px).
+- **"Best run now" read "none" on any day nobody had flown yet**, which is most of a working day and
+  made it look as though no SP was flying at all. It now falls back to the longest run achieved,
+  relabelled, with "nobody is mid-run today" said explicitly.
+
+### Verified
+
+34/34 invariants, 0 failing. Eight canvases live (flight path, output, matrix, cone, distribution,
+race, band, streak). Focus bus measured across the new charts: hovering a card set the hovered SP's
+race and streak lines to 2.8px and `hsla(...,92%,66%,1)`, faded the rest to `0.13` alpha, lit 3 DOM
+elements, and cleared on mouseleave. Streak-lines toggle builds 29 datasets (28 SP + batch average).
+Light theme correct on both new panels after the fix. Mobile 375px: zero horizontal page overflow
+(the initial 266px reading was the paused-renderer artefact — a real resize event brought it to 0
+with the canvas at 309px). V4 reloaded (10 charts) and V5 reloaded (self-check 12/12) unchanged;
+`git diff --stat` empty on every DB_Share-proxied file and every V5 file.
+
+The PDF report is deliberately **unchanged** — it was just curated down to findings-only in p185, so
+no new panels were added to it without asking.
+
+Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.
