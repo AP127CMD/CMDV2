@@ -45,7 +45,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No snapshot changes — nothing to commit."
           else
-            git commit -m "chore: refresh data snapshots $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git commit -m "chore: refresh data snapshots $(date -u +%Y-%m-%dT%H:%M:%SZ) [CI Skip]"
             # Push with retry. On a non-fast-forward rejection, replay our commit
             # on top of the new remote tip, keeping OUR freshly written snapshots
             # (`-X theirs` auto-resolves the conflict on the regenerated files).
