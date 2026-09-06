@@ -1,5 +1,19 @@
 # CMDV2 — Claude Code Context
 
+## ⚠️ Data plane (2026-09-06)
+- **`flight-data.js` is DELETED from this repo.** The 5 browser entrypoints (`index.html`,
+  `legacy.html`, `ops/index.html`, `crosscheck/index.html`, `overview/index.html`) load it from
+  `https://ap127-data.anusorn-tanmetha.workers.dev/flight-data.js` (a stateless raw.github proxy
+  Worker in `flight-schedule-feed/data-worker/`). `scripts/refresh_snapshots.mjs` no longer
+  mirrors flight-data; `ngt-data` now reads `cache.json` from that Worker.
+- **`refresh-data.yml` commits carry `[CI Skip]`** so they don't trigger a Pages build. The
+  committed `progress-data.js` / `ngt-data.js` snapshots (runtime-fetched fallbacks) now ship on
+  real code deploys, not hourly. A real code push must NOT contain `[CI Skip]`.
+- **watchdog:** new `POST /notify` (X-API-Key: `NOTIFY_KEY` secret) runs the diff immediately;
+  cron tightened `*/5` → `*/2`. `FLIGHT_SRC` stays on raw.github (a Worker can't fetch a
+  same-account `*.workers.dev` URL — CF 1042). Redeploy: `cd watchdog && npx wrangler deploy`.
+- Design: `flight-schedule-feed/docs/superpowers/specs/2026-09-06-r2-data-plane-decoupling-design.md`.
+
 ## Note (2026-08-26): CC's fetch pipeline paused — CMDV2's flight data is fully frozen until the Orange Pi 4 Pro is live
 
 Not a CMDV2 bug — the whole chain upstream of it stopped on purpose. CMD_CTR's `fetch_schedule.yml`
