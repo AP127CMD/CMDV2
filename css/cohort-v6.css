@@ -357,15 +357,6 @@ body[data-theme="light"] .v6-pbar>b{text-shadow:0 0 4px rgba(255,255,255,.85);}
 .ap127-v6.v6-focusing [data-sp]{opacity:.26;filter:saturate(.35);transition:opacity .18s,filter .18s;}
 .ap127-v6.v6-focusing [data-sp].v6-hot{opacity:1;filter:none;box-shadow:0 0 0 1px var(--v6-acc);}
 
-/* ---- ETC ladder ------------------------------------------------------------------ */
-.v6-ladder{display:flex;flex-direction:column;gap:4px;}
-.v6-lad{display:grid;grid-template-columns:118px 1fr 92px;gap:9px;align-items:center;cursor:pointer;padding:2px 3px;border-radius:6px;}
-.v6-lad:hover{background:var(--v6-glass-2);}
-.v6-lad .nm{font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.v6-lad .tr{position:relative;height:11px;border-radius:5px;background:rgba(127,127,127,.14);overflow:hidden;}
-.v6-lad .tr i{position:absolute;top:0;bottom:0;border-radius:5px;transition:left .8s cubic-bezier(.2,.7,.3,1),width .8s cubic-bezier(.2,.7,.3,1);}
-.v6-lad .tr u{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--v6-bad);opacity:.85;}
-.v6-lad .dt{font-family:'JetBrains Mono',monospace;font-size:9.5px;text-align:right;color:var(--v6-tx2);}
 
 /* ---- Grid tables: curriculum grid + activity calendar ------------------------------
    Real <table>s with sticky identity columns, ported in spirit from V5's
@@ -508,7 +499,6 @@ table.v6-gt{border-collapse:separate;border-spacing:0;font-size:10px;table-layou
   .v6-act-ttl{font-size:22px;}
   .v6-gauge{width:172px;height:172px;}
   .v6-gauge .v6-gauge-v{font-size:37px;}
-  .v6-lad{grid-template-columns:88px 1fr 76px;}
 }
 @media(prefers-reduced-motion:reduce){
   .ap127-v6 *,.v6-ov,.v6-modal,.v6-drawer,.v6-toast{animation:none!important;transition:none!important;}

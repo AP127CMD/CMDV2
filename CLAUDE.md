@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p193` (all currently at p192)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p194` (all currently at p193)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -142,7 +142,20 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p192` (2026-09-06 — **AP127 Detail V6 — round-4 feedback: five History
+**Last known:** all files `p193` (2026-09-06 — **AP127 Detail V6 — round-5 feedback.**
+**02 Where the batch stands:** phase funnel removed (its sole caller of `openPhaseModal()` went too;
+`.v6-funnel` CSS stays — the SP drawer's per-phase breakdown still uses it); **"③ What it takes"
+folded into Required-against-actual**, since the band repeated the same period-by-period comparison
+the table already made — the four figures the table lacked (shortfall/day, shortfall/week, and the
+multiple of current output needed against both the 7-day and 14-day rates) now sit under it as a stat
+strip, and the situation report drops to two bands with both cards full width; **curriculum grid is
+click-only** — the per-row hover no longer fires the cross-panel focus and per-cell `title` tooltips
+are gone, because sweeping a pointer across 28 × 96 cells fired a highlight on every row it crossed.
+Click a cell for the lesson record, an SP name for their file. **03 renamed "Future prediction"**,
+every panel flattened to one full-width column, and **"Who finishes when" removed** (per-SP projected
+finish is already a roster column; `.v6-lad*` CSS went with it). Verified 35/35, report still builds,
+V4/V5 unchanged, CSS brace balance 0 after removals. Full write-up: REVAMP.md's p193 entry.)
+p192 (2026-09-06 — **AP127 Detail V6 — round-4 feedback: five History
 fixes.** (1) **Output rhythm Dual → cyan**, via a V6-local `v6TypeColors()` — `Model.TYPE_COLORS` is
 read by V5 and stays unmutated. (2) **Total label now clears the Required line.** Increasing the
 offset cannot fix this and measuring proved it: the required rate is a moving target and on several

@@ -1215,7 +1215,7 @@
     const remH = p ? p.remHrsB : 0, remL = p ? p.remLesB : 0;
     const daysRem = p ? p.daysRem : null;
 
-    const bands = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:22px' }, [
+    const bands = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:26px' }, [
       bandBlock('① Where we stand', [
         ['Complete', fPct(m.batch.hoursDone / m.batch.hourSlots * 100) + ' of the course by hours'],
         ['Flown', fH(m.batch.hoursDone) + ' · ' + fN(m.batch.lessonsDone) + ' lessons'],
@@ -1231,36 +1231,9 @@
         ['Plan end date', fdLong(p ? p.planEndDate : null)],
         ['SP not yet finished', String(n)],
       ]),
-      bandBlock('③ What it takes', [
-        ['Per day', fH(p ? p.reqDayHrsB : null, 1) + ' required · ' + fH(a.actDayHrsB, 1) + ' actual', 'bad'],
-        ['Per week', fH(p ? p.reqWeekHrsB : null, 0) + ' required · ' + fH(a.actWeekHrsB, 0) + ' actual', 'bad'],
-        ['Per month', fH(p ? p.reqMonthHrsB : null, 0) + ' required · ' + fH(a.actMonthHrsB, 0) + ' actual', 'bad'],
-        ['Shortfall / day', sgn(a.actDayHrsB - (p ? p.reqDayHrsB : 0), x => fH(x, 1)), 'bad'],
-        ['Multiple of the last 7 days', p && a.actDayHrsB > 0 ? (p.reqDayHrsB / a.actDayHrsB).toFixed(1) + '×' : '—', 'bad'],
-        ['Multiple of the ' + FCAST.window + '-day mean', p && FCAST.verdict.actualRate > 0 ? (p.reqDayHrsB / FCAST.verdict.actualRate).toFixed(1) + '×' : '—', 'bad'],
-      ]),
     ]);
     grid.appendChild(card('Situation report', 'as of ' + fdLong(m.asOf), bands, 'v6-c12'));
 
-    // ── phase funnel ──
-    const fnl = el('div', { class: 'v6-funnel' }, m.phases.map(ph => {
-      // buildPhaseFunnel() returns { phase, lessons, slots, done, remaining, pct }
-      // — the label/title/colour live on `.phase`, not on the row itself.
-      const def = ph.phase;
-      const pct = ph.slots ? ph.done / ph.slots * 100 : 0;
-      const node = el('div', { class: 'v6-fn', tabindex: '0', title: 'Open ' + def.label + ' detail' }, [
-        el('div', { class: 'v6-fn-hd' }, [
-          el('b', {}, [def.label + ' — ' + def.title]),
-          el('span', {}, [fN(ph.done) + ' / ' + fN(ph.slots) + ' · ' + pct.toFixed(0) + '%']),
-        ]),
-        el('div', { class: 'v6-fn-bar' }, [el('i', { style: 'background:' + def.c, 'data-fill': pct.toFixed(1) + '%' })]),
-      ]);
-      const open = () => openPhaseModal(ph);
-      node.addEventListener('click', open);
-      node.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
-      return node;
-    }));
-    grid.appendChild(card('Phase funnel', 'lesson slots completed per syllabus phase · click a phase for its objective', fnl, 'v6-c5'));
 
     // ── pace table ──
     const rows = [
@@ -1280,14 +1253,30 @@
         el('td', { class: 'n', style: 'color:var(--v6-bad)' }, [sgn(al - (rl || 0), fN)]),
       ]))),
     ]);
-    grid.appendChild(card('Required against actual', 'required is recomputed daily against work outstanding',
+    // "What it takes" used to be a third band in the situation report, repeating
+    // the same required-vs-actual comparison this table already makes. Folded in
+    // here so the comparison lives in exactly one place.
+    const mult7 = p && a.actDayHrsB > 0 ? (p.reqDayHrsB / a.actDayHrsB) : null;
+    const multFc = p && FCAST.verdict.actualRate > 0 ? (p.reqDayHrsB / FCAST.verdict.actualRate) : null;
+    const takes = el('div', { class: 'v6-scrub-read', style: 'margin-top:14px' }, [
+      el('div', {}, [el('div', { class: 'l' }, ['Shortfall / day']),
+        el('div', { class: 'v', style: 'color:var(--v6-bad)' }, [sgn(a.actDayHrsB - (p ? p.reqDayHrsB : 0), x => fH(x, 1))])]),
+      el('div', {}, [el('div', { class: 'l' }, ['Shortfall / week']),
+        el('div', { class: 'v', style: 'color:var(--v6-bad)' }, [sgn(a.actWeekHrsB - (p ? p.reqWeekHrsB : 0), x => fH(x, 0))])]),
+      el('div', {}, [el('div', { class: 'l' }, ['× the last 7 days']),
+        el('div', { class: 'v', style: 'color:var(--v6-bad)' }, [mult7 == null ? '—' : mult7.toFixed(1) + '×'])]),
+      el('div', {}, [el('div', { class: 'l' }, ['× the ' + FCAST.window + '-day mean']),
+        el('div', { class: 'v', style: 'color:var(--v6-bad)' }, [multFc == null ? '—' : multFc.toFixed(1) + '×'])]),
+    ]);
+    grid.appendChild(card('Required against actual', 'what it takes, against what the batch is doing',
       [el('div', { class: 'v6-tw' }, [tbl]),
+        takes,
         el('div', { class: 'v6-note', style: 'margin-top:10px' }, [
           'There is no single "actual rate", and this page never pretends otherwise. The Actual column here uses the metrics model’s own trailing windows — 7 days for the daily figure, 14 halved for the weekly, 30 for the monthly. ',
           'The Flight deck and the forecast quote a ' + FCAST.window + '-day mean instead, because that is the window the simulation resamples. ',
           'Every rate the page is allowed to show, with the exact window behind it, is listed together in ',
           el('button', { class: 'v6-btn', style: 'padding:2px 7px', onclick: () => gotoAct('forecast') }, ['Act 03 → Every rate']), '.',
-        ])], 'v6-c7'));
+        ])], 'v6-c12'));
 
     // ── curriculum grid ──
     const gridHost = el('div', {});
@@ -1298,6 +1287,7 @@
           el('b', {}, ['vs tgt']), ' is lessons ahead of or behind the target schedule for today; ', el('b', {}, ['Finish']),
           ' is that SP\u2019s projected completion date. The 17 red columns are the target checkpoints, each labelled with its own date, and the cyan column is the lesson the batch is meant to have reached today. The hatched red band on each row spans the lessons that SP still owes against today\u2019s target.']),
         el('p', { style: 'margin-top:8px' }, ['The bar along the bottom shades each lesson by the share of the batch that has completed it — the darker the column, the more of the batch is through it, so a sudden pale column is a bottleneck.']),
+        el('p', { style: 'margin-top:8px' }, ['Click any cell for that lesson\u2019s full record — the curriculum entry, the Progress record and the Operations booking behind it, with an agreement check between the two. Click an SP\u2019s name for their whole file. Nothing opens on hover.']),
       ] }));
 
     sec._afterMount = () => {
@@ -1413,10 +1403,11 @@
       const fr = fcById[String(sp.catc_id)];
       const vs = (nowLesson == null) ? null : sp.lessonsCompleted - nowLesson;
       const tr = el('tr', { 'data-sp': String(sp.catc_id) });
-      tr.appendChild(el('td', { class: 'idc', style: 'left:0', title: sp.name }, [sp.shortName]));
+      const nameTd = el('td', { class: 'idc', style: 'left:0;cursor:pointer' }, [sp.shortName]);
+      nameTd.addEventListener('click', () => openSPDrawer(sp.catc_id));
+      tr.appendChild(nameTd);
       tr.appendChild(el('td', {
         class: 'idc', style: 'left:' + NW + 'px;text-align:right;font-family:JetBrains Mono,monospace;color:' + (vs == null ? 'var(--v6-tx3)' : vs >= 0 ? 'var(--v6-good)' : 'var(--v6-bad)'),
-        title: nowLesson == null ? '' : 'Against today’s target of L' + nowLesson,
       }, [vs == null ? '—' : (vs >= 0 ? '+' : '−') + Math.abs(vs)]));
       tr.appendChild(el('td', { class: 'idc', style: 'left:' + (NW + VW) + 'px;font-family:JetBrains Mono,monospace;color:var(--v6-tx2)' }, [fr ? fd(fr.etcDate) : '—']));
       for (let n = 1; n <= count; n++) {
@@ -1432,15 +1423,15 @@
         if (isTgt) cls.push('tgt');
         if (isToday) cls.push('today');
         if (inLag) cls.push('lag');
-        const td = el('td', {
-          class: cls.join(' '),
-          title: (l ? l.lesson : 'L' + n) + ' · ' + sp.shortName + (hits ? ' · ' + fd(hits[0].date) : ' · not flown'),
-        }, [el('i', { style: hits ? 'background:' + (l && l.phase ? l.phase.c : '#e88aff') : '' })]);
+        // Click-only: no hover tooltip and no cross-panel focus on hover. The
+        // grid is dense enough that sweeping a pointer across it fired a
+        // highlight on every row it crossed; detail now comes from a deliberate
+        // click, which is also what opens the full Ops⇄Progress record.
+        const td = el('td', { class: cls.join(' ') },
+          [el('i', { style: hits ? 'background:' + (l && l.phase ? l.phase.c : '#e88aff') : '' })]);
         td.addEventListener('click', () => openLessonModal(sp, n));
         tr.appendChild(td);
       }
-      tr.addEventListener('mouseenter', () => setFocus(sp.catc_id));
-      tr.addEventListener('mouseleave', () => setFocus(null));
       tb.appendChild(tr);
     });
     table.appendChild(tb);
@@ -1456,7 +1447,6 @@
       const done = sps.filter(sp => sp.flownByNum && sp.flownByNum[n]).length;
       const pct = sps.length ? done / sps.length : 0;
       ftr.appendChild(el('td', {
-        title: 'L' + n + ': ' + done + ' of ' + sps.length + ' SP complete',
         style: 'background:color-mix(in srgb,var(--v6-acc) ' + Math.round(pct * 74) + '%,transparent)',
       }, []));
     }
@@ -1719,7 +1709,7 @@
   function buildForecastAct() {
     const m = MODEL, fc = FCAST, v = fc.verdict, g = gradeOf();
     const mc = fc.monteCarlo.hours;
-    const { sec, grid } = actShell('forecast', '03', 'Where this ends up',
+    const { sec, grid } = actShell('forecast', '03', 'Future prediction',
       'A circular block bootstrap over the last ' + fc.window + ' days of real output: ' + fN(mc.sims) +
       ' simulated futures, resampled in whole weeks so the batch’s own flying rhythm is preserved. The seed is fixed, so this forecast is reproducible — the screen, the report and the PDF all show the same dates.');
 
@@ -1729,7 +1719,7 @@
       coneBox,
       legendRow([[cssv('--v6-acc', '#e88aff'), 'Actual flown'], [cssv('--v6-acc2', '#22d3ee'), 'P50 forecast'],
         [cssv('--v6-acc2', '#22d3ee') + '55', 'P10–P90 band'], [cssv('--v6-bad', '#fb7185'), 'Required to hit plan']]),
-    ], 'v6-c8'));
+    ], 'v6-c12'));
 
     // ── finish summary ──
     const slipOf = d => (d && v.planEnd ? U.dateDiff(d, v.planEnd) : null);
@@ -1754,14 +1744,14 @@
         '. The bootstrap window averages ' + fH(mc.dailyMean, 1) + '/day of batch output.',
       ]),
     ]);
-    grid.appendChild(card('Completion estimate', 'seed ' + mc.seed + ' · reproducible', summary, 'v6-c4'));
+    grid.appendChild(card('Completion estimate', 'seed ' + mc.seed + ' · reproducible', summary, 'v6-c12'));
 
     // ── distribution ──
     const histBox = el('div', { class: 'v6-chart', style: 'height:220px' }, [el('canvas', { id: 'v6-hist' })]);
     grid.appendChild(card('When it finishes', 'distribution of the ' + fN(mc.sims) + ' simulated completion dates', [
       histBox,
       el('div', { class: 'v6-note', style: 'margin-top:8px' }, ['Solid bars fall inside the P10–P90 band; the magenta outline marks the bucket containing the P50 date.']),
-    ], 'v6-c7'));
+    ], 'v6-c12'));
 
     // ── rate card / scenarios ──
     const sc = fc.scenarios.hours;
@@ -1781,7 +1771,7 @@
       })),
     ]);
     grid.appendChild(card('Every rate, and what it would mean', 'straight-line projections — no simulation, checkable by hand',
-      [el('div', { class: 'v6-tw' }, [rateTbl])], 'v6-c5'));
+      [el('div', { class: 'v6-tw' }, [rateTbl])], 'v6-c12'));
 
     // ── what-if ──
     const wiOut = el('div', { class: 'v6-wi-out' });
@@ -1834,39 +1824,8 @@
       ]),
       wiOut,
     ]);
-    grid.appendChild(card('What would change it', 'move a slider — the forecast re-runs', wi, 'v6-c7'));
+    grid.appendChild(card('What would change it', 'move a slider — the forecast re-runs', wi, 'v6-c12'));
 
-    // ── SP completion ladder ──
-    const sps = fc.students;
-    const ladder = el('div', { class: 'v6-ladder' });
-    const allDays = sps.rows.filter(r => r.etcDays != null).map(r => r.etcDays);
-    const maxDay = Math.max.apply(null, allDays.concat([1]));
-    const planDay = v.planEnd ? U.dateDiff(v.planEnd, m.asOf) : null;
-    sps.rows.slice().sort((a, b) => (a.etcDays || 1e9) - (b.etcDays || 1e9)).forEach(r => {
-      const w = r.etcDays == null ? 100 : (r.etcDays / maxDay) * 100;
-      const tone = r.relative === 'ahead' ? '--v6-info' : r.relative === 'trailing' ? '--v6-acc3' : '--v6-tx2';
-      const row = el('div', { class: 'v6-lad', 'data-sp': String(r.catc_id), title: r.name + ' — projected ' + fd(r.etcDate) }, [
-        el('div', { class: 'nm' }, [r.shortName]),
-        el('div', { class: 'tr' }, [
-          el('i', { style: 'left:0;background:linear-gradient(90deg,var(--v6-acc),var(' + tone + '));width:0', 'data-fill': w.toFixed(1) + '%' }),
-          planDay != null && planDay > 0 ? el('u', { style: 'left:' + Math.min(99.5, planDay / maxDay * 100).toFixed(1) + '%', title: 'plan end ' + fd(v.planEnd) }) : null,
-        ]),
-        el('div', { class: 'dt' }, [fd(r.etcDate)]),
-      ]);
-      row.addEventListener('mouseenter', () => setFocus(r.catc_id));
-      row.addEventListener('mouseleave', () => setFocus(null));
-      row.addEventListener('click', () => openSPDrawer(r.catc_id));
-      ladder.appendChild(row);
-    });
-    grid.appendChild(card('Who finishes when', 'per-SP projection · red tick marks the plan end date', [
-      ladder,
-      el('div', { class: 'v6-note', style: 'margin-top:11px' }, [
-        'Each SP is projected from their share of the batch’s forecast output, not from their own trailing rate in isolation. ',
-        'The school flies a shared line — an isolated per-SP rate over a short window swings a projected finish by years on one extra sortie. ',
-        'Shares are shrunk halfway toward an equal share and sum to exactly 1, so the per-SP rates add back up to the batch rate (checked in Act 05). ',
-        'Cohort spread is ' + (sps.spreadDays == null ? '—' : sps.spreadDays + ' days') + ' between the first and last SP to finish.',
-      ]),
-    ], 'v6-c5'));
 
     sec._afterMount = () => { mkChart('v6-cone', coneCfg()); mkChart('v6-hist', histCfg()); runWhatIf(); };
     return sec;
@@ -2557,23 +2516,6 @@
     document.addEventListener('keydown', escClose);
   }
 
-  function openPhaseModal(ph) {
-    const def = ph.phase || MODEL.phasesDef.find(p => p.label === ph.label) || {};
-    openModal(def.label + ' — ' + def.title, 'lessons ' + def.lo + '–' + def.hi + ' · ' + (def.hrs || 0) + 'h of curriculum time', [
-      { heading: 'In one line', text: def.blurb },
-      { heading: 'Objective', text: def.objective },
-      { heading: 'Completion standard', text: def.standard },
-      { heading: 'Batch position', rows: [
-        ['Slots complete', fN(ph.done) + ' of ' + fN(ph.slots) + ' (' + (ph.slots ? (ph.done / ph.slots * 100).toFixed(1) : '0') + '%)'],
-        ['Slots remaining', fN(ph.remaining)],
-        ['Lessons in phase', String((def.hi - def.lo) + 1)],
-        ['SP fully through it', String(MODEL.students.filter(s => {
-          for (let n = def.lo; n <= def.hi; n++) if (!(s.flownByNum && s.flownByNum[n])) return false;
-          return true;
-        }).length) + ' of ' + MODEL.students.length],
-      ] },
-    ]);
-  }
 
   function openLessonModal(sp, num) {
     const l = MODEL.curriculum.byNum[num];

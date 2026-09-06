@@ -3880,3 +3880,42 @@ non-linear against the raw monthly totals. V4 (10 charts) and V5 (12/12) unchang
 empty on every DB_Share-proxied file and every V5 file.
 
 Files: `js/view-cohort-v6.js`, `index.html`.
+
+---
+
+## p193
+
+**AP127 Detail V6 — round-5 feedback: Situation trimmed, Curriculum grid made click-only,
+Forecast act renamed and flattened to one column.**
+
+### 02 · Where the batch stands
+
+- **Phase funnel removed.** Its only consumer of `openPhaseModal()` went with it, so that function
+  was removed too; the `.v6-funnel` styles stay because the SP drawer's per-phase breakdown still
+  uses them.
+- **"③ What it takes" folded into Required against actual.** The band was making the same
+  required-vs-actual comparison the table beside it already made, period for period. The table keeps
+  it, and the four figures the table did *not* carry — shortfall per day, shortfall per week, and the
+  multiple of current output needed against both the 7-day and the 14-day rate — now sit under it as
+  a stat strip. The situation report drops to two bands and both cards go full width.
+- **Curriculum grid is click-only.** The per-row hover no longer fires the cross-panel focus and the
+  per-cell `title` tooltips are gone: on a grid of 28 × 96 cells, sweeping a pointer across it fired
+  a highlight on every row it crossed. Detail comes from a deliberate click — a cell opens the full
+  lesson record, an SP's name opens their file. Verified: hovering a row no longer sets focus, zero
+  cells carry a hover title, and clicking still opens the record.
+
+### 03 · Future prediction
+
+- **Retitled** from "Where this ends up".
+- **Every panel is now full width, one per row.** The cone in particular reads far better with the
+  whole column to itself.
+- **"Who finishes when" removed.** Its per-SP projected finish is already a column in the Act 04
+  roster, so nothing is lost. The `.v6-lad*` styles went with it.
+
+**Verified:** 35/35 invariants, 0 failing. Act 02 renders three cards (situation report, required
+against actual, curriculum grid); Act 03 renders five, all `v6-c12`. Report still builds all five
+sections with both charts. V4 (10 charts) and V5 (12/12) reloaded unchanged; `git diff --stat` empty
+on every DB_Share-proxied file and every V5 file. CSS brace balance re-checked at 0 after the
+removals.
+
+Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.
