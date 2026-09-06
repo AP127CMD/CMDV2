@@ -14,10 +14,12 @@ import { appendLog, getLog } from './log.js';
 // a cheap correctness backstop — the source feed's window is deliberately a bit wider, so this can
 // only ever trim, never need to widen.
 //
-// 2026-09-06: served by the ap127-data Worker (proxies raw.githubusercontent.com). fetchFeedText()
-// sends `cache-control: no-cache`, which the Worker honours by bypassing both its own 60s edge
-// cache and raw.github's CDN — so a POST /notify diff reflects the Pi's push within seconds.
-const FLIGHT_SRC = 'https://ap127-data.anusorn-tanmetha.workers.dev/flight-data-recent.js';
+// Stays on raw.githubusercontent.com (NOT the ap127-data Worker): a Worker fetching another
+// same-account *.workers.dev URL is blocked by Cloudflare (error 1042 / 404). The ap127-data
+// Worker is for browsers only (content-type + Pages-build decoupling); this Worker reads the
+// git-committed file straight from raw.github, same as before. `fetchFeedText()` sends
+// `cache-control: no-cache` so a POST /notify diff sees the Pi's push within ~1 min.
+const FLIGHT_SRC = 'https://raw.githubusercontent.com/AP127CMD/CMD_CTR/main/flight-data-recent.js';
 
 // Sites allowed to call this Worker.
 const ALLOWED_ORIGINS = new Set([
