@@ -143,9 +143,19 @@ body[data-theme="light"] .v6-rail button.on .v6-rail-n{color:#fff;}
 }
 .v6-act{padding:34px 0 10px;scroll-margin-top:14px;}
 .v6-act-hd{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+.v6-act-head{display:flex;align-items:center;gap:10px;}
 .v6-act-n{font-family:'Rajdhani',sans-serif;font-size:52px;font-weight:700;line-height:.8;color:transparent;-webkit-text-stroke:1px var(--v6-bd-2);}
 .v6-act-ttl{font-family:'Rajdhani',sans-serif;font-size:27px;font-weight:700;letter-spacing:.01em;}
-.v6-act-sub{font-size:11.5px;color:var(--v6-tx2);max-width:62ch;line-height:1.6;}
+.v6-act-sub{font-size:11.5px;color:var(--v6-tx2);max-width:74ch;line-height:1.65;}
+/* Explanation text is disclosure, not chrome: every section and every panel
+   keeps its prose behind an ⓘ so the page leads with the numbers. */
+.v6-i{flex-shrink:0;width:17px;height:17px;border-radius:50%;border:1px solid var(--v6-bd-2);background:transparent;color:var(--v6-tx3);font-family:'JetBrains Mono',monospace;font-size:9px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:all .15s;}
+.v6-i:hover{color:var(--v6-acc);border-color:var(--v6-acc);}
+.v6-i.on{color:var(--v6-bg);background:var(--v6-acc);border-color:var(--v6-acc);}
+body[data-theme="light"] .v6-i.on{color:#fff;}
+.v6-info{display:none;margin:0 0 14px;padding:11px 13px;border:1px solid var(--v6-bd);border-left:2px solid var(--v6-acc);border-radius:0 9px 9px 0;background:var(--v6-glass);font-size:11.5px;line-height:1.7;color:var(--v6-tx2);max-width:88ch;}
+.v6-info.open{display:block;}
+.v6-card-b>.v6-info{margin:0 0 12px;}
 .v6-act-rule{height:1px;flex:1;min-width:30px;background:linear-gradient(90deg,var(--v6-bd-2),transparent);margin-bottom:9px;}
 
 /* ---- Reveal-on-scroll ---------------------------------------------------- */
@@ -240,6 +250,21 @@ body[data-theme="light"] .v6-rail button.on .v6-rail-n{color:#fff;}
 .v6-ev .t{font-size:12.5px;font-weight:600;margin:1px 0 2px;}
 .v6-ev .x{font-size:10.5px;color:var(--v6-tx2);line-height:1.6;}
 
+/* ---- Turning points: a horizontal timeline ---------------------------------- */
+.v6-tl{position:relative;overflow-x:auto;overflow-y:hidden;padding:26px 2px 8px;}
+.v6-tl::before{content:'';position:absolute;left:0;right:0;top:32px;height:1px;background:linear-gradient(90deg,transparent,var(--v6-bd-2) 4%,var(--v6-bd-2) 96%,transparent);}
+.v6-tl-row{display:flex;gap:12px;min-width:min-content;}
+.v6-tle{position:relative;flex:0 0 216px;padding-top:22px;cursor:pointer;}
+.v6-tle::before{content:'';position:absolute;left:0;top:2px;width:11px;height:11px;border-radius:50%;background:var(--v6-bg);border:2px solid var(--v6-tx3);transition:transform .2s;}
+.v6-tle:hover::before{transform:scale(1.35);}
+.v6-tle.k-start::before{border-color:var(--v6-acc)}.v6-tle.k-peak::before{border-color:var(--v6-good)}
+.v6-tle.k-gap::before{border-color:var(--v6-bad)}.v6-tle.k-milestone::before{border-color:var(--v6-acc2)}
+.v6-tle.k-warn::before{border-color:var(--v6-warn)}.v6-tle.k-recovery::before{border-color:var(--v6-good)}
+.v6-tle .d{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.07em;color:var(--v6-tx3);}
+.v6-tle .t{font-size:12px;font-weight:600;margin:2px 0 3px;line-height:1.3;}
+.v6-tle .x{font-size:10.5px;color:var(--v6-tx2);line-height:1.55;}
+.v6-tle:hover .t{color:var(--v6-acc);}
+
 /* ---- Month ribbon ---------------------------------------------------------- */
 .v6-months{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;}
 .v6-month{padding:10px 11px;border:1px solid var(--v6-bd);border-radius:10px;background:var(--v6-glass);}
@@ -261,7 +286,19 @@ body[data-theme="light"] .v6-rail button.on .v6-rail-n{color:#fff;}
 
 /* ---- Tables ------------------------------------------------------------------ */
 .v6-tw{overflow:auto;max-height:520px;border-radius:10px;}
-table.v6-t{width:100%;border-collapse:collapse;font-size:11px;}
+table.v6-t{width:100%;border-collapse:collapse;font-size:11px;table-layout:auto;}
+/* A table that needs more width than its card silently hides columns off the
+   right — reported as "overflows to the right and no way to scroll to see it".
+   `.v6-fit` makes a table live inside its column: text cells wrap instead of
+   forcing a minimum width, and padding tightens. Numeric cells stay nowrap so
+   figures never break mid-number. */
+table.v6-t.v6-fit{table-layout:fixed;width:100%;max-width:100%;}
+/* nowrap + ellipsis, not wrap: with table-layout:fixed and percentage columns
+   the table always fits, and a long instructor name truncates cleanly instead
+   of forcing a two-line row. */
+.v6-t.v6-fit th,.v6-t.v6-fit td{padding:6px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;}
+.v6-t.v6-fit th{font-size:8px;}
+.v6-t.v6-fit td.n,.v6-t.v6-fit th.n{text-align:right;}
 .v6-t th{position:sticky;top:0;z-index:2;background:var(--v6-bg-2);font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--v6-tx3);text-align:left;padding:8px 9px;border-bottom:1px solid var(--v6-bd-2);cursor:pointer;user-select:none;white-space:nowrap;}
 .v6-t th:hover{color:var(--v6-acc);}
 .v6-t td{padding:7px 9px;border-bottom:1px solid var(--v6-bd);white-space:nowrap;}
@@ -269,6 +306,23 @@ table.v6-t{width:100%;border-collapse:collapse;font-size:11px;}
 .v6-t tbody tr:hover{background:var(--v6-glass-2);}
 .v6-t .n{text-align:right;font-family:'JetBrains Mono',monospace;}
 .v6-t th:focus-visible,.v6-btn:focus-visible,.v6-seg button:focus-visible,.v6-rail button:focus-visible,.ap127-v6 [tabindex]:focus-visible{outline:2px solid var(--v6-acc);outline-offset:2px;}
+
+/* ---- Roster, arranged like V4's Progress Ranking ------------------------------------
+   Rank badge, an inline progress bar per SP, and colour that carries meaning
+   rather than decoration: green = at or ahead of the reference, red = behind,
+   amber = idle. */
+.v6-rank{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:17px;padding:0 5px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;background:var(--v6-glass-2);color:var(--v6-tx2);border:1px solid var(--v6-bd);}
+.v6-rank.top{background:color-mix(in srgb,var(--v6-good) 22%,transparent);color:var(--v6-good);border-color:transparent;}
+.v6-rank.bot{background:color-mix(in srgb,var(--v6-bad) 20%,transparent);color:var(--v6-bad);border-color:transparent;}
+.v6-pbar{position:relative;height:13px;border-radius:4px;background:rgba(127,127,127,.16);overflow:hidden;min-width:74px;}
+.v6-pbar>i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;}
+.v6-pbar>u{position:absolute;top:-1px;bottom:-1px;width:2px;background:var(--v6-bad);opacity:.9;}
+.v6-pbar>b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:600;color:var(--v6-tx);text-shadow:0 0 4px rgba(0,0,0,.65);}
+body[data-theme="light"] .v6-pbar>b{text-shadow:0 0 4px rgba(255,255,255,.85);}
+.v6-t td.good{color:var(--v6-good);}
+.v6-t td.bad{color:var(--v6-bad);}
+.v6-t td.warn{color:var(--v6-warn);}
+.v6-t tr.v6-hot td{background:var(--v6-glass-2);}
 
 /* ---- Risk pills --------------------------------------------------------------- */
 .v6-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
@@ -313,6 +367,41 @@ table.v6-t{width:100%;border-collapse:collapse;font-size:11px;}
 .v6-lad .tr u{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--v6-bad);opacity:.85;}
 .v6-lad .dt{font-family:'JetBrains Mono',monospace;font-size:9.5px;text-align:right;color:var(--v6-tx2);}
 
+/* ---- Grid tables: curriculum grid + activity calendar ------------------------------
+   Real <table>s with sticky identity columns, ported in spirit from V5's
+   roster-style grids (which read better than V6's first canvas attempt) but
+   rebuilt in V6's own palette and idiom rather than copied — V5's own file is
+   left untouched. */
+.v6-gw{overflow:auto;max-height:560px;border:1px solid var(--v6-bd);border-radius:10px;}
+table.v6-gt{border-collapse:separate;border-spacing:0;font-size:10px;table-layout:fixed;}
+.v6-gt th,.v6-gt td{padding:0;margin:0;border:0;}
+.v6-gt .idc{position:sticky;z-index:3;background:var(--v6-bg-2);border-right:1px solid var(--v6-bd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;font-size:10px;text-align:left;}
+.v6-gt thead .idc{z-index:5;}
+.v6-gt thead th{position:sticky;top:0;z-index:4;background:var(--v6-bg-2);}
+.v6-gt tbody tr{height:18px;}
+.v6-gt tbody tr:hover .idc{color:var(--v6-acc);}
+.v6-gt tbody tr.hot td{background:var(--v6-glass-2);}
+.v6-gt .cell{height:18px;position:relative;cursor:pointer;}
+.v6-gt .cell i{position:absolute;inset:2px 0.5px;border-radius:2px;display:block;}
+.v6-gt .cell.empty i{background:var(--v6-bd);opacity:.45;inset:6px 0.5px;}
+.v6-gt .cell.next i{box-shadow:inset 0 0 0 1.5px var(--v6-warn);background:transparent;inset:2px .5px;}
+.v6-gt .cell.retake i{box-shadow:inset 0 0 0 1.5px var(--v6-info);}
+.v6-gt .cell.today{box-shadow:inset 1px 0 0 var(--v6-acc2),inset -1px 0 0 var(--v6-acc2);}
+.v6-gt .cell.tgt{background:color-mix(in srgb,var(--v6-bad) 9%,transparent);}
+.v6-gt .cell.lag i{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--v6-bad) 34%,transparent) 0 3px,transparent 3px 6px);inset:5px .5px;}
+.v6-gt .phb{height:9px;}
+.v6-gt .num{font-family:'JetBrains Mono',monospace;font-size:7.5px;color:var(--v6-tx3);text-align:center;height:12px;}
+.v6-gt .tgtlab{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--v6-bad);writing-mode:vertical-rl;transform:rotate(180deg);height:44px;text-align:right;white-space:nowrap;}
+.v6-gt .mon{font-family:'JetBrains Mono',monospace;font-size:7.5px;color:var(--v6-tx3);text-align:left;height:13px;padding-left:2px;white-space:nowrap;}
+.v6-gt td.mrule{box-shadow:inset 1px 0 0 var(--v6-bd);}
+.v6-gt .grp td{background:var(--v6-glass-2);font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--v6-tx3);padding:3px 6px;height:auto;}
+.v6-gt tfoot td{background:var(--v6-bg-2);font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--v6-tx3);text-align:center;height:15px;}
+.v6-gt tfoot .idc{color:var(--v6-tx2);}
+.v6-zoom{display:flex;align-items:center;gap:5px;}
+.v6-zoom span{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--v6-tx3);}
+.v6-gsum{font-size:10.5px;color:var(--v6-tx2);margin-bottom:9px;}
+.v6-gsum b{color:var(--v6-tx);}
+
 /* ---- Race standings + activity band (V4's race / idle charts, redesigned) --------- */
 .v6-standings{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:10px;margin-top:12px;}
 .v6-standing{padding:9px 11px;border:1px solid var(--v6-bd);border-radius:10px;background:var(--v6-glass-2);cursor:pointer;}
@@ -321,8 +410,6 @@ table.v6-t{width:100%;border-collapse:collapse;font-size:11px;}
 .v6-standing .v{font-family:'Rajdhani',sans-serif;font-size:19px;font-weight:700;line-height:1.15;margin-top:2px;}
 .v6-standing .s{font-size:9.5px;color:var(--v6-tx3);}
 
-.v6-band-wrap{position:relative;border:1px solid var(--v6-bd);border-radius:10px;overflow:hidden;background:var(--v6-glass-2);}
-.v6-band-wrap canvas{display:block;cursor:pointer;}
 
 /* ---- What-if ---------------------------------------------------------------------- */
 .v6-whatif{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
@@ -337,11 +424,6 @@ table.v6-t{width:100%;border-collapse:collapse;font-size:11px;}
 .v6-wi-rows{margin-top:10px;font-size:10.5px;color:var(--v6-tx2);line-height:1.9;}
 .v6-wi-rows div{display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--v6-bd);padding-top:4px;}
 
-/* ---- Curriculum matrix (canvas) ------------------------------------------------------ */
-.v6-matrix-wrap{position:relative;border:1px solid var(--v6-bd);border-radius:10px;overflow:hidden;background:rgba(0,0,0,.14);}
-body[data-theme="light"] .v6-matrix-wrap{background:rgba(255,255,255,.6);}
-.v6-matrix-wrap canvas{display:block;cursor:crosshair;touch-action:none;}
-.v6-matrix-hint{position:absolute;right:8px;top:8px;font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--v6-tx3);background:var(--v6-glass-2);border:1px solid var(--v6-bd);border-radius:6px;padding:3px 7px;pointer-events:none;}
 .v6-tip{position:fixed;z-index:400;pointer-events:none;background:var(--v6-bg-2);border:1px solid var(--v6-bd-2);border-radius:8px;padding:7px 9px;font-size:10.5px;color:var(--v6-tx);box-shadow:var(--v6-shadow);max-width:250px;line-height:1.55;}
 .v6-tip b{color:var(--v6-acc);}
 

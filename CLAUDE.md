@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p187` (all currently at p186)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p191` (all currently at p190)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -142,7 +142,44 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p186` (2026-09-06 — **AP127 Detail V6 — round-2 feedback: backdrop no
+**Last known:** all files `p190` (2026-09-06 — **AP127 Detail V6 — round-3 feedback: 13 asks.**
+(1) **Every explanation moved behind an ⓘ** — one `infoToggle()` helper used by both `actShell()` and
+`card()`, so sections and panels disclose prose identically; 16 moved. (2) **"Overflows right, no way
+to scroll"** — measured 3 tables wider than their cards (Roster 255px, pace table 34px, rate card
+60px). New `.v6-fit` mode: `table-layout:fixed` + **percentage** columns (pixel widths just overflow
+again on a narrower screen) + nowrap/ellipsis. 0 hidden px at desktop and 375px. The two big grids
+still scroll — 96 lessons / 151 days can't fit a phone — but with a visible scrollbar and a zoom
+stepper. (3) Card renamed **"Actual flown vs plan"**. (4) **New batch distribution chart** (V4's Pace
+Distribution) drawn like Act 03's finish histogram, with the average as a dashed vertical line at its
+true fractional position in its band. (5) **Output rhythm: SPIC now counts with Dual** — re-split in
+V6's VIEW LAYER ONLY, because `ap127-v5-model.js` also drives V5; new `output-split` invariant asserts
+the boundary moves and no total does. (6) **Output data labels** per segment + period total (zero-height
+stacked dataset, V4's device). (7) **Required line now evaluated at each point in time** via
+`requiredAt(date)` instead of stamping today's figure across history. (8) **Turning points →
+horizontal timeline**, full width. (9) **Month by month → bar chart + OLS trend line.** (10) **New
+lead/lag history** (V4's Batch Lagging History) as a filled area, floored at zero, with
+now/best/worst. (11) **Curriculum matrix → V5's grid**, rebuilt as a real `<table>` in V6 markup:
+sticky identity columns carrying vs-target and finish, the 17 target checkpoints labelled with their
+dates, today's target column, a hatched lag band per SP, and a batch-completion footer bar. (12)
+**Race gains filters** (standing / instructor / aircraft). (13) **Streaks & idle removed → V5's
+activity calendar** (SP × day, shaded by hours, phase-coloured, month rules, hatched idle runs,
+group-by-instructor, range selector, per-day totals). (14) **Roster rearranged in V4's Progress
+Ranking style** with meaningful colour: rank badge (green top 3 / red bottom 3 under the active
+sort), inline progress bar with a red tick at today's target lesson turning green once passed, and
+green/red/amber on vs-plan, vs-target, idle, vs-cohort. (15) **"Can you trust this page?" → "Integrity
+check", collapsed** to one `35 / 35 · ALL CHECKS PASS` line with the detail behind a toggle.
+**Forecast window confirmed unchanged at 14 days.**
+
+**Dead code:** the canvas matrix + canvas activity-band engines (369 lines), their CSS, the streak
+chart config and `sortedStudents()` are gone; every call site rewired to one `regridAll()`.
+
+**Three bugs found verifying:** `observeWidth` was defined inside the excised canvas block, so both
+grids threw on mount (restored); a regex removing dead canvas CSS **orphaned a selector onto
+`.v6-tip`**, leaving the tooltip styled light-theme-only (caught by reading the file back, brace
+balance re-verified); and the roster still overflowed 86px on the first fit attempt because fixed
+pixel widths summed past the card. **Note: this dev server serves a cached body for an unchanged
+`?v=` token, which is why p187–p189 were burned during verification.** Full write-up: REVAMP.md's
+p190 entry.) p186 (2026-09-06 — **AP127 Detail V6 — round-2 feedback: backdrop no
 longer tints content, and V4's race + idle charts return, redesigned.** User: "Pls remove the Magenta
 haze overly, keep it as background but not the overlay on top" + "Pls redesign and bring back the
 race charts and idle day chart from V4".

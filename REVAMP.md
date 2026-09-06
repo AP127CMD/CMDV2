@@ -3729,3 +3729,116 @@ The PDF report is deliberately **unchanged** — it was just curated down to fin
 no new panels were added to it without asking.
 
 Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.
+
+---
+
+## p190
+
+**AP127 Detail V6 — round-3 feedback: prose behind ⓘ, tables that fit, V4's distribution and
+lead/lag charts, V5's grids, and a rebuilt roster.**
+
+Thirteen asks in one round. Taken in order:
+
+### 1. Every explanation moves behind an ⓘ
+
+`infoToggle()` is one helper used identically by `actShell()` and `card()`, so every section header
+and every panel header carries the same small ⓘ in the same place and the prose is one click away.
+The page now leads with numbers everywhere; 16 explanations were moved, and several were expanded
+while being moved (there is no longer a reason to keep them short).
+
+### 2. "Overflows to the right with no way to scroll"
+
+Measured before changing anything: three tables were wider than their cards — Roster by 255px,
+Required-against-actual by 34px, the rate card by 60px. Their wrapper scrolls, but at that width the
+scrollbar is easy to miss and the user's ask was to **fit**, not to scroll. New `.v6-fit` table mode:
+`table-layout:fixed` with **percentage** column widths (not pixels — pixel widths simply overflow
+again on a narrower screen), `max-width:100%`, and `nowrap + ellipsis` so a long instructor name
+truncates cleanly instead of forcing a two-line row. Verified 0 hidden pixels on all three, at
+desktop and at 375px. The two big grids still scroll horizontally, which is correct — 96 lessons and
+151 days cannot fit a phone — but they have a visible scrollbar and a zoom stepper, which is the
+difference between "scrollable" and "clipped".
+
+### 3–7. History act
+
+- **"Flight path · flown against plan" → "Actual flown vs plan".**
+- **New batch distribution chart** — V4's Pace Distribution, drawn in the same idiom as Act 03's
+  finish histogram so the two read as one family. Bars are the count of SP per band of lessons
+  completed, solid across the interquartile range, with a smoothed shape line and a dashed **vertical
+  average line drawn at its true fractional position inside its band** rather than snapped to the
+  nearest bar. Data comes from the model's existing `buildDistribution`, quartiles included.
+- **Output rhythm: SPIC now counts with Dual.** The shared metrics model buckets SPIC into Solo
+  (v4:395 — "both mean flying without an instructor"); the operational truth here is the opposite,
+  since an SPIC sortie still carries an instructor. **Re-split in V6's view layer only** — that model
+  is the engine for AP127 Detail V5 as well, and changing it would silently move V5's Output chart
+  too. New `output-split` invariant asserts the re-split moves the Dual/Solo boundary and no total.
+- **Output rhythm: data labels**, per segment (where the segment is tall enough to hold one) plus the
+  period total above each bar, via a zero-height stacked dataset — the same device V4 used, because
+  Chart.js has no per-stack label of its own.
+- **Output rhythm: the required line is now evaluated at each point in time**, through the model's
+  `requiredAt(date)`, instead of stamping today's figure across all history. It visibly climbs.
+- **Turning points → horizontal timeline**, full width, with the connecting rule behind the markers.
+- **Month by month → bar chart with an OLS trend line** through the monthly totals, above the
+  existing month cards.
+- **New: lead/lag history** (V4's Batch Lagging History) — the cumulative shortfall against the
+  curriculum plan as a filled area, floored at zero as the model publishes it, with
+  behind-today / closest-ever / worst-ever / still-growing beside it.
+
+### 8. Curriculum matrix → V5's grid
+
+V6's canvas matrix is replaced by a real `<table>` in V5's roster idiom, rebuilt in V6's own markup
+and palette (V5's file untouched — a copy of it would be free to drift). What the canvas could not
+do and this does: **sticky identity columns** that survive horizontal scroll, carrying vs-target and
+projected-finish; the **17 target checkpoints labelled with their own dates**; today's target column
+marked; each SP's shortfall drawn as a **hatched band** across the lessons they still owe; and a
+batch-completion bar along the footer that makes a bottleneck lesson visible as a pale column.
+
+### 9. Forecast window — confirmed
+
+Checked, unchanged and correct: `DEFAULT_WINDOW = 14` drives the pool, the headline rate, the per-SP
+split and the what-if. Verified live — `forecast.window === 14`, `verdict.rateWindow === 14`.
+
+### 10–12. The batch act
+
+- **The race gains filters** — standing / instructor / aircraft type, driving the same field the
+  standings strip reads, so chart and standings always describe the same set.
+- **"Streaks & idle days" removed, replaced by V5's activity calendar**: SP rows × calendar days,
+  each cell shaded by hours flown and coloured by phase, with month rules, hatched idle runs (red
+  between flights, amber still-idle), group-by-instructor, a range selector and per-day batch totals.
+  The streak statistics survive beside it.
+- **Roster rearranged in V4's Progress Ranking style with colour that means something**: a rank badge
+  (green leading three, red trailing three under the active sort), an inline progress bar carrying a
+  red tick at today's target lesson and turning green once the SP passes it, and green/red/amber on
+  vs-plan, vs-target, idle and vs-cohort.
+
+### 13. "Can you trust this page?" → "Integrity check", collapsed
+
+The section now leads with one line — `35 / 35 · ALL CHECKS PASS`, broken down by layer — and the 35
+individual invariants plus the provenance table sit behind a "Show all 35 checks" toggle.
+
+### Dead code
+
+The canvas matrix and canvas activity-band engines (369 lines) are removed along with their CSS and
+the streak line-chart config, and every call site was rewired to a single `regridAll()` so sort,
+search and theme changes keep both grids in step. `sortedStudents()` went with them.
+
+### Bugs found while verifying
+
+- **`observeWidth` was defined inside the excised canvas block**, so both grids threw on mount and
+  lost their container-resize handling. Restored next to the grid helpers. (The console kept showing
+  the stale `?v=p187` error afterwards — this dev server serves a cached body for an unchanged
+  token, which is why tokens were burned through to p190.)
+- **A regex that removed the dead canvas CSS orphaned a selector onto `.v6-tip`**, leaving the
+  tooltip styled only in the light theme. Caught by reading the file back rather than trusting the
+  edit; brace balance re-checked at 0.
+- **Roster still overflowed by 86px** after the first fit attempt, because fixed pixel column widths
+  summed past the card. Percentages fixed it at every width.
+
+### Verified
+
+35/35 invariants, 0 failing, at desktop and in light theme. Zero page overflow at 1280 and at 375px;
+zero hidden pixels in every fitting table. Curriculum grid and activity calendar both rebuild on a
+container resize (measured 998px → 710px → 998px). Integrity toggle expands to all 35 checks. Report
+still builds all five sections with both charts. V4 (10 charts) and V5 (12/12) reloaded unchanged;
+`git diff --stat` empty on every DB_Share-proxied file and every V5 file.
+
+Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.

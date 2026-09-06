@@ -173,6 +173,7 @@
     sortDir: saved.sortDir || 1,
     outputPeriod: 'week',
     whatIf: { mult: 1, extra: 0 },
+    raceFilter: { rel: '', fi: '', se: '' },   // The race: standing / instructor / aircraft
     scrubIdx: null,                      // history playhead (index into fc.series.dates)
     playing: false,
   };
@@ -429,25 +430,52 @@
 
   // ── card / act scaffolding ───────────────────────────────────────────────
   let revealSeq = 0;
+  // An ⓘ button bound to a hidden explanation block. Used identically for
+  // section headers and panel headers so prose never sits between the reader
+  // and the numbers — it is one click away, everywhere, in the same place.
+  function infoToggle(contentNodes, label) {
+    const body = el('div', { class: 'v6-info' }, Array.isArray(contentNodes) ? contentNodes : [contentNodes]);
+    const btn = el('button', {
+      class: 'v6-i', type: 'button', 'aria-expanded': 'false',
+      title: label || 'What this shows', 'aria-label': label || 'What this shows',
+    }, ['i']);
+    btn.addEventListener('click', () => {
+      const open = body.classList.toggle('open');
+      btn.classList.toggle('on', open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    return { btn, body };
+  }
+
   function card(title, sub, body, span, opts) {
     const o = opts || {};
     const c = el('div', { class: 'v6-card v6-reveal ' + (span || 'v6-c12'), 'data-delay': String((revealSeq++ % 4) * 70) });
+    const kids = Array.isArray(body) ? body.slice() : [body];
+    let info = null;
+    if (o.info) { info = infoToggle(o.info); kids.unshift(info.body); }
     if (title) {
       const hd = el('div', { class: 'v6-card-hd' }, [el('span', { class: 'v6-card-t' }, [title])]);
       if (sub) hd.appendChild(el('span', { class: 'v6-card-s' }, [sub]));
       if (o.tools) hd.appendChild(o.tools);
+      if (info) hd.appendChild(info.btn);
       c.appendChild(hd);
     }
-    c.appendChild(el('div', { class: 'v6-card-b' }, Array.isArray(body) ? body : [body]));
+    c.appendChild(el('div', { class: 'v6-card-b' }, kids));
     return c;
   }
+
   function actShell(id, n, title, sub) {
     const sec = el('section', { class: 'v6-act', id: 'v6-act-' + id });
-    sec.appendChild(el('div', { class: 'v6-act-hd v6-reveal' }, [
+    const head = el('div', { class: 'v6-act-head' }, [el('div', { class: 'v6-act-ttl' }, [title])]);
+    const hd = el('div', { class: 'v6-act-hd v6-reveal' }, [
       el('div', { class: 'v6-act-n v6-disp' }, [n]),
-      el('div', {}, [el('div', { class: 'v6-act-ttl' }, [title]), sub ? el('div', { class: 'v6-act-sub' }, [sub]) : null]),
+      head,
       el('div', { class: 'v6-act-rule' }),
-    ]));
+    ]);
+    let info = null;
+    if (sub) { info = infoToggle(sub, 'About this section'); head.appendChild(info.btn); }
+    sec.appendChild(hd);
+    if (info) sec.appendChild(info.body);
     const grid = el('div', { class: 'v6-grid' });
     sec.appendChild(grid);
     return { sec, grid };
@@ -661,21 +689,80 @@
     };
   }
 
+  // ═════════════════════════════════════════════════════════════════════════
+  // SORTIE TYPE — V6's own split, because SPIC belongs with Dual here
+  //
+  // The shared metrics model buckets SPIC into Solo (v4:395 — "both mean flying
+  // without an instructor"). For this tab the user's rule is the opposite: SPIC
+  // sits with Dual. That is a real operational distinction, not a preference —
+  // an SPIC sortie still carries an instructor.
+  //
+  // It is re-derived HERE and not changed in ap127-v5-model.js on purpose: that
+  // file is the metrics engine for AP127 Detail V5 as well, and silently
+  // re-bucketing its output would move V5's Output chart too. The model's own
+  // totals are untouched; only this chart's split differs, and the
+  // `output-split` invariant asserts the two still sum to the same figure.
+  function v6Type(code) {
+    const c = String(code || '').trim();
+    if (/\(SIM\)/i.test(c)) return 'Simulator';
+    const rest = c.replace(/\(SIM\)/i, '').replace(/\s*\d+\s*$/, '').replace(/^C/i, '').replace(/^M/i, '');
+    if (/^SP/i.test(rest)) return 'Dual';      // SPIC — instructor aboard
+    if (/^S/i.test(rest)) return 'Solo';
+    return 'Dual';
+  }
+  const V6_TYPES = ['Dual', 'Solo', 'Simulator'];
+  const V6_TYPE_LABEL = { Dual: 'Dual + SPIC', Solo: 'Solo', Simulator: 'Simulator' };
+
+  // Period aggregation with V6's split. Keys and totals match model.output()
+  // exactly; only the Dual/Solo boundary moves.
+  function v6Output(unit, period) {
+    const m = MODEL;
+    const base = m.output({ unit, period, showAll: true });
+    const byKey = {};
+    base.keys.forEach(k => { byKey[k] = { Dual: 0, Solo: 0, Simulator: 0 }; });
+    m.students.forEach(sp => sp.flown.forEach(f => {
+      if (f.date > m.asOf) return;
+      const k = U.periodKey(f.date, period);
+      const slot = byKey[k]; if (!slot) return;
+      slot[v6Type(f.lesson)] += unit === 'lessons' ? 1 : f.effMins / 60;
+    }));
+    return { keys: base.keys, values: base.values, ma: base.ma, stacks: base.keys.map(k => byKey[k]) };
+  }
+
   function outputCfg() {
     const m = MODEL, unit = S.unit, period = S.outputPeriod;
-    const out = m.output({ unit, period, showAll: true });
-    const t = axisTheme();
+    const out = v6Output(unit, period);
     const tc = Model.TYPE_COLORS;
-    const req = m.requiredAt(m.asOf);
-    const perReq = req ? (period === 'day' ? (unit === 'lessons' ? req.reqDayLesB : req.reqDayHrsB)
-      : period === 'week' ? (unit === 'lessons' ? req.reqWeekLesB : req.reqWeekHrsB)
-        : (unit === 'lessons' ? req.reqMonthLesB : req.reqMonthHrsB)) : null;
+    const isLes = unit === 'lessons';
     const labels = out.keys.map(k => new Date(k + 'T00:00:00Z').getTime());
-    const ds = ['Dual', 'Solo', 'Simulator'].map(k => ({
-      type: 'bar', label: k, stack: 'out',
-      data: out.stacks.map((s, i) => ({ x: labels[i], y: +(s[k] || 0).toFixed(2) })),
+    const fmtV = v => (isLes ? Math.round(v) : (v >= 10 ? v.toFixed(0) : v.toFixed(1)));
+    const totals = out.stacks.map(sk => V6_TYPES.reduce((a, k) => a + (sk[k] || 0), 0));
+
+    const ds = V6_TYPES.map(k => ({
+      type: 'bar', label: V6_TYPE_LABEL[k], stack: 'out',
+      data: out.stacks.map((sk, i) => ({ x: labels[i], y: +(sk[k] || 0).toFixed(2) })),
       backgroundColor: tc[k], borderWidth: 0, borderRadius: 2, order: 5,
+      // Segment labels only where the segment is big enough to hold one.
+      datalabels: {
+        display: ctx => { const v = ctx.dataset.data[ctx.dataIndex].y; return v > 0 && v >= (Math.max.apply(null, totals) || 1) * 0.12; },
+        color: '#0d1117', font: { size: 9, weight: '600', family: 'JetBrains Mono' },
+        formatter: v => fmtV(v.y),
+      },
     }));
+    // A zero-height dataset stacked on top carries the stack TOTAL label —
+    // Chart.js has no per-stack label of its own, and this is the same device
+    // V4 used for the identical need.
+    ds.push({
+      type: 'bar', label: 'Total', stack: 'out',
+      data: labels.map((x, i) => ({ x, y: 0 })),
+      backgroundColor: 'transparent', borderWidth: 0, order: 4,
+      datalabels: {
+        display: ctx => totals[ctx.dataIndex] > 0,
+        anchor: 'end', align: 'end', offset: 2,
+        color: cssv('--v6-tx', '#eef2ff'), font: { size: 9.5, weight: '700', family: 'JetBrains Mono' },
+        formatter: (v, ctx) => fmtV(totals[ctx.dataIndex]),
+      },
+    });
     // Each overlay gets its OWN stack group. Chart.js groups a dataset with no
     // explicit `stack` by its TYPE, so two un-stacked line overlays on a
     // stacked y-axis get summed together and drawn in the wrong place — the
@@ -684,27 +771,187 @@
       type: 'line', label: 'Moving average', stack: 'ma',
       data: out.ma.map((v, i) => ({ x: labels[i], y: v })),
       borderColor: cssv('--v6-acc', '#e88aff'), borderWidth: 2, pointRadius: 0, tension: .3, fill: false, order: 1,
+      datalabels: { display: false },
     });
-    if (perReq != null && isFinite(perReq)) {
+    // REQUIRED IS EVALUATED AT EACH POINT IN TIME, not stamped with today's
+    // figure across all history. The model's requiredAt(date) re-derives the
+    // rate from the work still outstanding on that date and the days left from
+    // it, so the line climbs as the batch falls behind — a flat line would
+    // claim the requirement had always been this high.
+    const reqAt = k => {
+      const r = m.requiredAt(k);
+      if (!r) return null;
+      return period === 'day' ? (isLes ? r.reqDayLesB : r.reqDayHrsB)
+        : period === 'week' ? (isLes ? r.reqWeekLesB : r.reqWeekHrsB)
+          : (isLes ? r.reqMonthLesB : r.reqMonthHrsB);
+    };
+    const reqPts = out.keys.map((k, i) => { const v = reqAt(k); return { x: labels[i], y: v == null ? null : +v.toFixed(2) }; });
+    if (reqPts.some(p => p.y != null)) {
       ds.push({
-        type: 'line', label: 'Required', stack: 'req',
-        data: labels.map(x => ({ x, y: +perReq.toFixed(2) })),
-        borderColor: cssv('--v6-bad', '#fb7185'), borderWidth: 1.6, borderDash: [7, 4], pointRadius: 0, fill: false, order: 0,
+        type: 'line', label: 'Required at the time', stack: 'req', data: reqPts,
+        borderColor: cssv('--v6-bad', '#fb7185'), borderWidth: 1.8, borderDash: [7, 4],
+        pointRadius: 0, fill: false, order: 0, spanGaps: true, datalabels: { display: false },
       });
     }
     return {
       data: { datasets: ds },
       options: {
+        layout: { padding: { top: 16 } },
         interaction: { mode: 'index', intersect: false },
         scales: {
-          x: timeScale({ stacked: true, offset: true, time: { unit: period === 'day' ? 'week' : period === 'week' ? 'month' : 'month' } }),
-          y: valScale(unit === 'lessons' ? 'lessons per ' + period : 'hours per ' + period, { stacked: true }),
+          x: timeScale({ stacked: true, offset: true, time: { unit: period === 'day' ? 'week' : 'month' } }),
+          y: valScale(isLes ? 'lessons per ' + period : 'hours per ' + period, { stacked: true }),
         },
         plugins: {
+          datalabels: { display: true },
+          legend: { display: false },
+          tooltip: tooltipTheme({
+            filter: c => c.dataset.label !== 'Total',
+            callbacks: {
+              label: c => c.dataset.label + ': ' + (isLes ? fN(c.parsed.y) + ' les' : fH(c.parsed.y, 1)),
+              afterBody: items => {
+                if (!items.length) return '';
+                const i = items[0].dataIndex;
+                return 'Total: ' + (isLes ? fN(totals[i]) + ' les' : fH(totals[i], 1));
+              },
+            },
+          }),
+        },
+      },
+    };
+  }
+
+  // ── Batch distribution (V4's Pace Distribution, drawn like the finish
+  //    histogram in Act 03 so the two read as one family) ───────────────────
+  function distributionCfg() {
+    const d = MODEL.distribution;
+    if (!d) return null;
+    const acc = cssv('--v6-acc', '#e88aff'), acc2 = cssv('--v6-acc2', '#22d3ee');
+    const labels = d.bins.map(b => (b.lo === b.hi ? String(b.lo) : b.lo + '–' + b.hi));
+    // The average sits at a fractional position inside its bin, so it is drawn
+    // as a plugin at an interpolated pixel rather than snapped to a category.
+    const avgLine = {
+      id: 'v6avgline',
+      afterDatasetsDraw(chart) {
+        const xs = chart.scales.x;
+        const left = xs.getPixelForValue(d.avgBinIdx);
+        const w = xs.width / Math.max(1, d.bins.length);
+        const x = left + (d.avgFrac - 0.5) * w;
+        const c = chart.ctx;
+        c.save();
+        c.strokeStyle = acc; c.lineWidth = 2; c.setLineDash([5, 3]);
+        c.beginPath(); c.moveTo(x, chart.chartArea.top); c.lineTo(x, chart.chartArea.bottom); c.stroke();
+        c.setLineDash([]);
+        c.fillStyle = acc; c.font = '600 10px "JetBrains Mono", monospace'; c.textAlign = 'center';
+        c.fillText('avg ' + d.avg.toFixed(1), x, chart.chartArea.top - 4);
+        c.restore();
+      },
+    };
+    const inIqr = b => b.hi >= d.q1 && b.lo <= d.q3;
+    return {
+      type: 'bar', plugins: [avgLine],
+      data: {
+        labels,
+        datasets: [
+          { label: 'SP in this band', data: d.counts, backgroundColor: d.bins.map(b => (inIqr(b) ? acc2 : acc2 + '44')), borderRadius: 3, order: 2,
+            datalabels: { display: v => v.dataset.data[v.dataIndex] > 0, anchor: 'end', align: 'end', offset: 1, color: cssv('--v6-tx2', '#9aa6c4'), font: { size: 9, family: 'JetBrains Mono' } } },
+          { label: 'shape', type: 'line', data: d.curve, borderColor: acc, borderWidth: 2, pointRadius: 0, tension: .4, fill: false, order: 1, datalabels: { display: false } },
+        ],
+      },
+      options: {
+        layout: { padding: { top: 18 } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: cssv('--v6-tx3', '#65708c'), font: { size: 9, family: 'JetBrains Mono' } }, title: { display: true, text: 'lessons completed', color: cssv('--v6-tx3', '#65708c'), font: { size: 9, family: 'JetBrains Mono' } } },
+          y: valScale('student pilots', { ticks: { precision: 0, color: cssv('--v6-tx3', '#65708c'), font: { size: 9, family: 'JetBrains Mono' } } }),
+        },
+        plugins: {
+          datalabels: { display: true },
+          legend: { display: false },
+          tooltip: tooltipTheme({
+            filter: c => c.datasetIndex === 0,
+            callbacks: {
+              title: it => 'Completed ' + labels[it[0].dataIndex] + ' lessons',
+              label: c => {
+                const b = d.bins[c.dataIndex];
+                return (b.students.length ? b.students.map(x => x.shortName).join(', ') : 'no SP') + ' (' + b.students.length + ')';
+              },
+            },
+          }),
+        },
+      },
+    };
+  }
+
+  // ── Lead/lag history (V4's Batch Lagging History) ────────────────────────
+  // The model publishes `lag` floored at zero — the batch is realistically
+  // always behind, and a signed line spent its whole life below the axis
+  // (v4:1896 / p162). Shown here as a filled area so the growth of the
+  // shortfall is the shape you read, with the current/best/worst figures
+  // beside it.
+  function lagCfg() {
+    const key = S.unit === 'lessons' ? 'lessons' : 'hours';
+    const lag = MODEL.series[key].lag || [];
+    const bad = cssv('--v6-bad', '#fb7185');
+    return {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: 'Behind plan', data: lag.map(p => ({ x: new Date(p.x + 'T00:00:00Z').getTime(), y: p.y })),
+          borderColor: bad, backgroundColor: bad + '24', borderWidth: 2.2, fill: true,
+          pointRadius: 0, pointHoverRadius: 4, tension: .2, datalabels: { display: false },
+        }],
+      },
+      options: {
+        interaction: { mode: 'index', intersect: false },
+        scales: { x: timeScale(), y: valScale(S.unit === 'lessons' ? 'lessons behind plan' : 'hours behind plan') },
+        plugins: {
+          legend: { display: false },
+          tooltip: tooltipTheme({ callbacks: { label: c => (S.unit === 'lessons' ? fN(c.parsed.y) + ' lessons' : fH(c.parsed.y, 0)) + ' behind plan' } }),
+        },
+      },
+    };
+  }
+
+  // ── Month-by-month output with a trend line ──────────────────────────────
+  function monthsCfg() {
+    const mo = FCAST.history.months;
+    const acc = cssv('--v6-acc', '#e88aff'), acc2 = cssv('--v6-acc2', '#22d3ee');
+    const labels = mo.map(x => new Date(x.key + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }));
+    const ys = mo.map(x => x.hours);
+    // Ordinary least squares over the monthly totals — the plain-language
+    // "trend" a reader means, computed rather than eyeballed.
+    const n = ys.length;
+    let trend = ys.slice();
+    if (n >= 2) {
+      const mx = (n - 1) / 2, my = ys.reduce((a, b) => a + b, 0) / n;
+      let num = 0, den = 0;
+      ys.forEach((y, i) => { num += (i - mx) * (y - my); den += (i - mx) * (i - mx); });
+      const slope = den ? num / den : 0;
+      trend = ys.map((_, i) => +(my + slope * (i - mx)).toFixed(1));
+    }
+    return {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Hours flown', data: ys, backgroundColor: acc2, borderRadius: 3, order: 2,
+            datalabels: { anchor: 'end', align: 'end', offset: 1, color: cssv('--v6-tx2', '#9aa6c4'), font: { size: 9, family: 'JetBrains Mono' }, formatter: v => Math.round(v) } },
+          { label: 'Trend', type: 'line', data: trend, borderColor: acc, borderWidth: 2, borderDash: [6, 4], pointRadius: 0, tension: 0, fill: false, order: 1, datalabels: { display: false } },
+        ],
+      },
+      options: {
+        layout: { padding: { top: 18 } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: cssv('--v6-tx3', '#65708c'), font: { size: 9, family: 'JetBrains Mono' } } },
+          y: valScale('hours flown'),
+        },
+        plugins: {
+          datalabels: { display: true },
           legend: { display: false },
           tooltip: tooltipTheme({
             callbacks: {
-              label: c => c.dataset.label + ': ' + (unit === 'lessons' ? fN(c.parsed.y) + ' les' : fH(c.parsed.y, 1)),
+              label: c => (c.dataset.label === 'Trend' ? 'Trend: ' : '') + fH(c.parsed.y, 0) +
+                (c.dataset.label === 'Trend' ? '' : ' · ' + fN(mo[c.dataIndex].lessons) + ' lessons · ' + Math.round(mo[c.dataIndex].utilisation * 100) + '% of days flew'),
             },
           }),
         },
@@ -772,7 +1019,7 @@
     }
     playBtn.addEventListener('click', () => (S.playing ? stopPlay() : startPlay()));
 
-    const pathCard = card('Flight path · flown against plan', 'Ctrl/⌘ + scroll to zoom · drag to pan', [
+    const pathCard = card('Actual flown vs plan', 'Ctrl/⌘ + scroll to zoom · drag to pan', [
       chartBox,
       legendRow([[cssv('--v6-acc', '#e88aff'), 'Actual flown'], [cssv('--v6-tx3', '#65708c'), 'Curriculum plan'], [cssv('--v6-bad', '#fb7185'), 'Revised target']]),
       el('div', { class: 'v6-scrub', style: 'margin-top:14px' }, [playBtn, range, scrubDate,
@@ -788,17 +1035,64 @@
     const tc = Model.TYPE_COLORS;
     grid.appendChild(card('Output rhythm', 'what was actually flown, split by sortie type', [
       outBox,
-      legendRow([[tc.Dual, 'Dual'], [tc.Solo, 'Solo / SPIC'], [tc.Simulator, 'Simulator'],
-        [cssv('--v6-acc', '#e88aff'), 'Moving average'], [cssv('--v6-bad', '#fb7185'), 'Required rate']]),
-      el('div', { class: 'v6-note', style: 'margin-top:9px' }, [
-        'The required line is a moving target: it is recomputed against the work still outstanding on each date and the days left from there, so it climbs as the batch falls further behind.',
+      legendRow([[tc.Dual, 'Dual + SPIC'], [tc.Solo, 'Solo'], [tc.Simulator, 'Simulator'],
+        [cssv('--v6-acc', '#e88aff'), 'Moving average'], [cssv('--v6-bad', '#fb7185'), 'Required at the time']]),
+    ], 'v6-c12', { tools: periodSeg, info: [
+      el('p', {}, ['Bars are stacked by sortie type, labelled per segment where the segment is big enough to hold a number, with the period total above each bar.']),
+      el('p', { style: 'margin-top:8px' }, [
+        el('b', {}, ['SPIC counts with Dual here, not Solo.']),
+        ' An SPIC sortie still carries an instructor, so it belongs on the dual side of the split. The shared metrics engine buckets it with Solo (both are "flying as pilot in command"), and that engine also drives AP127 Detail V5 — so the re-split is done in this tab only, leaving V5 untouched. The totals are identical either way; only the Dual/Solo boundary moves, and an invariant checks that the two still sum to the same figure.',
       ]),
-    ], 'v6-c8', { tools: periodSeg }));
+      el('p', { style: 'margin-top:8px' }, [
+        el('b', {}, ['The required line is a moving target.']),
+        ' It is evaluated at each point in time — against the work still outstanding on that date and the days remaining from it — rather than stamped with today\u2019s figure across all history. A flat line would claim the requirement had always been this high; in fact it climbs as the batch falls further behind.',
+      ]),
+    ] }));
+
+    // ── batch distribution (V4's Pace Distribution) ──
+    const distBox = el('div', { class: 'v6-chart', style: 'height:250px' }, [el('canvas', { id: 'v6-dist' })]);
+    const dist = MODEL.distribution;
+    grid.appendChild(card('Batch distribution', dist ? 'spread of lessons completed across ' + MODEL.students.length + ' SP' : 'no data', [
+      distBox,
+      dist ? el('div', { class: 'v6-scrub-read', style: 'margin-top:12px' }, [
+        el('div', {}, [el('div', { class: 'l' }, ['Slowest']), el('div', { class: 'v' }, [String(dist.min)])]),
+        el('div', {}, [el('div', { class: 'l' }, ['Lower quartile']), el('div', { class: 'v' }, [String(dist.q1)])]),
+        el('div', {}, [el('div', { class: 'l' }, ['Median']), el('div', { class: 'v' }, [String(dist.median)])]),
+        el('div', {}, [el('div', { class: 'l' }, ['Average']), el('div', { class: 'v', style: 'color:var(--v6-acc)' }, [dist.avg.toFixed(1)])]),
+        el('div', {}, [el('div', { class: 'l' }, ['Upper quartile']), el('div', { class: 'v' }, [String(dist.q3)])]),
+        el('div', {}, [el('div', { class: 'l' }, ['Fastest']), el('div', { class: 'v' }, [String(dist.max)])]),
+      ]) : null,
+    ], 'v6-c12', { info: [
+      el('p', {}, ['How many SP sit in each band of lessons completed — the shape of the batch rather than its total. A tall single band means the cohort is moving together; a wide flat spread means it is splitting into a fast and a slow group, which is a scheduling problem long before it is a completion problem.']),
+      el('p', { style: 'margin-top:8px' }, ['Solid bars are the middle half of the batch (lower to upper quartile); the dashed magenta line marks the average, drawn at its true fractional position inside its band rather than snapped to the nearest bar. Hover a bar to see exactly which SP are in it.']),
+    ] }));
+
+    // ── lead/lag history ──
+    const lagBox = el('div', { class: 'v6-chart', style: 'height:240px' }, [el('canvas', { id: 'v6-lag' })]);
+    const lagSeries2 = MODEL.series[S.unit === 'lessons' ? 'lessons' : 'hours'].lag || [];
+    const lagNow = lagSeries2.length ? lagSeries2[lagSeries2.length - 1].y : 0;
+    const lagVals = lagSeries2.map(p => p.y);
+    const lagBest = lagVals.length ? Math.min.apply(null, lagVals) : 0;
+    const lagWorst = lagVals.length ? Math.max.apply(null, lagVals) : 0;
+    const lagFmt = v => (S.unit === 'lessons' ? fN(v) + ' les' : fH(v, 0));
+    grid.appendChild(card('Behind plan, over time', 'the shortfall against the curriculum plan, day by day', [
+      lagBox,
+      el('div', { class: 'v6-scrub-read', style: 'margin-top:12px' }, [
+        el('div', {}, [el('div', { class: 'l' }, ['Behind today']), el('div', { class: 'v', style: 'color:var(--v6-bad)' }, [lagFmt(lagNow)])]),
+        el('div', {}, [el('div', { class: 'l' }, ['Closest ever']), el('div', { class: 'v', style: 'color:var(--v6-good)' }, [lagBest === 0 ? 'on plan' : lagFmt(lagBest)])]),
+        el('div', {}, [el('div', { class: 'l' }, ['Worst ever']), el('div', { class: 'v' }, [lagFmt(lagWorst)])]),
+        el('div', {}, [el('div', { class: 'l' }, ['Still growing?']), el('div', { class: 'v' }, [lagNow >= lagWorst - 0.01 ? 'yes' : 'off the peak'])]),
+      ]),
+    ], 'v6-c12', { info: [
+      el('p', {}, ['Cumulative work the batch owes the curriculum plan, evaluated every day since the plan began. It is floored at zero: a batch that got ahead would read as flat zero rather than dipping below the axis. This one has never been ahead.']),
+      el('p', { style: 'margin-top:8px' }, ['The shape is what matters more than the level — a line that flattens means the batch is finally matching the plan\u2019s daily rate even if it has not begun to catch up, while a line still climbing means the gap is widening every day.']),
+    ] }));
 
     // ── turning points ──
-    const evWrap = el('div', { class: 'v6-events' });
+    const evRow = el('div', { class: 'v6-tl-row' });
+    const evWrap = el('div', { class: 'v6-tl' }, [evRow]);
     fc.history.events.forEach(ev => {
-      const node = el('div', { class: 'v6-ev k-' + ev.kind, tabindex: '0', title: 'Jump the playhead to ' + fd(ev.date) }, [
+      const node = el('div', { class: 'v6-tle k-' + ev.kind, tabindex: '0', title: 'Jump the playhead to ' + fd(ev.date) }, [
         el('div', { class: 'd' }, [fd(ev.date)]),
         el('div', { class: 't' }, [ev.title]),
         el('div', { class: 'x' }, [ev.detail]),
@@ -809,9 +1103,12 @@
       };
       node.addEventListener('click', jump);
       node.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); } });
-      evWrap.appendChild(node);
+      evRow.appendChild(node);
     });
-    grid.appendChild(card('Turning points', fc.history.events.length + ' detected · click to jump the playhead', evWrap, 'v6-c4'));
+    grid.appendChild(card('Turning points', fc.history.events.length + ' detected · click any to jump the playhead', evWrap, 'v6-c12', { info: [
+      el('p', {}, ['Moments the record singles out on its own: the first sortie, the strongest week, the biggest single day, every stand-down of three days or more, the first SP to reach each milestone, the day the batch fell behind plan, and any sustained change of gear. Nothing here is hand-picked — each entry states the figure behind it so it can be checked against the calendar.']),
+      el('p', { style: 'margin-top:8px' }, ['Scroll the timeline sideways to reach the whole batch history; clicking an entry moves the playhead on the chart above to that date.']),
+    ] }));
 
     // ── month ribbon ──
     const maxMonth = Math.max.apply(null, fc.history.months.map(x => x.hours).concat([1]));
@@ -824,10 +1121,26 @@
         el('div', { class: 's' }, [Math.round(mo.utilisation * 100) + '% of days flew · ' + fN(mo.lessons) + ' les']),
       ]);
     }));
-    grid.appendChild(card('Month by month', 'bar shows the month against the batch’s best month', ribbon, 'v6-c12'));
+    const monBox = el('div', { class: 'v6-chart', style: 'height:230px' }, [el('canvas', { id: 'v6-months' })]);
+    grid.appendChild(card('Month by month', 'hours flown per month, with the trend through them', [
+      monBox,
+      legendRow([[cssv('--v6-acc2', '#22d3ee'), 'hours flown'], [cssv('--v6-acc', '#e88aff'), 'trend']]),
+      el('div', { style: 'height:12px' }),
+      ribbon,
+    ], 'v6-c12', { info: [
+      el('p', {}, ['Monthly totals with an ordinary least-squares trend line through them — the direction the batch is actually moving, computed rather than eyeballed. A month is counted whole, so the current month reads low until it closes.']),
+      el('p', { style: 'margin-top:8px' }, ['The cards beneath give each month its own detail: hours, lessons, and the share of that month\u2019s calendar days on which anything flew. That last figure is often the more useful one — a month can look thin because sorties were short, or because the line stood still for a fortnight, and only the flying-day share tells the two apart.']),
+    ] }));
 
     // Charts and the first frame are built after the section is in the DOM.
-    sec._afterMount = () => { mkChart('v6-flightpath', flightPathCfg()); mkChart('v6-output', outputCfg()); renderFrame(); };
+    sec._afterMount = () => {
+      mkChart('v6-flightpath', flightPathCfg());
+      mkChart('v6-output', outputCfg());
+      const dcfg = distributionCfg(); if (dcfg) mkChart('v6-dist', dcfg);
+      mkChart('v6-lag', lagCfg());
+      mkChart('v6-months', monthsCfg());
+      renderFrame();
+    };
     sec._renderFrame = renderFrame;
     sec._stopPlay = stopPlay;
     return sec;
@@ -909,7 +1222,7 @@
       ['Week', p && p.reqWeekHrsB, a.actWeekHrsB, p && p.reqWeekLesB, a.actWeekLesB],
       ['Day', p && p.reqDayHrsB, a.actDayHrsB, p && p.reqDayLesB, a.actDayLesB],
     ];
-    const tbl = el('table', { class: 'v6-t' }, [
+    const tbl = el('table', { class: 'v6-t v6-fit' }, [
       el('thead', {}, [el('tr', {}, ['Period', 'Required h', 'Actual h', 'Gap h', 'Required les', 'Actual les', 'Gap les'].map(t => el('th', {}, [t])))]),
       el('tbody', {}, rows.map(([lbl, rh, ah, rl, al]) => el('tr', {}, [
         el('td', {}, [lbl]),
@@ -930,77 +1243,48 @@
           el('button', { class: 'v6-btn', style: 'padding:2px 7px', onclick: () => gotoAct('forecast') }, ['Act 03 → Every rate']), '.',
         ])], 'v6-c7'));
 
-    // ── curriculum matrix ──
-    const wrap = el('div', { class: 'v6-matrix-wrap' }, [
-      el('canvas', { id: 'v6-matrix' }),
-      el('div', { class: 'v6-matrix-hint' }, ['scroll = zoom · drag = pan · click a cell']),
-    ]);
-    const zoomOut = el('button', { class: 'v6-btn', onclick: () => matrixZoom(1 / 1.3) }, ['−']);
-    const zoomIn = el('button', { class: 'v6-btn', onclick: () => matrixZoom(1.3) }, ['+']);
-    const zoomFit = el('button', { class: 'v6-btn', onclick: () => matrixFit() }, ['⤢ Fit']);
-    grid.appendChild(card('Curriculum matrix', m.students.length + ' SP × ' + m.curriculum.count + ' lessons · phase-coloured when complete',
-      [wrap, legendRow(m.phasesDef.map(ph => [ph.c, ph.label, true]).concat([
-        [cssv('--v6-warn', '#fbbf24'), 'next lesson', true],
-        [cssv('--v6-info', '#38bdf8'), 'retaken', true],
-      ]))], 'v6-c12',
-      { tools: el('div', { style: 'display:flex;gap:5px' }, [zoomOut, zoomIn, zoomFit]) }));
+    // ── curriculum grid ──
+    const gridHost = el('div', {});
+    grid.appendChild(card('Curriculum grid', m.students.length + ' SP × ' + m.curriculum.count + ' lessons · click any cell for the record',
+      [gridHost], 'v6-c12', { info: [
+        el('p', {}, ['Every lesson in the syllabus, for every student pilot. A cell is filled in its phase colour once that lesson is complete and left grey when it is not, so each row reads left-to-right as one SP\u2019s route through the course and each column shows how far the batch has got with one lesson.']),
+        el('p', { style: 'margin-top:8px' }, ['The three identity columns stay pinned while the grid scrolls sideways. ',
+          el('b', {}, ['vs tgt']), ' is lessons ahead of or behind the target schedule for today; ', el('b', {}, ['Finish']),
+          ' is that SP\u2019s projected completion date. The 17 red columns are the target checkpoints, each labelled with its own date, and the cyan column is the lesson the batch is meant to have reached today. The hatched red band on each row spans the lessons that SP still owes against today\u2019s target.']),
+        el('p', { style: 'margin-top:8px' }, ['The bar along the bottom shades each lesson by the share of the batch that has completed it — the darker the column, the more of the batch is through it, so a sudden pale column is a bottleneck.']),
+      ] }));
 
-    sec._afterMount = () => { mountMatrix(); };
+    sec._afterMount = () => {
+      buildCurriculumGrid(gridHost);
+      observeWidth(gridHost, () => buildCurriculumGrid(gridHost));
+    };
+    sec._regrid = () => buildCurriculumGrid(gridHost);
     return sec;
   }
 
-  // ── curriculum matrix engine (canvas, zoom + pan + hit-test) ─────────────
-  const MX = { zoom: 1, ox: 0, cellW: 0, rowH: 15, nameW: 118, headH: 26, rows: [], canvas: null, ctx: null, hover: null };
-
-  let _matrixSubscribed = false;
-  function mountMatrix() {
-    const cv = $('#v6-matrix', ROOT); if (!cv) return;
-    MX.canvas = cv; MX.ctx = cv.getContext('2d');
-    MX.rows = sortedStudents();
-    // The matrix is a canvas, so CSS cannot dim it the way the focus bus dims
-    // every other SP-bearing element — it subscribes and repaints instead.
-    // Without this, hovering an SP card lights up the ladder and the roster
-    // but leaves the matrix untouched, which is exactly the disconnect this
-    // tab exists to avoid.
-    if (!_matrixSubscribed) { _matrixSubscribed = true; onFocus(() => { if (MX.ctx && document.body.contains(MX.canvas)) drawMatrix(); }); }
-    matrixFit();
-    if (!cv._v6bound) {
-      cv._v6bound = true;
-      let dragging = false, lastX = 0;
-      cv.addEventListener('wheel', e => { e.preventDefault(); matrixZoom(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.offsetX); }, { passive: false });
-      cv.addEventListener('pointerdown', e => { dragging = true; lastX = e.offsetX; cv.setPointerCapture(e.pointerId); });
-      cv.addEventListener('pointerup', e => { dragging = false; try { cv.releasePointerCapture(e.pointerId); } catch (er) {} });
-      cv.addEventListener('pointerleave', () => { dragging = false; MX.hover = null; hideTip(); drawMatrix(); if (S.focusSp) setFocus(null); });
-      cv.addEventListener('pointermove', e => {
-        if (dragging) { MX.ox += e.offsetX - lastX; lastX = e.offsetX; clampMatrix(); drawMatrix(); hideTip(); return; }
-        const hit = matrixHit(e.offsetX, e.offsetY);
-        MX.hover = hit;
-        drawMatrix();
-        if (hit && hit.sp) {
-          if (S.focusSp !== String(hit.sp.catc_id)) setFocus(hit.sp.catc_id);
-          showTip(e.clientX, e.clientY, matrixTipHtml(hit));
-        } else { hideTip(); }
-      });
-      cv.addEventListener('click', e => {
-        const hit = matrixHit(e.offsetX, e.offsetY);
-        if (hit && hit.sp && hit.num != null) openLessonModal(hit.sp, hit.num);
-        else if (hit && hit.sp) openSPDrawer(hit.sp.catc_id);
-      });
-      window.addEventListener('resize', matrixResize);
-      observeWidth(cv.parentElement, matrixResize);
-      MX._resizeBound = true;
-    }
-  }
-  // A window resize is NOT the only way these canvases change width — this app
+  // ═════════════════════════════════════════════════════════════════════════
+  // CURRICULUM GRID  (replaces V6's first canvas matrix)
+  //
+  // V5's roster-style HTML grid reads better than a canvas, and the user asked
+  // for that treatment here. Rebuilt in V6's own markup and palette rather than
+  // copied out of view-cohort-v5.js — that file stays untouched, and a second
+  // copy of it would be free to drift.
+  //
+  // What the canvas could not do and this does: sticky identity columns that
+  // survive horizontal scroll, the 17 target checkpoints labelled with their
+  // own dates, today's target column marked, and each SP's shortfall against
+  // today's target drawn as a hatched band across the lessons they still owe.
+  // ═════════════════════════════════════════════════════════════════════════
+  // A window resize is NOT the only way these grids change width — this app
   // collapses its sidebar to an icon rail from the top bar, which resizes the
-  // content column with no window event at all. Both canvases therefore watch
-  // their own container, not the window.
+  // content column with no window event at all. Each grid watches its own
+  // container instead.
   function observeWidth(node, onChange) {
     if (!window.ResizeObserver || !node) return;
     let last = node.clientWidth;
     const ro = new ResizeObserver(() => {
       const w = node.clientWidth;
-      if (!w || Math.abs(w - last) < 2) return;
+      if (!w || Math.abs(w - last) < 8) return;
       last = w;
       onChange();
     });
@@ -1008,139 +1292,284 @@
     REVEAL_CLEANUP.push(() => { try { ro.disconnect(); } catch (e) {} });
   }
 
-  function matrixResize() { if (!MX.canvas || !document.body.contains(MX.canvas)) return; matrixFit(); }
-  function matrixFit() {
-    const cv = MX.canvas; if (!cv) return;
-    const wrapW = cv.parentElement.clientWidth || 900;
-    const count = MODEL.curriculum.count || 96;
-    MX.cellW = Math.max(3, (wrapW - MX.nameW - 8) / count);
-    MX.zoom = 1; MX.ox = 0;
-    sizeMatrix(wrapW);
-    drawMatrix();
+  const GRID_ZOOM = { curriculum: null, calendar: null };
+  function zoomBar(key, auto, redraw) {
+    const cur = GRID_ZOOM[key] || auto;
+    const set = v => { GRID_ZOOM[key] = v == null ? null : clampInt(v, 4, 40); redraw(); };
+    return el('div', { class: 'v6-zoom' }, [
+      el('button', { class: 'v6-btn', title: 'Narrower columns', onclick: () => set(cur - 2) }, ['−']),
+      el('span', {}, [cur + 'px']),
+      el('button', { class: 'v6-btn', title: 'Wider columns', onclick: () => set(cur + 2) }, ['+']),
+      el('button', { class: 'v6-btn', title: 'Fit to width', onclick: () => set(null) }, ['⤢ Fit']),
+    ]);
   }
-  function sizeMatrix(wrapW) {
-    const cv = MX.canvas;
-    const w = wrapW || cv.parentElement.clientWidth || 900;
-    const hgt = MX.headH + MX.rows.length * MX.rowH + 6;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    cv.style.width = w + 'px'; cv.style.height = hgt + 'px';
-    cv.width = Math.round(w * dpr); cv.height = Math.round(hgt * dpr);
-    MX.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    MX.w = w; MX.h = hgt;
+  function clampInt(v, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(v))); }
+  function availW(host, reserved) {
+    const w = (host && host.clientWidth) || (ROOT && ROOT.clientWidth) || 900;
+    return Math.max(120, w - reserved - 4);
   }
-  function matrixZoom(f, anchorX) {
-    const before = MX.zoom;
-    MX.zoom = Math.max(1, Math.min(9, MX.zoom * f));
-    const ax = (anchorX == null ? (MX.w || 900) / 2 : anchorX) - MX.nameW;
-    MX.ox = ax - (ax - MX.ox) * (MX.zoom / before);
-    clampMatrix(); drawMatrix();
-  }
-  function clampMatrix() {
-    const gridW = (MODEL.curriculum.count || 96) * MX.cellW * MX.zoom;
-    const viewW = (MX.w || 900) - MX.nameW;
-    MX.ox = Math.min(0, Math.max(viewW - gridW, MX.ox));
-    if (gridW <= viewW) MX.ox = 0;
-  }
-  function matrixHit(x, y) {
-    if (!MX.rows.length) return null;
-    const ri = Math.floor((y - MX.headH) / MX.rowH);
-    if (ri < 0 || ri >= MX.rows.length) return null;
-    const sp = MX.rows[ri];
-    if (x < MX.nameW) return { sp, num: null };
-    const gx = x - MX.nameW - MX.ox;
-    const num = Math.floor(gx / (MX.cellW * MX.zoom)) + 1;
-    if (num < 1 || num > (MODEL.curriculum.count || 96)) return { sp, num: null };
-    return { sp, num };
-  }
-  function matrixTipHtml(hit) {
-    const sp = hit.sp;
-    if (hit.num == null) return '<b>' + esc(sp.name) + '</b><br>' + fH(sp.hoursEffective, 1) + ' · ' + sp.lessonsCompleted + ' lessons · ' + fPct(sp.pct);
-    const l = MODEL.curriculum.byNum[hit.num];
-    const hits = (sp.flownByNum && sp.flownByNum[hit.num]) || null;
-    const code = l ? l.lesson : 'L' + hit.num;
-    if (!hits) return '<b>' + esc(code) + '</b><br>' + esc(sp.shortName) + ' — not flown' + (sp.nextNum === hit.num ? '<br>next up' : '');
-    return '<b>' + esc(code) + '</b><br>' + esc(sp.shortName) + ' — ' + fd(hits[0].date) +
-      '<br>' + (hits[0].effMins / 60).toFixed(2) + 'h' + (hits.length > 1 ? '<br>retaken ' + hits.length + '×' : '') +
-      (hits[0].fromOps ? '<br>credited from Ops' : '');
-  }
-  function drawMatrix() {
-    const c = MX.ctx; if (!c) return;
-    const m = MODEL, count = m.curriculum.count || 96;
-    const cw = MX.cellW * MX.zoom;
-    const bg = cssv('--v6-bg-2', '#080c18'), tx = cssv('--v6-tx', '#eef2ff'), tx3 = cssv('--v6-tx3', '#65708c');
-    const empty = cssv('--v6-bd', 'rgba(255,255,255,.1)');
-    c.clearRect(0, 0, MX.w, MX.h);
 
-    // phase band
-    const bandY = MX.headH - 12;
-    for (let nnum = 1; nnum <= count; nnum++) {
-      const l = m.curriculum.byNum[nnum];
-      const x = MX.nameW + MX.ox + (nnum - 1) * cw;
-      if (x + cw < MX.nameW || x > MX.w) continue;
-      c.fillStyle = l && l.phase ? l.phase.c : '#6b7280';
-      c.fillRect(x, bandY, Math.max(1, cw - 0.4), 7);
+  function buildCurriculumGrid(host) {
+    host.innerHTML = '';
+    const m = MODEL;
+    const sps = forecastRows().map(r => r.sp);
+    if (!sps.length) { host.appendChild(el('div', { class: 'v6-note' }, ['No students match the current search.'])); return; }
+    const count = m.curriculum.count || 96;
+    const NW = 116, VW = 52, EW = 62, RESERVED = NW + VW + EW;
+    const auto = clampInt(availW(host, RESERVED) / count, 4, 40);
+    const CW = GRID_ZOOM.curriculum || auto;
+
+    const targets = (m.targets && m.targets.list) || [];
+    const tgtByLesson = {}; targets.forEach(t => { tgtByLesson[t.lesson] = t; });
+    const nowLesson = m.batch.targetLessonToday == null ? null : Math.round(m.batch.targetLessonToday);
+
+    host.appendChild(zoomBar('curriculum', auto, () => buildCurriculumGrid(host)));
+    host.appendChild(legendRow(m.phasesDef.map(p => [p.c, p.label, true]).concat([
+      [cssv('--v6-warn', '#fbbf24'), 'next lesson', true],
+      [cssv('--v6-info', '#38bdf8'), 'retaken', true],
+      [cssv('--v6-bad', '#fb7185'), 'target checkpoint · hatched = behind today’s target', true],
+      [cssv('--v6-acc2', '#22d3ee'), 'target for today' + (nowLesson == null ? '' : ' (L' + nowLesson + ')'), true],
+    ])));
+
+    const table = el('table', { class: 'v6-gt', style: 'width:' + (RESERVED + CW * count) + 'px' });
+    const cg = el('colgroup', {}, [
+      el('col', { style: 'width:' + NW + 'px' }), el('col', { style: 'width:' + VW + 'px' }), el('col', { style: 'width:' + EW + 'px' }),
+    ].concat(Array.from({ length: count }, () => el('col', { style: 'width:' + CW + 'px' }))));
+    table.appendChild(cg);
+
+    // ---- header: phase band, target dates, lesson numbers ----
+    const segs = [];
+    for (let n = 1; n <= count; n++) {
+      const l = m.curriculum.byNum[n];
+      const c = l && l.phase ? l.phase.c : '#6b7280';
+      const last = segs[segs.length - 1];
+      if (last && last.c === c) last.n++; else segs.push({ c, label: l && l.phase ? l.phase.label : 'Other', n: 1 });
     }
-    // lesson-number ticks, thinned so labels never collide
-    c.font = '8px "JetBrains Mono", monospace'; c.textAlign = 'center'; c.fillStyle = tx3;
-    const every = cw >= 26 ? 1 : cw >= 13 ? 5 : cw >= 7 ? 10 : 20;
-    for (let nnum = every; nnum <= count; nnum += every) {
-      const x = MX.nameW + MX.ox + (nnum - 0.5) * cw;
-      if (x < MX.nameW || x > MX.w) continue;
-      c.fillText(String(nnum), x, bandY - 3);
+    const thead = el('thead');
+    const idTh = (txt, left, cls) => el('th', { class: 'idc ' + (cls || ''), style: 'left:' + left + 'px' }, [txt]);
+    thead.appendChild(el('tr', {}, [
+      idTh('Student pilot', 0), idTh('vs tgt', NW), idTh('Finish', NW + VW),
+    ].concat(segs.map(sg => el('th', { class: 'phb', colspan: sg.n, style: 'background:' + sg.c, title: sg.label })))));
+    thead.appendChild(el('tr', {}, [idTh('', 0), idTh('', NW), idTh('', NW + VW)].concat(
+      Array.from({ length: count }, (_, i) => {
+        const n = i + 1, t = tgtByLesson[n];
+        return el('th', { class: 'tgtlab' }, [t ? fd(t.date) : '']);
+      }))));
+    const every = CW >= 24 ? 1 : CW >= 13 ? 5 : 10;
+    thead.appendChild(el('tr', {}, [idTh('', 0), idTh('', NW), idTh('', NW + VW)].concat(
+      Array.from({ length: count }, (_, i) => el('th', { class: 'num' }, [(i + 1) % every === 0 || i === 0 ? String(i + 1) : ''])))));
+    table.appendChild(thead);
+
+    // ---- rows ----
+    const fcById = {}; FCAST.students.rows.forEach(r => { fcById[String(r.catc_id)] = r; });
+    const tb = el('tbody');
+    sps.forEach(sp => {
+      const fr = fcById[String(sp.catc_id)];
+      const vs = (nowLesson == null) ? null : sp.lessonsCompleted - nowLesson;
+      const tr = el('tr', { 'data-sp': String(sp.catc_id) });
+      tr.appendChild(el('td', { class: 'idc', style: 'left:0', title: sp.name }, [sp.shortName]));
+      tr.appendChild(el('td', {
+        class: 'idc', style: 'left:' + NW + 'px;text-align:right;font-family:JetBrains Mono,monospace;color:' + (vs == null ? 'var(--v6-tx3)' : vs >= 0 ? 'var(--v6-good)' : 'var(--v6-bad)'),
+        title: nowLesson == null ? '' : 'Against today’s target of L' + nowLesson,
+      }, [vs == null ? '—' : (vs >= 0 ? '+' : '−') + Math.abs(vs)]));
+      tr.appendChild(el('td', { class: 'idc', style: 'left:' + (NW + VW) + 'px;font-family:JetBrains Mono,monospace;color:var(--v6-tx2)' }, [fr ? fd(fr.etcDate) : '—']));
+      for (let n = 1; n <= count; n++) {
+        const hits = sp.flownByNum && sp.flownByNum[n];
+        const l = m.curriculum.byNum[n];
+        const isTgt = !!tgtByLesson[n];
+        const isToday = nowLesson != null && n === nowLesson;
+        const inLag = nowLesson != null && !hits && n <= nowLesson && n > sp.lessonsCompleted;
+        const cls = ['cell'];
+        if (!hits) cls.push('empty');
+        if (hits && hits.length > 1) cls.push('retake');
+        if (!hits && sp.nextNum === n) cls.push('next');
+        if (isTgt) cls.push('tgt');
+        if (isToday) cls.push('today');
+        if (inLag) cls.push('lag');
+        const td = el('td', {
+          class: cls.join(' '),
+          title: (l ? l.lesson : 'L' + n) + ' · ' + sp.shortName + (hits ? ' · ' + fd(hits[0].date) : ' · not flown'),
+        }, [el('i', { style: hits ? 'background:' + (l && l.phase ? l.phase.c : '#e88aff') : '' })]);
+        td.addEventListener('click', () => openLessonModal(sp, n));
+        tr.appendChild(td);
+      }
+      tr.addEventListener('mouseenter', () => setFocus(sp.catc_id));
+      tr.addEventListener('mouseleave', () => setFocus(null));
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb);
+
+    // ---- footer: how much of the batch has each lesson ----
+    const tf = el('tfoot');
+    const ftr = el('tr', {}, [
+      el('td', { class: 'idc', style: 'left:0' }, ['Batch %']),
+      el('td', { class: 'idc', style: 'left:' + NW + 'px' }, ['']),
+      el('td', { class: 'idc', style: 'left:' + (NW + VW) + 'px' }, ['']),
+    ]);
+    for (let n = 1; n <= count; n++) {
+      const done = sps.filter(sp => sp.flownByNum && sp.flownByNum[n]).length;
+      const pct = sps.length ? done / sps.length : 0;
+      ftr.appendChild(el('td', {
+        title: 'L' + n + ': ' + done + ' of ' + sps.length + ' SP complete',
+        style: 'background:color-mix(in srgb,var(--v6-acc) ' + Math.round(pct * 74) + '%,transparent)',
+      }, []));
+    }
+    tf.appendChild(ftr);
+    table.appendChild(tf);
+
+    host.appendChild(el('div', { class: 'v6-gw' }, [table]));
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // ACTIVITY CALENDAR  (replaces "Streaks & idle days")
+  //
+  // The roster grid from V5: SP rows × calendar-day columns, each cell shaded
+  // by how much that SP flew that day and coloured by the phase they were in,
+  // with month rules, idle-gap marking and per-day batch totals. Same rebuild
+  // rule as the curriculum grid — V6's own markup, V5's file untouched.
+  // ═════════════════════════════════════════════════════════════════════════
+  const CAL = { groupBy: 'none', range: 0 };
+  function buildActivityCalendar(host) {
+    host.innerHTML = '';
+    const m = MODEL;
+    const sps = forecastRows().map(r => r.sp);
+    const start = CAL.range ? U.addDays(m.asOf, -(CAL.range - 1)) : m.batchStart;
+    const days = U.datesRange(start < m.batchStart ? m.batchStart : start, m.asOf);
+    if (!sps.length || !days.length) { host.appendChild(el('div', { class: 'v6-note' }, ['No data in range.'])); return; }
+    const NW = 116, TW = 74, RESERVED = NW + TW;
+    const auto = clampInt(availW(host, RESERVED) / days.length, 4, 30);
+    const CW = GRID_ZOOM.calendar || auto;
+    const IDLE_MIN = 7;
+
+    // per-cell hours + the max, for intensity
+    const cellH = {}; let maxH = 0;
+    sps.forEach(sp => days.forEach(d => {
+      const fl = sp.flownByDate[d]; if (!fl) return;
+      const hv = fl.reduce((a, f) => a + f.effMins / 60, 0);
+      cellH[sp.catc_id + '|' + d] = hv;
+      if (hv > maxH) maxH = hv;
+    }));
+    maxH = maxH || 1;
+
+    const rangeTot = { hrs: 0, les: 0 };
+    sps.forEach(sp => days.forEach(d => {
+      const fl = sp.flownByDate[d]; if (!fl) return;
+      rangeTot.les += fl.length; rangeTot.hrs += fl.reduce((a, f) => a + f.effMins / 60, 0);
+    }));
+    const activeDays = days.filter(d => sps.some(sp => sp.flownByDate[d])).length;
+
+    host.appendChild(el('div', { class: 'v6-zoom', style: 'justify-content:space-between' }, [
+      zoomBar('calendar', auto, () => buildActivityCalendar(host)),
+    ]));
+    host.appendChild(el('div', { class: 'v6-gsum' }, [
+      el('b', {}, [fH(rangeTot.hrs, 1)]), ' flown · ', el('b', {}, [fN(rangeTot.les)]), ' lessons · ',
+      el('b', {}, [String(activeDays)]), ' of ' + days.length + ' days had activity · avg ',
+      el('b', {}, [fH(activeDays ? rangeTot.hrs / activeDays : 0, 1)]), '/active day across ' + sps.length + ' SP',
+    ]));
+    host.appendChild(legendRow(m.phasesDef.map(p => [p.c, p.label, true]).concat([
+      [cssv('--v6-bad', '#fb7185'), 'idle gap ≥ ' + IDLE_MIN + 'd between flights', true],
+      [cssv('--v6-warn', '#fbbf24'), 'still idle through to today', true],
+      [cssv('--v6-acc2', '#22d3ee'), 'today', true],
+    ])));
+
+    let rows = sps.map(sp => ({ sp }));
+    if (CAL.groupBy === 'instructor') {
+      const byFI = {};
+      sps.forEach(sp => (byFI[sp.fiFull || 'Unassigned'] = byFI[sp.fiFull || 'Unassigned'] || []).push(sp));
+      rows = [];
+      Object.keys(byFI).sort((a, b) => byFI[b].length - byFI[a].length || a.localeCompare(b))
+        .forEach(fi => { rows.push({ group: fi, n: byFI[fi].length }); byFI[fi].forEach(sp => rows.push({ sp })); });
     }
 
-    // rows
-    MX.rows.forEach((sp, ri) => {
-      const y = MX.headH + ri * MX.rowH;
-      const hot = S.focusSp && String(sp.catc_id) === S.focusSp;
-      if (hot) { c.fillStyle = cssv('--v6-glass-2', 'rgba(255,255,255,.075)'); c.fillRect(0, y, MX.w, MX.rowH); }
-      for (let nnum = 1; nnum <= count; nnum++) {
-        const x = MX.nameW + MX.ox + (nnum - 1) * cw;
-        if (x + cw < MX.nameW || x > MX.w) continue;
-        const hits = sp.flownByNum && sp.flownByNum[nnum];
-        const l = m.curriculum.byNum[nnum];
-        if (hits) {
-          c.fillStyle = l && l.phase ? l.phase.c : '#e88aff';
-          c.globalAlpha = S.focusSp && !hot ? 0.3 : 1;
-          c.fillRect(x, y + 1.5, Math.max(1, cw - 0.6), MX.rowH - 3);
-          if (hits.length > 1 && cw >= 4) {
-            c.globalAlpha = 1; c.strokeStyle = cssv('--v6-info', '#38bdf8'); c.lineWidth = 1;
-            c.strokeRect(x + 0.5, y + 2, Math.max(1, cw - 1.6), MX.rowH - 4);
-          }
-          c.globalAlpha = 1;
-        } else {
-          c.fillStyle = empty;
-          c.globalAlpha = S.focusSp && !hot ? 0.25 : 0.5;
-          c.fillRect(x, y + 1.5, Math.max(1, cw - 0.6), MX.rowH - 3);
-          c.globalAlpha = 1;
-          if (sp.nextNum === nnum && cw >= 3) {
-            c.strokeStyle = cssv('--v6-warn', '#fbbf24'); c.lineWidth = 1.4;
-            c.strokeRect(x + 0.7, y + 2, Math.max(1, cw - 2), MX.rowH - 4);
-          }
+    const table = el('table', { class: 'v6-gt', style: 'width:' + (RESERVED + CW * days.length) + 'px' });
+    table.appendChild(el('colgroup', {}, [el('col', { style: 'width:' + NW + 'px' }), el('col', { style: 'width:' + TW + 'px' })]
+      .concat(days.map(() => el('col', { style: 'width:' + CW + 'px' })))));
+
+    const idTh = (txt, left) => el('th', { class: 'idc', style: 'left:' + left + 'px' }, [txt]);
+    const thead = el('thead');
+    let lastMon = '';
+    thead.appendChild(el('tr', {}, [idTh('Student pilot', 0), idTh('Total', NW)].concat(days.map(d => {
+      const mo = d.slice(0, 7), show = mo !== lastMon; if (show) lastMon = mo;
+      return el('th', { class: 'mon' + (show ? ' mrule' : '') },
+        [show ? new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }) : '']);
+    }))));
+    table.appendChild(thead);
+
+    const tb = el('tbody');
+    rows.forEach(row => {
+      if (row.group) {
+        tb.appendChild(el('tr', { class: 'grp' }, [el('td', { colspan: days.length + 2 }, [row.group + ' · ' + row.n + ' SP'])]));
+        return;
+      }
+      const sp = row.sp;
+      let tot = 0; days.forEach(d => { tot += cellH[sp.catc_id + '|' + d] || 0; });
+      const tr = el('tr', { 'data-sp': String(sp.catc_id) });
+      tr.appendChild(el('td', { class: 'idc', style: 'left:0', title: sp.name }, [sp.shortName]));
+      tr.appendChild(el('td', { class: 'idc', style: 'left:' + NW + 'px;text-align:right;font-family:JetBrains Mono,monospace;color:var(--v6-tx2)' }, [fH(tot, 1)]));
+      // idle runs, so a long gap reads as one marked span rather than blank cells
+      const flew = days.map(d => !!sp.flownByDate[d]);
+      const idleMark = new Array(days.length).fill(0);
+      let runStart = -1;
+      for (let i = 0; i <= days.length; i++) {
+        if (i < days.length && !flew[i]) { if (runStart < 0) runStart = i; continue; }
+        if (runStart >= 0) {
+          const len = i - runStart;
+          const openEnded = i >= days.length;
+          const hadFlownBefore = flew.slice(0, runStart).some(Boolean);
+          if (len >= IDLE_MIN && hadFlownBefore) for (let k = runStart; k < i; k++) idleMark[k] = openEnded ? 2 : 1;
+          runStart = -1;
         }
       }
-      if (MX.hover && MX.hover.sp === sp && MX.hover.num != null) {
-        const x = MX.nameW + MX.ox + (MX.hover.num - 1) * cw;
-        c.strokeStyle = tx; c.lineWidth = 1.2;
-        c.strokeRect(x + 0.5, y + 1, Math.max(2, cw - 1), MX.rowH - 2);
-      }
+      let lastM = '';
+      days.forEach((d, i) => {
+        const hv = cellH[sp.catc_id + '|' + d];
+        const fl = sp.flownByDate[d];
+        const mo = d.slice(0, 7); const rule = mo !== lastM; if (rule) lastM = mo;
+        const cls = ['cell']; if (rule) cls.push('mrule');
+        if (d === m.asOf) cls.push('today');
+        let style = '';
+        if (hv) {
+          const ph = (fl[0] && fl[0].phase) ? fl[0].phase.c : '#e88aff';
+          const k = 0.28 + 0.72 * Math.min(1, hv / maxH);
+          style = 'background:color-mix(in srgb,' + ph + ' ' + Math.round(k * 100) + '%,transparent)';
+        } else if (idleMark[i]) {
+          const c2 = idleMark[i] === 2 ? 'var(--v6-warn)' : 'var(--v6-bad)';
+          style = 'background:repeating-linear-gradient(45deg,color-mix(in srgb,' + c2 + ' 19%,transparent) 0 3px,transparent 3px 6px)';
+        }
+        const td = el('td', {
+          class: cls.join(' '), style,
+          title: sp.shortName + ' · ' + fd(d) + (fl ? ' · ' + fl.map(f => f.lesson).join(', ') + ' · ' + fH(hv, 2) : ' · no flying'),
+        }, []);
+        td.addEventListener('click', () => (fl && fl[0] && fl[0].num != null ? openLessonModal(sp, fl[0].num) : openSPDrawer(sp.catc_id)));
+        tr.appendChild(td);
+      });
+      tr.addEventListener('mouseenter', () => setFocus(sp.catc_id));
+      tr.addEventListener('mouseleave', () => setFocus(null));
+      tb.appendChild(tr);
     });
+    table.appendChild(tb);
 
-    // name gutter, painted last so panned cells slide under it
-    c.fillStyle = bg; c.fillRect(0, 0, MX.nameW, MX.h);
-    c.textAlign = 'left'; c.font = '10px Inter, system-ui, sans-serif';
-    MX.rows.forEach((sp, ri) => {
-      const y = MX.headH + ri * MX.rowH;
-      const hot = S.focusSp && String(sp.catc_id) === S.focusSp;
-      c.fillStyle = hot ? cssv('--v6-acc', '#e88aff') : tx;
-      c.globalAlpha = S.focusSp && !hot ? 0.4 : 1;
-      c.fillText(sp.shortName, 6, y + MX.rowH - 4);
-      c.globalAlpha = 1;
-    });
-    c.fillStyle = tx3; c.font = '8px "JetBrains Mono", monospace';
-    c.fillText('SP · lesson →', 6, MX.headH - 5);
-    c.strokeStyle = cssv('--v6-bd', 'rgba(255,255,255,.1)'); c.lineWidth = 1;
-    c.beginPath(); c.moveTo(MX.nameW - 0.5, 0); c.lineTo(MX.nameW - 0.5, MX.h); c.stroke();
+    const tf = el('tfoot');
+    const mk = (label, get) => {
+      const tr = el('tr', {}, [el('td', { class: 'idc', style: 'left:0' }, [label]), el('td', { class: 'idc', style: 'left:' + NW + 'px' }, [''])]);
+      days.forEach(d => { const v = get(d); tr.appendChild(el('td', { title: fd(d) + ': ' + v }, [v ? String(v) : ''])); });
+      return tr;
+    };
+    tf.appendChild(mk('Hours/day', d => { let t = 0; sps.forEach(sp => { t += cellH[sp.catc_id + '|' + d] || 0; }); return t ? t.toFixed(0) : ''; }));
+    tf.appendChild(mk('Lessons/day', d => { let t = 0; sps.forEach(sp => { const fl = sp.flownByDate[d]; if (fl) t += fl.length; }); return t || ''; }));
+    table.appendChild(tf);
+    host.appendChild(el('div', { class: 'v6-gw' }, [table]));
+  }
+
+  // Both grids are rebuilt from scratch on any change that reorders or filters
+  // the roster, so the curriculum grid, the activity calendar, the
+  // constellation and the roster table can never disagree about which SP are
+  // shown or in what order.
+  function regridAll() {
+    const sit = ROOT && $('#v6-act-situation', ROOT);
+    if (sit && sit._regrid) sit._regrid();
+    const ppl = ROOT && $('#v6-act-people', ROOT);
+    if (ppl && ppl._recal) ppl._recal();
   }
 
   // ── floating tooltip ─────────────────────────────────────────────────────
@@ -1290,7 +1719,7 @@
 
     // ── rate card / scenarios ──
     const sc = fc.scenarios.hours;
-    const rateTbl = el('table', { class: 'v6-t' }, [
+    const rateTbl = el('table', { class: 'v6-t v6-fit' }, [
       el('thead', {}, [el('tr', {}, ['Rate', 'h / day', 'Finishes', 'vs plan', 'Basis'].map(t => el('th', {}, [t])))]),
       el('tbody', {}, fc.rateCard.map(r => {
         const isReq = r.key === 'required';
@@ -1301,7 +1730,7 @@
           el('td', { class: 'n' }, [fH(r.value, 2)]),
           el('td', { class: 'n' }, [isReq ? fd(v.planEnd) : (proj && proj.date ? fd(proj.date) : 'never')]),
           el('td', { class: 'n', style: 'color:var(--v6-' + (slip == null ? 'tx3' : slip > 0 ? 'bad' : 'good') + ')' }, [slip == null ? '—' : sgn(slip, x => x.toFixed(0) + 'd')]),
-          el('td', { style: 'white-space:normal;color:var(--v6-tx3);font-size:10px' }, [r.basis]),
+          el('td', { style: 'color:var(--v6-tx3);font-size:9.5px;line-height:1.4' }, [r.basis]),
         ]);
       })),
     ]);
@@ -1420,7 +1849,6 @@
       return c * S.sortDir;
     });
   }
-  function sortedStudents() { return forecastRows().map(r => r.sp); }
 
   // Per-SP daily cumulative hours over a trailing window — the sparkline on
   // every SP card. Built from the SAME flown records the model deduped, so a
@@ -1452,13 +1880,25 @@
   // lines is the scaling bug V5 shipped once and had to fix.
   // ═════════════════════════════════════════════════════════════════════════
   let RACE = null;
+  function raceField() {
+    const f = S.raceFilter || {};
+    const byId = {}; FCAST.students.rows.forEach(x => { byId[String(x.catc_id)] = x; });
+    return forecastRows().map(x => x.sp).filter(sp => {
+      const fr = byId[String(sp.catc_id)];
+      if (f.rel && (!fr || fr.relative !== f.rel)) return false;
+      if (f.fi && (sp.fiFull || 'Unassigned') !== f.fi) return false;
+      if (f.se && (sp.se || '—') !== f.se) return false;
+      return true;
+    });
+  }
   function raceData() {
-    const key = S.unit + '|' + MODEL.asOf;
+    const f = S.raceFilter || {};
+    const key = S.unit + '|' + MODEL.asOf + '|' + (S.search || '') + '|' + (f.rel || '') + '|' + (f.fi || '') + '|' + (f.se || '');
     if (RACE && RACE.key === key) return RACE;
     const dates = FCAST.series.dates;
     const at = {}; dates.forEach((d, i) => { at[d] = i; });
     const isLes = S.unit === 'lessons';
-    const per = MODEL.students.map(sp => {
+    const per = raceField().map(sp => {
       const step = new Float64Array(dates.length);
       sp.flown.forEach(f => { const i = at[f.date]; if (i != null) step[i] += isLes ? 1 : f.effMins / 60; });
       let run = 0;
@@ -1531,23 +1971,9 @@
     };
   }
 
-  // ═════════════════════════════════════════════════════════════════════════
-  // STREAKS & IDLE DAYS  (V4's "Consecutive & Idle Streaks", redesigned)
-  //
-  // V4 plotted a running streak value per SP — positive while flying on
-  // consecutive days, negative while idle — as 28 overlapping lines. The signal
-  // is real but almost unreadable at that density, so the DEFAULT view here is
-  // an activity band: one row per SP, one column per calendar day, coloured by
-  // whether that day flew. A stand-down is then a vertical stripe across the
-  // whole batch, and one SP sitting out is a horizontal one — both visible at a
-  // glance, neither legible in the line chart. V4's line chart is kept behind a
-  // toggle for anyone who wants the original read.
-  //
-  // Both are walked from the BATCH's first flown date, not each SP's own, so a
-  // late starter reads as idle before they began. That is V4's behaviour and
-  // the model documents it; the panel note says so rather than leaving it to be
-  // misread as the whole batch stalling.
-  // ═════════════════════════════════════════════════════════════════════════
+  // Streak figures still back the idle statistics beside the activity
+  // calendar; the canvas band and the 28-line streak chart they used to draw
+  // were replaced by that calendar and are gone.
   const LONG_IDLE = 7;
   let STREAKS = null;
   function streakData() {
@@ -1561,167 +1987,6 @@
       return { sp: p.sp, vals, cur, bestRun, worstIdle: Math.abs(worstIdle), flyingDays: vals.filter(v => v > 0).length };
     });
     return (STREAKS = { asOf: MODEL.asOf, days: st.days, perSP: st.perSP, avg: st.avg, rows });
-  }
-
-  function streakCfg() {
-    const st = streakData();
-    const px = ds => new Date(ds + 'T00:00:00Z').getTime();
-    const ds = st.perSP.map(p => {
-      const base = 'hsla(' + p.sp.hue + ',80%,62%,0.5)';
-      return {
-        label: p.sp.shortName, data: p.series.map(q => ({ x: px(q.x), y: q.y })),
-        borderColor: base, borderWidth: 1.1, fill: false, pointRadius: 0, tension: .1, order: 3,
-        _sp: String(p.sp.catc_id), _base: base,
-        _hot: 'hsla(' + p.sp.hue + ',92%,66%,1)', _dim: 'hsla(' + p.sp.hue + ',35%,50%,0.12)',
-      };
-    });
-    ds.push({
-      label: 'Batch average', data: st.avg.map(q => ({ x: px(q.x), y: q.y })),
-      borderColor: cssv('--v6-acc', '#e88aff'), borderWidth: 2.6, fill: false, pointRadius: 0, order: 0, _sp: null,
-    });
-    return {
-      type: 'line', data: { datasets: ds },
-      options: {
-        interaction: { mode: 'nearest', axis: 'x', intersect: false },
-        onHover: (e, els, chart) => {
-          const d = els && els.length ? chart.data.datasets[els[0].datasetIndex] : null;
-          const id = d && d._sp ? d._sp : null;
-          if (id !== S.focusSp) setFocus(id);
-        },
-        onClick: (e, els, chart) => {
-          const d = els && els.length ? chart.data.datasets[els[0].datasetIndex] : null;
-          if (d && d._sp) openSPDrawer(d._sp);
-        },
-        scales: {
-          x: timeScale(),
-          y: valScale('days — above zero flying, below zero idle', { beginAtZero: false, grid: { color: c => (c.tick.value === 0 ? cssv('--v6-bd-2', 'rgba(255,255,255,.18)') : cssv('--v6-grid', 'rgba(255,255,255,.05)')) } }),
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: tooltipTheme({
-            callbacks: { label: c => c.dataset.label + ': ' + (c.parsed.y >= 0 ? c.parsed.y + ' consecutive flying ' + plural(c.parsed.y, 'day') : Math.abs(c.parsed.y) + ' idle ' + plural(c.parsed.y, 'day')) },
-          }),
-        },
-      },
-    };
-  }
-
-  // ── activity band (canvas) ───────────────────────────────────────────────
-  const BAND = { canvas: null, ctx: null, rows: [], rowH: 13, nameW: 118, headH: 20, hover: null };
-  // Ordered by whatever the page is currently sorted by, so the band, the
-  // matrix, the constellation and the roster always list the SPs in the same
-  // order — reading across panels is the whole point of this tab.
-  function bandRows() {
-    const byId = {};
-    streakData().rows.forEach(r => { byId[String(r.sp.catc_id)] = r; });
-    return forecastRows().map(f => byId[String(f.catc_id)]).filter(Boolean);
-  }
-  function mountBand() {
-    const cv = $('#v6-band', ROOT); if (!cv) return;
-    BAND.canvas = cv; BAND.ctx = cv.getContext('2d');
-    BAND.rows = bandRows();
-    sizeBand(); drawBand();
-    if (!cv._v6bound) {
-      cv._v6bound = true;
-      cv.addEventListener('pointermove', e => {
-        const hit = bandHit(e.offsetX, e.offsetY);
-        BAND.hover = hit; drawBand();
-        if (hit) {
-          if (S.focusSp !== String(hit.row.sp.catc_id)) setFocus(hit.row.sp.catc_id);
-          showTip(e.clientX, e.clientY, bandTip(hit));
-        } else hideTip();
-      });
-      cv.addEventListener('pointerleave', () => { BAND.hover = null; drawBand(); hideTip(); if (S.focusSp) setFocus(null); });
-      cv.addEventListener('click', e => { const hit = bandHit(e.offsetX, e.offsetY); if (hit) openSPDrawer(hit.row.sp.catc_id); });
-      onFocus(() => { if (BAND.ctx && document.body.contains(BAND.canvas)) drawBand(); });
-      window.addEventListener('resize', bandResize);
-      observeWidth(cv.parentElement, bandResize);
-      REVEAL_CLEANUP.push(() => window.removeEventListener('resize', bandResize));
-    }
-  }
-  function bandResize() { if (BAND.canvas && document.body.contains(BAND.canvas)) { sizeBand(); drawBand(); } }
-  function sizeBand() {
-    const cv = BAND.canvas; if (!cv) return;
-    const w = cv.parentElement.clientWidth || 800;
-    const hgt = BAND.headH + BAND.rows.length * BAND.rowH + 6;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    cv.style.width = w + 'px'; cv.style.height = hgt + 'px';
-    cv.width = Math.round(w * dpr); cv.height = Math.round(hgt * dpr);
-    BAND.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    BAND.w = w; BAND.h = hgt;
-    BAND.cellW = (w - BAND.nameW - 6) / Math.max(1, streakData().days.length);
-  }
-  function bandHit(x, y) {
-    const ri = Math.floor((y - BAND.headH) / BAND.rowH);
-    if (ri < 0 || ri >= BAND.rows.length) return null;
-    const days = streakData().days;
-    const di = Math.floor((x - BAND.nameW) / BAND.cellW);
-    return { row: BAND.rows[ri], ri, di: (di >= 0 && di < days.length) ? di : null };
-  }
-  function bandTip(hit) {
-    const r = hit.row, days = streakData().days;
-    if (hit.di == null) {
-      return '<b>' + esc(r.sp.name) + '</b><br>' + r.flyingDays + ' flying days of ' + days.length +
-        '<br>longest run ' + r.bestRun + 'd · longest idle ' + r.worstIdle + 'd';
-    }
-    const d = days[hit.di], v = r.vals[hit.di];
-    const flew = r.sp.flownByDate && r.sp.flownByDate[d];
-    return '<b>' + esc(r.sp.shortName) + ' · ' + fd(d) + '</b><br>' +
-      (flew ? flew.length + ' ' + plural(flew.length, 'lesson') + ': ' + flew.map(f => esc(f.lesson)).join(', ')
-        : 'no flying — ' + Math.abs(v) + ' ' + plural(v, 'day') + ' into an idle run');
-  }
-  function drawBand() {
-    const c = BAND.ctx; if (!c) return;
-    const days = streakData().days, cw = BAND.cellW;
-    const tx = cssv('--v6-tx', '#eef2ff'), tx3 = cssv('--v6-tx3', '#65708c');
-    const bg = cssv('--v6-glass-2', '#141c2d');
-    const fly = cssv('--v6-acc2', '#22d3ee'), idle = cssv('--v6-bd', 'rgba(255,255,255,.1)'), bad = cssv('--v6-bad', '#fb7185');
-    c.clearRect(0, 0, BAND.w, BAND.h);
-
-    // month ticks
-    c.font = '8px "JetBrains Mono", monospace'; c.textAlign = 'left'; c.fillStyle = tx3;
-    let lastMonth = '';
-    days.forEach((d, i) => {
-      const mo = d.slice(0, 7);
-      if (mo === lastMonth) return;
-      lastMonth = mo;
-      const x = BAND.nameW + i * cw;
-      c.fillText(new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }), x + 1, BAND.headH - 7);
-      c.strokeStyle = idle; c.lineWidth = 1;
-      c.beginPath(); c.moveTo(x + 0.5, BAND.headH - 5); c.lineTo(x + 0.5, BAND.h); c.stroke();
-    });
-
-    BAND.rows.forEach((r, ri) => {
-      const y = BAND.headH + ri * BAND.rowH;
-      const hot = S.focusSp && String(r.sp.catc_id) === S.focusSp;
-      c.globalAlpha = S.focusSp && !hot ? 0.28 : 1;
-      if (hot) { c.fillStyle = bg; c.fillRect(0, y, BAND.w, BAND.rowH); }
-      for (let i = 0; i < days.length; i++) {
-        const v = r.vals[i];
-        const x = BAND.nameW + i * cw;
-        if (v > 0) { c.fillStyle = fly; c.fillRect(x, y + 2, Math.max(1, cw - 0.4), BAND.rowH - 4); }
-        else if (v <= -LONG_IDLE) { c.fillStyle = bad; c.globalAlpha *= 0.55; c.fillRect(x, y + 4.5, Math.max(1, cw - 0.4), BAND.rowH - 9); c.globalAlpha = S.focusSp && !hot ? 0.28 : 1; }
-        else { c.fillStyle = idle; c.fillRect(x, y + 5.5, Math.max(1, cw - 0.4), BAND.rowH - 11); }
-      }
-      if (BAND.hover && BAND.hover.ri === ri && BAND.hover.di != null) {
-        c.strokeStyle = tx; c.lineWidth = 1;
-        c.strokeRect(BAND.nameW + BAND.hover.di * cw + 0.5, y + 1, Math.max(2, cw - 1), BAND.rowH - 2);
-      }
-      c.globalAlpha = 1;
-    });
-
-    // name gutter last, so the band slides under it
-    c.fillStyle = cssv('--v6-bg-2', '#080c18'); c.fillRect(0, 0, BAND.nameW, BAND.h);
-    c.font = '10px Inter, system-ui, sans-serif'; c.textAlign = 'left';
-    BAND.rows.forEach((r, ri) => {
-      const hot = S.focusSp && String(r.sp.catc_id) === S.focusSp;
-      c.fillStyle = hot ? cssv('--v6-acc', '#e88aff') : tx;
-      c.globalAlpha = S.focusSp && !hot ? 0.4 : 1;
-      c.fillText(r.sp.shortName, 6, BAND.headH + ri * BAND.rowH + BAND.rowH - 3.5);
-      c.globalAlpha = 1;
-    });
-    c.strokeStyle = idle; c.lineWidth = 1;
-    c.beginPath(); c.moveTo(BAND.nameW - 0.5, 0); c.lineTo(BAND.nameW - 0.5, BAND.h); c.stroke();
   }
 
   // A chart rebuilt after a theme switch is a NEW Chart.js instance, so the
@@ -1803,8 +2068,7 @@
         if (S.sortKey === k) S.sortDir *= -1; else { S.sortKey = k; S.sortDir = 1; }
         persist();
         $$('button', sortSeg).forEach(b => b.classList.toggle('on', b.getAttribute('data-k') === S.sortKey));
-        renderCards(); renderRoster(); MX.rows = sortedStudents(); drawMatrix();
-        if (BAND.ctx) { BAND.rows = bandRows(); drawBand(); }
+        renderCards(); renderRoster(); regridAll();
       }, 'data-k': k }, [def.label])));
 
     grid.appendChild(card('Constellation', m.students.length + ' SP · click for the full record',
@@ -1812,7 +2076,6 @@
 
     // ── the race (V4's Actual vs Planned, redesigned) ──
     const raceBox = el('div', { class: 'v6-chart', style: 'height:360px' }, [el('canvas', { id: 'v6-race' })]);
-    const r = raceData();
     const standing = (label, val, sub, spId) => {
       const node = el('div', { class: 'v6-standing', 'data-sp': spId ? String(spId) : null }, [
         el('div', { class: 'l' }, [label]), el('div', { class: 'v' }, [val]), el('div', { class: 's' }, [sub]),
@@ -1825,36 +2088,78 @@
       return node;
     };
     const uv = v => (S.unit === 'lessons' ? fN(v) + ' les' : fH(v, 1));
-    const standings = el('div', { class: 'v6-standings' }, [
-      standing('Out in front', r.leader ? r.leader.sp.shortName : '—', r.leader ? uv(r.leader.final) : '', r.leader && r.leader.sp.catc_id),
-      standing('Batch median', uv(r.median), 'the middle of the pack', null),
-      standing('Furthest back', r.laggard ? r.laggard.sp.shortName : '—', r.laggard ? uv(r.laggard.final) : '', r.laggard && r.laggard.sp.catc_id),
-      standing('Front to back', uv(r.spread), 'gap across the batch', null),
+    const standingsHost = el('div', {});
+    function renderStandings() {
+      const rr = raceData();
+      standingsHost.innerHTML = '';
+      standingsHost.appendChild(el('div', { class: 'v6-standings' }, [
+        standing('Out in front', rr.leader ? rr.leader.sp.shortName : '—', rr.leader ? uv(rr.leader.final) : '', rr.leader && rr.leader.sp.catc_id),
+        standing('Median', uv(rr.median), rr.per.length + ' SP shown', null),
+        standing('Furthest back', rr.laggard ? rr.laggard.sp.shortName : '—', rr.laggard ? uv(rr.laggard.final) : '', rr.laggard && rr.laggard.sp.catc_id),
+        standing('Front to back', uv(rr.spread), 'gap across the field', null),
+      ]));
+    }
+    // Filters: narrow the field to a group worth comparing. They drive the same
+    // `raceFilter` the chart builder reads, so the standings strip and the
+    // chart always describe the same set of SP.
+    const fiList = [...new Set(MODEL.students.map(sp => sp.fiFull || 'Unassigned'))].sort();
+    const seList = [...new Set(MODEL.students.map(sp => sp.se || '—'))].sort();
+    const mkFilter = (label, key, opts) => {
+      const seg = el('div', { class: 'v6-seg' }, [{ v: '', l: 'All' }].concat(opts.map(o => ({ v: o, l: o })))
+        .map(o => el('button', {
+          class: (S.raceFilter[key] || '') === o.v ? 'on' : '', 'data-v': o.v, title: label + ': ' + o.l,
+          onclick: () => {
+            S.raceFilter[key] = o.v;
+            $$('button', seg).forEach(b => b.classList.toggle('on', (b.getAttribute('data-v') || '') === (S.raceFilter[key] || '')));
+            RACE = null;
+            mkChart('v6-race', raceCfg()); bindChartFocus('v6-race');
+            renderStandings();
+          },
+        }, [o.l])));
+      return el('div', { class: 'v6-ctl' }, [el('span', { class: 'v6-ctl-l' }, [label]), seg]);
+    };
+    const raceFilters = el('div', { style: 'display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px' }, [
+      mkFilter('Standing', 'rel', ['ahead', 'typical', 'trailing']),
+      mkFilter('Instructor', 'fi', fiList),
+      mkFilter('Aircraft', 'se', seList),
     ]);
+
     grid.appendChild(card('The race', 'every SP’s own progress against the plan · hover to isolate, click for the record', [
+      raceFilters,
       raceBox,
       legendRow([[cssv('--v6-acc', '#e88aff'), 'Batch average'], [cssv('--v6-tx3', '#65708c'), 'Curriculum plan / SP'],
         [cssv('--v6-bad', '#fb7185'), 'Revised target / SP'], ['hsla(300,80%,62%,.7)', 'one line per SP']]),
-      standings,
-      el('div', { class: 'v6-note', style: 'margin-top:11px' }, [
-        'Plan and target are drawn per student — the model publishes them as ' + MODEL.students.length +
-        '-SP batch totals, and comparing a batch total against individual lines would put them ' +
-        MODEL.students.length + '× too high. Hovering any SP here, on a card, in the ladder or in the roster highlights them everywhere at once.',
-      ]),
-    ], 'v6-c12'));
+      standingsHost,
+    ], 'v6-c12', { info: [
+      el('p', {}, ['One cumulative line per student pilot against the curriculum plan and the revised target, with the batch average over the top. Where the lines fan out is where the cohort began to separate.']),
+      el('p', { style: 'margin-top:8px' }, ['Plan and target are drawn ', el('b', {}, ['per student']), ' — the metrics engine publishes them as ' + MODEL.students.length +
+        '-SP batch totals, and comparing a batch total against individual lines would place them ' + MODEL.students.length + '× too high.']),
+      el('p', { style: 'margin-top:8px' }, ['Hovering any SP — here, on a card, in the ladder, in the roster or in the calendar — highlights them everywhere at once. The filters narrow the field to one instructor, one aircraft type or one standing band, and the standings underneath follow the filter.']),
+    ] }));
 
-    // ── streaks & idle days (V4's Consecutive & Idle Streaks, redesigned) ──
+    // ── activity calendar (replaces the streak band) ──
     const st = streakData();
-    const bandWrap = el('div', { class: 'v6-band-wrap' }, [el('canvas', { id: 'v6-band' })]);
-    const streakBox = el('div', { class: 'v6-chart', style: 'height:320px;display:none' }, [el('canvas', { id: 'v6-streak' })]);
-    const idleSeg = el('div', { class: 'v6-seg' }, [['band', 'Activity band'], ['line', 'Streak lines']].map(([k, lbl]) =>
-      el('button', { class: k === 'band' ? 'on' : '', 'data-v': k, onclick: () => {
-        $$('button', idleSeg).forEach(b => b.classList.toggle('on', b.getAttribute('data-v') === k));
-        bandWrap.style.display = k === 'band' ? '' : 'none';
-        streakBox.style.display = k === 'band' ? 'none' : '';
-        if (k === 'band') { sizeBand(); drawBand(); }
-        else if (!CHARTS['v6-streak']) { mkChart('v6-streak', streakCfg()); bindChartFocus('v6-streak'); }
-      } }, [lbl])));
+    const calHost = el('div', {});
+    const calTools = el('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' }, [
+      (function () {
+        const seg = el('div', { class: 'v6-seg' }, [['none', 'No group'], ['instructor', 'By instructor']].map(([k, lbl]) =>
+          el('button', { class: CAL.groupBy === k ? 'on' : '', 'data-g': k, onclick: () => {
+            CAL.groupBy = k;
+            $$('button', seg).forEach(b => b.classList.toggle('on', b.getAttribute('data-g') === k));
+            buildActivityCalendar(calHost);
+          } }, [lbl])));
+        return seg;
+      })(),
+      (function () {
+        const seg = el('div', { class: 'v6-seg' }, [[30, '30d'], [60, '60d'], [90, '90d'], [0, 'All']].map(([k, lbl]) =>
+          el('button', { class: CAL.range === k ? 'on' : '', 'data-r': String(k), onclick: () => {
+            CAL.range = k;
+            $$('button', seg).forEach(b => b.classList.toggle('on', +b.getAttribute('data-r') === CAL.range));
+            buildActivityCalendar(calHost);
+          } }, [lbl])));
+        return seg;
+      })(),
+    ]);
 
     const nowIdle = st.rows.filter(x => x.cur < 0).sort((a, b) => a.cur - b.cur);
     const nowFlying = st.rows.filter(x => x.cur > 0).sort((a, b) => b.cur - a.cur);
@@ -1873,48 +2178,68 @@
       standing('Flying-day rate', (flyRate * 100).toFixed(0) + '%', 'per SP across ' + totalDays + ' days', null),
     ]);
 
-    grid.appendChild(card('Streaks & idle days', 'one row per SP, one column per calendar day', [
-      bandWrap, streakBox,
-      legendRow([[cssv('--v6-acc2', '#22d3ee'), 'flew that day'], [cssv('--v6-bd', 'rgba(255,255,255,.1)'), 'idle'],
-        [cssv('--v6-bad', '#fb7185'), 'idle run of ' + LONG_IDLE + '+ days']]),
-      idleStats,
-      el('div', { class: 'v6-note', style: 'margin-top:11px' }, [
-        'A vertical stripe across every row is a batch-wide stand-down; a horizontal one is a single SP sitting out. ',
-        'Streaks are walked from the batch’s first flown date (' + fd(MODEL.batchStart) + '), not each SP’s own — so an SP who started late reads as idle before they began, rather than the batch appearing to stall. ',
-        'Switch to Streak lines for the original per-SP view.',
-      ]),
-    ], 'v6-c12', { tools: idleSeg }));
+    grid.appendChild(card('Roster · activity calendar', 'one row per SP, one column per calendar day', [
+      calHost, idleStats,
+    ], 'v6-c12', { tools: calTools, info: [
+      el('p', {}, ['Who flew, on what day, for how long. Each cell is shaded by the hours that SP flew that day and coloured by the phase they were in, so intensity and progress read at once. Click a cell to open the lesson behind it.']),
+      el('p', { style: 'margin-top:8px' }, ['A blank column down the whole grid is a batch-wide stand-down; a hatched red run is one SP idle for a week or more between flights, and amber means they are still idle now. The two footer rows give the batch\u2019s hours and lessons for each day.']),
+      el('p', { style: 'margin-top:8px' }, ['Grouping by instructor re-sorts the rows under each FI, which is the view for asking whether a particular instructor\u2019s students are the ones standing still.']),
+    ] }));
 
-    // ── roster table ──
+    // ── roster, arranged like V4's Progress Ranking ──
+    // Rank badge, an inline progress bar carrying the target marker, and colour
+    // that means something: green at or ahead of the reference, red behind,
+    // amber idle. Column widths are declared so the table FITS its card instead
+    // of running off to the right where the columns cannot be reached.
+    const nowLesson = MODEL.batch.targetLessonToday == null ? null : Math.round(MODEL.batch.targetLessonToday);
     const COLS = [
-      ['SP', r => r.shortName, 'name'],
-      ['Call sign', r => r.nick || '—', null],
-      ['SE', r => r.sp.se || '—', null],
-      ['Instructor', r => r.sp.fiFull || '—', null],
-      ['Lessons', r => r.lessonsDone + ' / ' + MODEL.curriculum.count, 'lessons'],
-      ['Hours', r => fH(r.hoursDone, 1), 'hours'],
-      ['%', r => fPct(r.sp.pct), null],
-      ['vs plan', r => sgn(r.sp.hrsDelta, x => fH(x, 0)), 'gap'],
-      ['Last flight', r => fd(r.sp.lastDate), null],
-      ['Idle', r => (r.idleDays == null ? '—' : r.idleDays + 'd'), 'idle'],
-      ['Next', r => r.sp.nextLesson, null],
-      ['Projected finish', r => fd(r.etcDate), 'etc'],
-      ['vs cohort', r => (r.vsCohortDays == null ? '—' : sgn(r.vsCohortDays, x => x.toFixed(0) + 'd')), 'rel'],
-      ['Standing', r => r.relative, null],
+      { h: '#', w: '3.1%', key: null, cell: (r, i) => {
+        const n = forecastRows().length;
+        const cls = i < 3 ? ' top' : (i >= n - 3 ? ' bot' : '');
+        return el('span', { class: 'v6-rank' + cls, title: 'Position under the current sort' }, [String(i + 1)]);
+      } },
+      { h: 'Student pilot', w: '10.3%', key: 'name', cell: r => el('span', { title: r.name }, [r.shortName]) },
+      { h: 'Call sign', w: '5.3%', key: null, cell: r => r.nick || '—' },
+      { h: 'SE', w: '4.5%', key: null, cell: r => r.sp.se || '—' },
+      { h: 'Instructor', w: '7.4%', key: null, cell: r => el('span', { title: r.sp.fiFull || '' }, [r.sp.fiFull || '—']) },
+      { h: 'Progress', w: '12.6%', key: 'lessons', cell: r => {
+        const pct = Math.max(0, Math.min(100, r.sp.pct || 0));
+        const tgt = nowLesson == null ? null : (nowLesson / (MODEL.curriculum.count || 96)) * 100;
+        const ahead = nowLesson != null && r.lessonsDone >= nowLesson;
+        return el('div', { class: 'v6-pbar', title: r.lessonsDone + ' of ' + MODEL.curriculum.count + ' lessons' +
+          (nowLesson == null ? '' : ' · target today L' + nowLesson) }, [
+          el('i', { style: 'width:' + pct.toFixed(1) + '%;background:' + (ahead ? 'var(--v6-good)' : 'linear-gradient(90deg,var(--v6-acc),var(--v6-acc3))') }),
+          tgt == null ? null : el('u', { style: 'left:' + Math.min(99.6, tgt).toFixed(1) + '%' }),
+          el('b', {}, [r.lessonsDone + '/' + MODEL.curriculum.count]),
+        ]);
+      } },
+      { h: '%', w: '4.3%', key: null, n: true, cell: r => fPct(r.sp.pct) },
+      { h: 'Hours', w: '5.3%', key: 'hours', n: true, cell: r => fH(r.hoursDone, 1) },
+      { h: 'vs plan', w: '5.7%', key: 'gap', n: true, tone: r => (r.sp.hrsDelta >= 0 ? 'good' : 'bad'), cell: r => sgn(r.sp.hrsDelta, x => fH(x, 0)) },
+      { h: 'vs target', w: '5.5%', key: null, n: true, tone: r => (nowLesson == null ? '' : (r.lessonsDone >= nowLesson ? 'good' : 'bad')),
+        cell: r => (nowLesson == null ? '—' : sgn(r.lessonsDone - nowLesson, x => String(Math.round(x)))) },
+      { h: 'Last flight', w: '6.4%', key: null, n: true, cell: r => fd(r.sp.lastDate) },
+      { h: 'Idle', w: '4.1%', key: 'idle', n: true, tone: r => ((r.idleDays || 0) >= 7 ? 'warn' : ''), cell: r => (r.idleDays == null ? '—' : r.idleDays + 'd') },
+      { h: 'Next lesson', w: '6.7%', key: null, cell: r => r.sp.nextLesson },
+      { h: 'Finish', w: '6.4%', key: 'etc', n: true, cell: r => fd(r.etcDate) },
+      { h: 'vs cohort', w: '5.7%', key: 'rel', n: true, tone: r => (r.vsCohortDays == null ? '' : r.vsCohortDays <= 0 ? 'good' : 'bad'),
+        cell: r => (r.vsCohortDays == null ? '—' : sgn(r.vsCohortDays, x => x.toFixed(0) + 'd')) },
+      { h: 'Standing', w: '6.6%', key: null, cell: r => el('span', { class: 'v6-pill ' + r.relative }, [r.relative]) },
     ];
     const tb = el('tbody');
-    const table = el('table', { class: 'v6-t' }, [
-      el('thead', {}, [el('tr', {}, COLS.map(([label, , key]) => {
+    const table = el('table', { class: 'v6-t v6-fit' }, [
+      el('colgroup', {}, COLS.map(c => el('col', { style: 'width:' + c.w }))),
+      el('thead', {}, [el('tr', {}, COLS.map(c => {
         const th = el('th', {
-          tabindex: key ? '0' : null, role: key ? 'button' : null,
-          'aria-sort': key && S.sortKey === key ? (S.sortDir === 1 ? 'ascending' : 'descending') : 'none',
-        }, [label + (key && S.sortKey === key ? (S.sortDir === 1 ? ' ▲' : ' ▼') : '')]);
-        if (key) {
+          class: c.n ? 'n' : '',
+          tabindex: c.key ? '0' : null, role: c.key ? 'button' : null,
+          'aria-sort': c.key && S.sortKey === c.key ? (S.sortDir === 1 ? 'ascending' : 'descending') : 'none',
+        }, [c.h + (c.key && S.sortKey === c.key ? (S.sortDir === 1 ? ' ▲' : ' ▼') : '')]);
+        if (c.key) {
           const go = () => {
-            if (S.sortKey === key) S.sortDir *= -1; else { S.sortKey = key; S.sortDir = 1; }
-            persist(); renderRoster(); renderCards(); MX.rows = sortedStudents(); drawMatrix();
-            if (BAND.ctx) { BAND.rows = bandRows(); drawBand(); }
-            $$('.v6-seg button', sortSeg).forEach(b => b.classList.toggle('on', b.getAttribute('data-k') === S.sortKey));
+            if (S.sortKey === c.key) S.sortDir *= -1; else { S.sortKey = c.key; S.sortDir = 1; }
+            persist(); renderRoster(); renderCards(); regridAll();
+            $$('button', sortSeg).forEach(b => b.classList.toggle('on', b.getAttribute('data-k') === S.sortKey));
           };
           th.addEventListener('click', go);
           th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
@@ -1925,37 +2250,42 @@
     ]);
     function renderRoster() {
       tb.innerHTML = '';
-      forecastRows().forEach(r => {
-        const tr = el('tr', { 'data-sp': String(r.catc_id) }, COLS.map(([, get], i) => {
-          const val = get(r);
-          const cls = i === 0 ? '' : 'n';
-          if (i === COLS.length - 1) return el('td', {}, [el('span', { class: 'v6-pill ' + r.relative }, [String(val)])]);
-          return el('td', { class: cls }, [String(val)]);
+      forecastRows().forEach((r, i) => {
+        const tr = el('tr', { 'data-sp': String(r.catc_id) }, COLS.map(c => {
+          const v = c.cell(r, i);
+          const tone = c.tone ? c.tone(r) : '';
+          return el('td', { class: (c.n ? 'n ' : '') + tone }, [typeof v === 'string' || typeof v === 'number' ? String(v) : v]);
         }));
         tr.addEventListener('mouseenter', () => setFocus(r.catc_id));
         tr.addEventListener('mouseleave', () => setFocus(null));
         tr.addEventListener('click', () => openSPDrawer(r.catc_id));
         tb.appendChild(tr);
       });
-      // Keep the header arrows honest after a sort driven from elsewhere.
       $$('th', table).forEach((th, i) => {
-        const key = COLS[i] && COLS[i][2];
-        const base = COLS[i] ? COLS[i][0] : '';
-        if (!key) return;
-        th.textContent = base + (S.sortKey === key ? (S.sortDir === 1 ? ' ▲' : ' ▼') : '');
-        th.setAttribute('aria-sort', S.sortKey === key ? (S.sortDir === 1 ? 'ascending' : 'descending') : 'none');
+        const c = COLS[i]; if (!c || !c.key) return;
+        th.textContent = c.h + (S.sortKey === c.key ? (S.sortDir === 1 ? ' ▲' : ' ▼') : '');
+        th.setAttribute('aria-sort', S.sortKey === c.key ? (S.sortDir === 1 ? 'ascending' : 'descending') : 'none');
       });
     }
     renderRoster();
-    grid.appendChild(card('Roster', 'click any row for the full record · click a header to sort',
-      [el('div', { class: 'v6-tw' }, [table])], 'v6-c12'));
+    grid.appendChild(card('Roster', 'click a row for the record · click a header to sort',
+      [el('div', { class: 'v6-tw' }, [table])], 'v6-c12', { info: [
+        el('p', {}, ['Every SP under the current sort and search, ranked. The rank badge is green for the leading three and red for the trailing three under whatever sort is active, so the ends of the batch are visible without reading the numbers.']),
+        el('p', { style: 'margin-top:8px' }, ['The progress bar fills to lessons completed and turns green once that SP is at or past the red tick, which marks the lesson the target schedule expects today. ',
+          el('b', {}, ['vs plan']), ' is hours against the curriculum plan, ', el('b', {}, ['vs target']),
+          ' is lessons against today\u2019s target checkpoint, and ', el('b', {}, ['vs cohort']),
+          ' is days between that SP\u2019s projected finish and the batch median. Green means at or ahead of the reference, red behind, amber an idle run of a week or more.']),
+      ] }));
 
     sec._afterMount = () => {
       mkChart('v6-race', raceCfg());
       bindChartFocus('v6-race');
-      mountBand();
+      renderStandings();
+      buildActivityCalendar(calHost);
+      observeWidth(calHost, () => buildActivityCalendar(calHost));
     };
-    sec._rerender = () => { renderCards(); renderRoster(); BAND.rows = bandRows(); sizeBand(); drawBand(); };
+    sec._rerender = () => { renderCards(); renderRoster(); buildActivityCalendar(calHost); };
+    sec._recal = () => buildActivityCalendar(calHost);
     return sec;
   }
 
@@ -1980,6 +2310,19 @@
     add('ops-augment', 'Ops-completed lessons missing from Progress are credited, and counted',
       SYNC != null,
       SYNC ? SYNC.extraLessons + ' lessons across ' + SYNC.syncCount + ' SP folded in from Ops' : 'reconcile helper unavailable');
+    // V6 re-buckets SPIC from Solo to Dual for the Output chart. That must move
+    // the boundary and nothing else — if the totals drift, the re-split has
+    // silently dropped or double-counted sorties.
+    (function () {
+      const base = MODEL.output({ unit: 'hours', period: 'month', showAll: true });
+      const mine = v6Output('hours', 'month');
+      const baseTot = base.stacks.reduce((a, k) => a + k.Dual + k.Solo + k.Simulator, 0);
+      const mineTot = mine.stacks.reduce((a, k) => a + k.Dual + k.Solo + k.Simulator, 0);
+      add('output-split', 'SPIC re-split changes the Dual/Solo boundary and no total',
+        Math.abs(baseTot - mineTot) < 0.01,
+        mineTot.toFixed(2) + 'h vs the model\u2019s ' + baseTot.toFixed(2) + 'h');
+    })();
+
     const gradeConsistent = FCAST.verdict.p50 == null || FCAST.verdict.slipDays === (FCAST.verdict.planEnd ? U.dateDiff(FCAST.verdict.p50, FCAST.verdict.planEnd) : null);
     add('verdict', 'Headline verdict is derived from the forecast, not restated', gradeConsistent,
       FCAST.verdict.grade + ' · ' + FCAST.verdict.slipDays + 'd');
@@ -1988,7 +2331,7 @@
 
   function buildIntegrity() {
     const m = MODEL, fc = FCAST;
-    const { sec, grid } = actShell('integrity', '05', 'Can you trust this page?',
+    const { sec, grid } = actShell('integrity', '05', 'Integrity check',
       'Every invariant the three layers assert about themselves, evaluated live against the data on screen. If any of these fails, the number beside it on this page is wrong — that is the point of showing them.');
 
     const suites = [
@@ -1999,13 +2342,47 @@
     const totalPass = suites.reduce((a, [, s]) => a + s.checks.filter(c => c.pass).length, 0);
     const totalAll = suites.reduce((a, [, s]) => a + s.checks.length, 0);
 
+    // The detail is collapsed by default. A reader wants one line — "everything
+    // checks out" — and only opens the 35 individual invariants when it does
+    // not. The summary bar is therefore the section, and the rest is disclosure.
+    const detail = el('div', { class: 'v6-grid', style: 'display:none;width:100%' });
+    const allPass = totalPass === totalAll;
+    const toggle = el('button', {
+      class: 'v6-btn' + (allPass ? '' : ' v6-primary'), 'aria-expanded': 'false',
+      onclick: () => {
+        const open = detail.style.display === 'none';
+        detail.style.display = open ? 'grid' : 'none';
+        toggle.textContent = open ? '▲ Hide the detail' : '▼ Show all ' + totalAll + ' checks';
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      },
+    }, ['▼ Show all ' + totalAll + ' checks']);
+
+    grid.appendChild(card('Integrity check', 'three layers · evaluated live', [
+      el('div', { style: 'display:flex;align-items:center;gap:16px;flex-wrap:wrap' }, [
+        el('div', {}, [
+          el('div', { class: 'v6-stat ' + (allPass ? 'good' : 'bad'), style: 'border:0;padding:0;background:transparent' }, [
+            el('div', { class: 'l' }, [allPass ? 'All checks pass' : 'Checks failing']),
+            el('div', { class: 'v' }, [totalPass + ' / ' + totalAll]),
+            el('div', { class: 's' }, [suites.map(([n, su]) => n.split(' · ')[0] + ' ' + su.checks.filter(c => c.pass).length + '/' + su.checks.length).join(' · ')]),
+          ]),
+        ]),
+        el('div', { style: 'flex:1;min-width:180px' }),
+        toggle,
+      ]),
+      detail,
+    ], 'v6-c12', { info: [
+      el('p', {}, ['Three layers each assert things about their own output, and all of them are re-evaluated against the data currently on screen every time this page builds — including under a time-travelled as-of date.']),
+      el('p', { style: 'margin-top:8px' }, ['The metrics engine checks that its totals reconcile (per-SP hours sum to the batch, lessons never exceed the curriculum, the lag line matches the headline delta). The forecast engine checks that its projections are internally consistent (the cone is ordered and monotone, the resampler is unbiased, per-SP rates sum back to the batch rate, the same seed reproduces the same dates). This view checks that what is drawn matches what those two produced.']),
+      el('p', { style: 'margin-top:8px' }, ['If any check fails, the figure next to it on this page is wrong — which is the reason for showing them rather than asserting the page is correct.']),
+    ] }));
+
     suites.forEach(([name, suite]) => {
       const box = el('div', { class: 'v6-checks' }, suite.checks.map(c =>
         el('div', { class: 'v6-check ' + (c.pass ? 'ok' : 'no'), title: c.detail || '' }, [
           el('i', {}, [c.pass ? '✓' : '✕']),
           el('div', {}, [el('div', {}, [c.label]), el('div', { class: 'd' }, [c.detail || ''])]),
         ])));
-      grid.appendChild(card(name, suite.checks.filter(c => c.pass).length + ' / ' + suite.checks.length + ' pass', box, 'v6-c12'));
+      detail.appendChild(card(name, suite.checks.filter(c => c.pass).length + ' / ' + suite.checks.length + ' pass', box, 'v6-c12'));
     });
 
     // ── provenance ──
@@ -2021,7 +2398,7 @@
       ['Resampler check', 'runs drew ' + fc.monteCarlo.hours.drawnMean + ' h/day against the ' + fc.monteCarlo.hours.dailyMean + ' h/day quoted — circular blocks keep these identical'],
       ['Reproducibility', 'the seed is fixed in code — reloading, re-exporting or reprinting reproduces identical dates'],
     ].forEach(([k, v]) => { prov.appendChild(el('dt', {}, [k])); prov.appendChild(el('dd', {}, [v])); });
-    grid.appendChild(card('Provenance', 'where every figure on this page came from', prov, 'v6-c7'));
+    detail.appendChild(card('Provenance', 'where every figure on this page came from', prov, 'v6-c7'));
 
     // ── report CTA ──
     const cta = el('div', {}, [
@@ -2673,7 +3050,7 @@
         S.search = search.value;
         const people = $('#v6-act-people', ROOT);
         if (people && people._rerender) people._rerender();
-        MX.rows = sortedStudents(); sizeMatrix(); drawMatrix();
+        regridAll();
       }, 140);
     });
     hud.appendChild(el('div', { class: 'v6-ctl' }, [el('span', { class: 'v6-ctl-l' }, ['Find SP']), search]));
@@ -2709,6 +3086,7 @@
     if (CHARTS['v6-hist']) mkChart('v6-hist', histCfg());
     // The race is per-SP cumulative in the selected unit; streak lines are day
     // counts and are unit-free, so they are deliberately not rebuilt here.
+    if (CHARTS['v6-lag']) mkChart('v6-lag', lagCfg());
     if (CHARTS['v6-race']) { RACE = null; mkChart('v6-race', raceCfg()); bindChartFocus('v6-race'); }
     const hist = $('#v6-act-history', ROOT);
     if (hist && hist._renderFrame) hist._renderFrame();
@@ -2786,10 +3164,10 @@
       // Every canvas has to be repainted, not just the charts — a canvas caches
       // whatever colour it was drawn with. Missing the band here left its name
       // gutter dark on a white page.
-      if (MX.ctx && MX.canvas && document.body.contains(MX.canvas)) drawMatrix();
-      if (BAND.ctx && BAND.canvas && document.body.contains(BAND.canvas)) drawBand();
+      // The grids read their colours from CSS, so they only need redrawing to
+      // pick up the new phase/idle tints on cells painted with color-mix().
+      regridAll();
       if (CHARTS['v6-race']) bindChartFocusRefresh('v6-race');
-      if (CHARTS['v6-streak']) { mkChart('v6-streak', streakCfg()); bindChartFocus('v6-streak'); }
     });
     mo.observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
     REVEAL_CLEANUP.push(() => mo.disconnect());
@@ -2801,10 +3179,7 @@
     if (PLAY_TIMER) { clearInterval(PLAY_TIMER); PLAY_TIMER = null; }
     destroyCharts();
     REVEAL_CLEANUP.splice(0).forEach(fn => { try { fn(); } catch (e) {} });
-    window.removeEventListener('resize', matrixResize);
     closeOverlays(); closeReport(); hideTip();
-    MX.canvas = null; MX.ctx = null;
-    BAND.canvas = null; BAND.ctx = null;
   }
 
   function remount() {
