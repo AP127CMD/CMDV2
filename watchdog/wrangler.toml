@@ -4,7 +4,10 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 [triggers]
-crons = ["*/5 * * * *"]
+# */2 (was */5): the cron is now a backstop — a Pi/CI publish push-triggers a
+# run immediately via POST /notify. Per-invocation CPU is unchanged (reads the
+# small flight-data-recent.js, short-circuits on unchanged extractFeedSig).
+crons = ["*/2 * * * *"]
 
 [[kv_namespaces]]
 binding = "KV"

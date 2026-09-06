@@ -304,7 +304,7 @@ async function runWatchdog(env) {
   }
 }
 
-async function handleFetch(request, env) {
+async function handleFetch(request, env, ctx) {
   const url = new URL(request.url);
   const cors = corsHeaders(request);
   const json = (data, status = 200) =>
@@ -316,6 +316,19 @@ async function handleFetch(request, env) {
   // CORS preflight
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: cors });
+  }
+
+  // POST /notify — push trigger. A Pi/CI publish calls this so the diff runs
+  // immediately instead of waiting up to one cron interval (*/2). runWatchdog()
+  // already no-ops cheaply when extractFeedSig shows the feed is unchanged, so
+  // a duplicate or spurious notify is harmless.
+  if (url.pathname === '/notify' && request.method === 'POST') {
+    if (request.headers.get('X-API-Key') !== env.WATCHDOG_API_KEY) {
+      return json({ error: 'unauthorized' }, 401);
+    }
+    if (ctx && ctx.waitUntil) ctx.waitUntil(runWatchdog(env));
+    else await runWatchdog(env);
+    return json({ ok: true }, 202);
   }
 
   // GET /status — includes computed staleness so an external dead-man's-switch is trivial.
@@ -502,6 +515,6 @@ export default {
     ctx.waitUntil(runWatchdog(env));
   },
   async fetch(request, env, ctx) {
-    return handleFetch(request, env);
+    return handleFetch(request, env, ctx);
   },
 };
