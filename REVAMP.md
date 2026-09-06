@@ -4057,3 +4057,49 @@ deck → history → situation → people → forecast → integrity. 28 rings r
 overflow. V4 (10 charts) and V5 (12/12) unchanged; `git diff --stat` empty on every protected file.
 
 Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.
+
+---
+
+## p201
+
+**AP127 Detail V6 — the report sheet gains a light/dark option.**
+
+A **Sheet: Light | Dark** switch in the report toolbar. Light stays the default and is the one to
+print; dark matches the screen and is the better artefact to read or share on a device. The choice is
+remembered.
+
+Implementation notes, because a themed export touches four separate surfaces and missing any one of
+them produces a half-dark document:
+
+1. **CSS.** The sheet's palette moved from literal hex scattered through a dozen rules into a set of
+   `--rp-*` tokens on `.v6-report-sheet`, overridden wholesale by `.v6-report-dark`. Values stay
+   literal hex — never `oklch()` or `color-mix()`, which html2canvas cannot parse (the constraint that
+   forced V4's PDF to fall back to text tables for its heatmaps). `var()` is safe here because
+   html2canvas reads *computed* styles, in which it is already resolved.
+2. **Chart images.** The embedded charts are rasterised PNGs, so their axes and gridlines are baked in
+   at build time and cannot be restyled by a class — `reportize()` now takes its grid, tick and title
+   colours from the active theme, and **switching theme rebuilds the whole sheet** rather than
+   toggling a class.
+3. **The capture iframe.** Both the iframe body background and `html2canvas`'s `backgroundColor` now
+   follow the theme; leaving either white put a white halo around a dark sheet.
+4. **The PDF page itself.** jsPDF pages default to white, and the rasterised sheet rarely divides
+   exactly into A4 — so the last page has a remainder that showed through as a white band under a
+   dark report. Each page is now **filled with the theme colour before the image is drawn**, and the
+   running footer's band, rule and text colours follow too. The dark file is saved as
+   `…_dark.pdf` so the two are distinguishable on disk.
+
+**Print** now follows the chosen theme instead of being forced light, with `print-color-adjust: exact`
+so a dark sheet actually renders its background rather than printing as dark text on white paper. The
+toolbar tooltip says plainly that dark is heavy on ink if printed.
+
+The report matrix's own two literal colours (the fallback cell fill and the "not flown" grey) are
+switched by theme as well — they are inline styles on generated markup, so no CSS token reaches them.
+
+**Verified:** both themes exported from a real intercepted `.save()` and rendered with
+`pdftoppm` — light 4 pages on white, dark 4 pages on `#0d1117` **including the last page's
+remainder**, both with correct per-page running footers, both charts embedded and the completion
+matrix legible in each. Filenames differ. Text extraction re-run on the dark export: still zero
+matches for methodology terms, so the p185 "findings only" rule holds in both themes. 35/35
+invariants, V4/V5 unchanged, `git diff --stat` empty on every protected file.
+
+Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.

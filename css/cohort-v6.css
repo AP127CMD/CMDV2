@@ -483,41 +483,59 @@ table.v6-gt{border-collapse:separate;border-spacing:0;font-size:10px;table-layou
    var(--v6-*) — because html2canvas rasterises it inside an isolated iframe
    that carries only THIS stylesheet, with no :root theme block in scope. */
 .v6-report-ov{position:fixed;inset:0;z-index:520;background:rgba(3,5,12,.86);overflow:auto;padding:18px 0 60px;}
-.v6-report-toolbar{position:sticky;top:0;z-index:3;display:flex;gap:9px;justify-content:center;padding:11px;background:rgba(3,5,12,.92);backdrop-filter:blur(9px);flex-wrap:wrap;}
+.v6-report-toolbar{position:sticky;top:0;z-index:3;display:flex;gap:9px;justify-content:center;align-items:center;padding:11px;background:rgba(3,5,12,.92);backdrop-filter:blur(9px);flex-wrap:wrap;}
+/* The sheet's palette lives in tokens so the whole document can flip between a
+   light and a dark theme from one class. Every value is literal hex — never
+   oklch() or color-mix(), which html2canvas cannot parse (that is what forced
+   V4's PDF export to fall back to text tables). var() is safe: html2canvas
+   reads computed styles, in which var() is already resolved. */
 .v6-report-sheet{
-  width:760px;max-width:96vw;margin:0 auto 26px;background:#fff;color:#101828;
+  --rp-bg:#ffffff; --rp-ink:#101828; --rp-ink2:#475069; --rp-ink3:#79839c;
+  --rp-line:#e6e8ef; --rp-line2:#e0e3ec; --rp-accent:#b02fd0; --rp-accent2:#8b2fb0;
+  --rp-head:#f7f8fc; --rp-callout:#faf5ff; --rp-foot:#9aa2b6;
+  --rp-good:#047857; --rp-warn:#b45309; --rp-bad:#be123c;
+  width:760px;max-width:96vw;margin:0 auto 26px;background:var(--rp-bg);color:var(--rp-ink);
   padding:34px 38px;border-radius:3px;box-shadow:0 10px 44px rgba(0,0,0,.5);
   font-family:'Inter',system-ui,sans-serif;font-size:11px;line-height:1.55;
 }
-.v6-report-sheet .rp-cover{border-bottom:3px solid #b02fd0;padding-bottom:16px;margin-bottom:18px;}
-.v6-report-sheet h1{font-family:'Rajdhani',sans-serif;font-size:31px;font-weight:700;line-height:1.05;color:#101828;}
-.v6-report-sheet .rp-sub{font-size:12px;color:#475069;margin-top:3px;}
-.v6-report-sheet .rp-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:#79839c;margin-top:9px;line-height:1.7;}
-.v6-report-sheet h2{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:#b02fd0;margin:20px 0 8px;border-bottom:1px solid #e6e8ef;padding-bottom:4px;}
-.v6-report-sheet h3{font-size:11.5px;font-weight:700;margin:11px 0 4px;color:#101828;}
+.v6-report-sheet.v6-report-dark{
+  --rp-bg:#0d1117; --rp-ink:#e6edf3; --rp-ink2:#9aa6c4; --rp-ink3:#7d8798;
+  --rp-line:#262d38; --rp-line2:#2f3742; --rp-accent:#e88aff; --rp-accent2:#c9a2ff;
+  --rp-head:#161b22; --rp-callout:#1a1430; --rp-foot:#6e7681;
+  --rp-good:#4ade80; --rp-warn:#fbbf24; --rp-bad:#fb7185;
+}
+.v6-report-sheet .rp-cover{border-bottom:3px solid var(--rp-accent);padding-bottom:16px;margin-bottom:18px;}
+.v6-report-sheet h1{font-family:'Rajdhani',sans-serif;font-size:31px;font-weight:700;line-height:1.05;color:var(--rp-ink);}
+.v6-report-sheet .rp-sub{font-size:12px;color:var(--rp-ink2);margin-top:3px;}
+.v6-report-sheet .rp-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--rp-ink3);margin-top:9px;line-height:1.7;}
+.v6-report-sheet h2{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:var(--rp-accent);margin:20px 0 8px;border-bottom:1px solid var(--rp-line);padding-bottom:4px;}
+.v6-report-sheet h3{font-size:11.5px;font-weight:700;margin:11px 0 4px;color:var(--rp-ink);}
 .v6-report-sheet p{margin-bottom:7px;}
 .v6-report-block{margin-bottom:14px;break-inside:avoid;page-break-inside:avoid;}
 .v6-report-sheet table{width:100%;border-collapse:collapse;font-size:9.5px;}
-.v6-report-sheet th,.v6-report-sheet td{border-bottom:1px solid #e6e8ef;padding:3.5px 5px;text-align:left;}
-.v6-report-sheet th{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:#79839c;background:#f7f8fc;}
+.v6-report-sheet th,.v6-report-sheet td{border-bottom:1px solid var(--rp-line);padding:3.5px 5px;text-align:left;}
+.v6-report-sheet th{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:var(--rp-ink3);background:var(--rp-head);}
 .v6-report-sheet thead{display:table-header-group;}
 .v6-report-sheet img{max-width:100%;display:block;}
 .v6-report-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:9px 0;}
-.v6-report-kpi{border:1px solid #e0e3ec;border-radius:5px;padding:8px;text-align:center;}
-.v6-report-kpi .l{font-family:'JetBrains Mono',monospace;font-size:7.5px;text-transform:uppercase;color:#79839c;}
+.v6-report-kpi{border:1px solid var(--rp-line2);border-radius:5px;padding:8px;text-align:center;}
+.v6-report-kpi .l{font-family:'JetBrains Mono',monospace;font-size:7.5px;text-transform:uppercase;color:var(--rp-ink3);}
 .v6-report-kpi .v{font-family:'Rajdhani',sans-serif;font-size:19px;font-weight:700;margin-top:1px;}
-.v6-report-callout{border-left:3px solid #b02fd0;background:#faf5ff;padding:9px 12px;margin-bottom:12px;}
-.v6-report-callout .k{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#8b2fb0;}
+.v6-report-callout{border-left:3px solid var(--rp-accent);background:var(--rp-callout);padding:9px 12px;margin-bottom:12px;}
+.v6-report-callout .k{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--rp-accent2);}
 .v6-report-callout .h{font-family:'Rajdhani',sans-serif;font-size:17px;font-weight:700;margin:2px 0 3px;}
-.v6-report-foot{font-family:'JetBrains Mono',monospace;font-size:8px;color:#9aa2b6;display:flex;justify-content:space-between;border-top:1px solid #e6e8ef;padding-top:5px;margin-top:10px;}
-.rp-good{color:#047857}.rp-warn{color:#b45309}.rp-bad{color:#be123c}
+.v6-report-foot{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--rp-foot);display:flex;justify-content:space-between;border-top:1px solid var(--rp-line);padding-top:5px;margin-top:10px;}
+.rp-good{color:var(--rp-good)}.rp-warn{color:var(--rp-warn)}.rp-bad{color:var(--rp-bad)}
 
 @media print{
   body *{visibility:hidden;}
   .v6-report-ov,.v6-report-ov *{visibility:visible;}
-  .v6-report-ov{position:absolute;inset:0;background:#fff;padding:0;overflow:visible;}
+  .v6-report-ov{position:absolute;inset:0;background:var(--rp-bg,#fff);padding:0;overflow:visible;}
   .v6-report-toolbar{display:none;}
-  .v6-report-sheet{box-shadow:none;margin:0;width:auto;max-width:none;padding:0;}
+  /* Print follows the theme the reader chose rather than forcing light — with
+     colour-adjust on, so a dark sheet actually renders its background instead
+     of printing as dark text on white. */
+  .v6-report-sheet{box-shadow:none;margin:0;width:auto;max-width:none;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   @page{size:A4;margin:13mm;}
 }
 

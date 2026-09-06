@@ -174,11 +174,12 @@
     outputPeriod: 'week',
     whatIf: { mult: 1, extra: 0 },
     raceFilter: { sp: '', se: '' },            // The race: one SP / aircraft type
+    reportTheme: saved.reportTheme === 'dark' ? 'dark' : 'light',   // the PDF/print sheet's own theme
     scrubIdx: null,                      // history playhead (index into fc.series.dates)
     playing: false,
   };
   function persist() {
-    try { localStorage.setItem(LS, JSON.stringify({ unit: S.unit })); } catch (e) {}
+    try { localStorage.setItem(LS, JSON.stringify({ unit: S.unit, reportTheme: S.reportTheme })); } catch (e) {}
   }
 
   let RAW = { students: [], curriculum: [], updatedAt: null };
@@ -2650,7 +2651,7 @@
     const cta = el('div', {}, [
       el('div', { class: 'v6-note', style: 'margin-bottom:12px' }, [
         'The report is a self-contained briefing document: verdict, situation, history, forecast, the full roster and the completion matrix. ',
-        'It prints to A4 and downloads as a PDF, both from the same sheet, so what is reviewed on screen is what lands in the file. ',
+        'It prints to A4 and downloads as a PDF, both from the same sheet, so what is reviewed on screen is what lands in the file, and it comes in a light or a dark sheet — light is the default and the one to print. ',
         'It carries the findings and none of the machinery — no method write-up, no simulation counts, no invariant listing; that all stays on this page. ',
         'The one exception: if any check above fails, the report says so in a single line rather than quietly stating figures it cannot stand behind.',
       ]),
@@ -2926,14 +2927,25 @@
   // Re-tint a live chart config for a white sheet: the on-screen grid is a
   // near-transparent white that vanishes on paper, and the tooltip theme is
   // irrelevant to a static image.
+  // The sheet's own palette, in literal hex, for anything drawn OUTSIDE CSS —
+  // the chart images, the capture iframe and the PDF page fill. Kept in step
+  // with the --rp-* tokens in cohort-v6.css by hand; there is no way to read
+  // them before the sheet exists.
+  const REPORT_PALETTE = {
+    light: { bg: '#ffffff', ink: '#101828', ink3: '#79839c', line: '#e6e8ef', foot: [140, 145, 160], fill: [255, 255, 255], rule: [224, 226, 233] },
+    dark: { bg: '#0d1117', ink: '#e6edf3', ink3: '#7d8798', line: '#262d38', foot: [125, 135, 152], fill: [13, 17, 23], rule: [38, 45, 56] },
+  };
+  function reportPalette() { return REPORT_PALETTE[S.reportTheme] || REPORT_PALETTE.light; }
+
   function reportize(cfg) {
+    const pal = reportPalette();
     const c = JSON.parse(JSON.stringify(cfg, (k, v) => (typeof v === 'function' ? undefined : v)));
     c.options = c.options || {}; c.options.scales = c.options.scales || {};
     Object.values(c.options.scales).forEach(sc => {
       if (!sc) return;
-      sc.grid = Object.assign({}, sc.grid, { color: '#e6e8ef', drawBorder: false });
-      sc.ticks = Object.assign({}, sc.ticks, { color: '#79839c' });
-      if (sc.title) sc.title.color = '#79839c';
+      sc.grid = Object.assign({}, sc.grid, { color: pal.line, drawBorder: false });
+      sc.ticks = Object.assign({}, sc.ticks, { color: pal.ink3 });
+      if (sc.title) sc.title.color = pal.ink3;
     });
     return c;
   }
@@ -2974,14 +2986,14 @@
       for (let n = 1; n <= count; n++) {
         const hit = sp.flownByNum && sp.flownByNum[n];
         const l = m.curriculum.byNum[n];
-        const bg = hit ? (l && l.phase ? l.phase.c : '#b02fd0') : '#e9ecf3';
+        const bg = hit ? (l && l.phase ? l.phase.c : (S.reportTheme === 'dark' ? '#e88aff' : '#b02fd0')) : (S.reportTheme === 'dark' ? '#242b36' : '#e9ecf3');
         cells.push(el('td', { style: 'background:' + bg + ';padding:0;height:7px;border:0' + (hit && hit.length > 1 ? ';box-shadow:inset 0 0 0 1px #0284c7' : '') }));
       }
       tb.appendChild(el('tr', {}, cells));
     });
     table.appendChild(tb);
     return el('div', {}, [
-      el('div', { style: 'font-size:8px;color:#79839c;margin-bottom:3px' }, [
+      el('div', { style: 'font-size:8px;color:var(--rp-ink3);margin-bottom:3px' }, [
         count + ' lessons × ' + MODEL.students.length + ' SP. Phase-coloured when the lesson is complete, grey when not; a blue inset outline marks a retake.',
       ]),
       table,
@@ -2991,7 +3003,7 @@
   function buildReportSheet() {
     const m = MODEL, fc = FCAST, v = fc.verdict, mc = fc.monteCarlo.hours, g = gradeOf();
     const toneCls = g.tone === 'good' ? 'rp-good' : g.tone === 'warn' ? 'rp-warn' : 'rp-bad';
-    const sheet = el('div', { class: 'v6-report-sheet' });
+    const sheet = el('div', { class: 'v6-report-sheet' + (S.reportTheme === 'dark' ? ' v6-report-dark' : '') });
     const H2 = t => sheet.appendChild(el('h2', {}, [t]));
     const BLK = kids => sheet.appendChild(el('div', { class: 'v6-report-block' }, kids));
     const tbl = (heads, rows) => el('table', {}, [
@@ -3080,7 +3092,7 @@
     // ── history ──
     H2('3. History');
     BLK([chartImg(flightPathCfg(), 684, 260)]);
-    BLK([el('div', { style: 'font-size:8px;color:#79839c;margin-top:-6px' }, [
+    BLK([el('div', { style: 'font-size:8px;color:var(--rp-ink3);margin-top:-6px' }, [
       'Cumulative flown output (magenta) against the curriculum plan (dashed) and the revised target schedule (dotted). Batch totals across ' + m.students.length + ' SP.'])]);
     BLK([el('h3', {}, ['Output by month']),
       tbl(['Month', 'Hours', 'Lessons', 'h / day', 'Days flown'], fc.history.months.map(mo => {
@@ -3169,7 +3181,25 @@
     toast('Building report…');
     setTimeout(() => {
       const ov = el('div', { class: 'v6-report-ov', id: 'v6-report-ov' });
+      // Theme switch. The whole sheet is rebuilt rather than reclassed, because
+      // the embedded chart images are rasterised PNGs — their axes and gridlines
+      // are baked in at build time and cannot be restyled by a class.
+      const themeSeg = el('div', { class: 'v6-seg' }, [['light', 'Light'], ['dark', 'Dark']].map(([k, lbl]) =>
+        el('button', {
+          class: S.reportTheme === k ? 'on' : '', 'data-t': k,
+          title: k === 'dark' ? 'Dark sheet — matches the screen, heavy on ink if printed' : 'Light sheet — the default, ink-friendly on paper',
+          onclick: () => {
+            if (S.reportTheme === k) return;
+            S.reportTheme = k; persist();
+            const sheetEl = $('#v6-report-ov .v6-report-sheet');
+            const fresh = buildReportSheet();
+            if (sheetEl) sheetEl.replaceWith(fresh); else ov.appendChild(fresh);
+            $$('button', themeSeg).forEach(b => b.classList.toggle('on', b.getAttribute('data-t') === S.reportTheme));
+          },
+        }, [lbl])));
       ov.appendChild(el('div', { class: 'v6-report-toolbar' }, [
+        el('span', { class: 'v6-ctl-l' }, ['Sheet']),
+        themeSeg,
         el('button', { class: 'v6-btn', onclick: () => window.print() }, ['🖨 Print / Save as PDF']),
         el('button', { class: 'v6-btn v6-primary', onclick: downloadPdf }, ['⤓ Download PDF']),
         el('button', { class: 'v6-btn', onclick: closeReport }, ['Close']),
@@ -3198,10 +3228,11 @@
       // and the exported PDF does not match the sheet the reviewer approved on
       // screen. Confirmed by rendering the export before and after.
       idoc.open();
+      const pal = reportPalette();
       idoc.write('<!doctype html><html><head><meta charset="utf-8">' +
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
         '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">' +
-        '</head><body style="margin:0;background:#fff"></body></html>');
+        '</head><body style="margin:0;background:' + pal.bg + '"></body></html>');
       idoc.close();
       let css = '';
       try { css = await fetch('css/cohort-v6.css').then(r => (r.ok ? r.text() : '')); } catch (e) {}
@@ -3217,7 +3248,7 @@
         }
       } catch (e) {}
       await new Promise(r => setTimeout(r, 120));
-      return await window.html2canvas(clone, { scale: 1.7, backgroundColor: '#ffffff', windowWidth: clone.scrollWidth, windowHeight: clone.scrollHeight });
+      return await window.html2canvas(clone, { scale: 1.7, backgroundColor: pal.bg, windowWidth: clone.scrollWidth, windowHeight: clone.scrollHeight });
     } finally { iframe.remove(); }
   }
 
@@ -3239,16 +3270,23 @@
       const FOOT = 26, contentH = pageH - FOOT;
       const pages = Math.max(1, Math.ceil(imgH / contentH));
       const label = 'AP127 Batch Progress Review · ' + (MODEL.isLive ? 'live' : 'as of ' + fd(MODEL.asOf)) + ' · ' + fd(MODEL.asOf);
+      const pal = reportPalette();
       for (let p = 1; p <= pages; p++) {
         if (p > 1) doc.addPage();
+        // The page is filled FIRST: the rasterised sheet rarely divides exactly
+        // into A4, so the last page has a remainder that would otherwise show
+        // jsPDF's default white through a dark report.
+        doc.setFillColor(pal.fill[0], pal.fill[1], pal.fill[2]);
+        doc.rect(0, 0, pageW, pageH, 'F');
         doc.addImage(img, 'PNG', 0, -(p - 1) * contentH, imgW, imgH, undefined, 'MEDIUM');
-        doc.setFillColor(255, 255, 255); doc.rect(0, pageH - FOOT, pageW, FOOT, 'F');
-        doc.setDrawColor(224, 226, 233); doc.line(24, pageH - FOOT + 6, pageW - 24, pageH - FOOT + 6);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(140, 145, 160);
+        doc.setFillColor(pal.fill[0], pal.fill[1], pal.fill[2]); doc.rect(0, pageH - FOOT, pageW, FOOT, 'F');
+        doc.setDrawColor(pal.rule[0], pal.rule[1], pal.rule[2]); doc.line(24, pageH - FOOT + 6, pageW - 24, pageH - FOOT + 6);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+        doc.setTextColor(pal.foot[0], pal.foot[1], pal.foot[2]);
         doc.text(label, 24, pageH - 10);
         doc.text('Page ' + p + ' / ' + pages, pageW - 24, pageH - 10, { align: 'right' });
       }
-      doc.save('AP127_V6_Review_' + MODEL.asOf + '.pdf');
+      doc.save('AP127_V6_Review_' + MODEL.asOf + (S.reportTheme === 'dark' ? '_dark' : '') + '.pdf');
       toast('PDF downloaded');
     } catch (e) { console.error('[V6] PDF export failed', e); toast('PDF export failed — use Print instead', 'er'); }
   }

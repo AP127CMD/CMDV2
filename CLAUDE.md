@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p201` (all currently at p200)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p202` (all currently at p201)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -142,7 +142,24 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p200` (2026-09-06 — **AP127 Detail V6 — round-8 feedback.**
+**Last known:** all files `p201` (2026-09-06 — **AP127 Detail V6 — the PDF report gains a
+light/dark option.** A **Sheet: Light | Dark** switch in the report toolbar; light stays the default
+and is the one to print, dark matches the screen. Choice is persisted. **A themed export touches four
+surfaces and missing any one leaves a half-dark document:** (1) the sheet's palette moved from
+scattered literal hex into `--rp-*` tokens on `.v6-report-sheet`, overridden by `.v6-report-dark` —
+values stay literal hex, never `oklch()`/`color-mix()` (html2canvas can't parse those; `var()` is fine
+since it reads *computed* styles); (2) the embedded charts are rasterised PNGs whose axes are baked in
+at build time, so `reportize()` takes its grid/tick colours from the theme and **switching rebuilds
+the whole sheet** rather than toggling a class; (3) the capture iframe's body background AND
+html2canvas's `backgroundColor` both follow the theme, or a dark sheet gets a white halo; (4) **jsPDF
+pages default to white and the raster rarely divides exactly into A4**, so each page is now filled
+with the theme colour *before* the image is drawn — otherwise the last page's remainder shows as a
+white band. Footer band/rule/text colours follow too, and the dark file saves as `…_dark.pdf`.
+**Print now follows the chosen theme** rather than being forced light, with `print-color-adjust:exact`
+so a dark sheet renders its background. Verified both themes from real intercepted `.save()` calls,
+rendered with `pdftoppm` — 4 pages each, dark correct including the last page's remainder; text
+extraction on the dark export still returns zero methodology terms, so the p185 findings-only rule
+holds in both. Full write-up: REVAMP.md's p201 entry.) p200 (2026-09-06 — **AP127 Detail V6 — round-8 feedback.**
 **Circular progress ring back**, as a roster cell rather than a separate card — it *replaces* the "%"
 column (percentage drawn inside it, so nothing is said twice) and turns green once an SP is at or past
 today's target lesson. **Vital-signs tiles are now interactive**: each opens the series full size
