@@ -3842,3 +3842,41 @@ still builds all five sections with both charts. V4 (10 charts) and V5 (12/12) r
 `git diff --stat` empty on every DB_Share-proxied file and every V5 file.
 
 Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.
+
+---
+
+## p192
+
+**AP127 Detail V6 — round-4 feedback: five fixes in the History act.**
+
+1. **Output rhythm — Dual is now cyan**, matching the primary series on every other chart on the tab.
+   Done through a V6-local `v6TypeColors()`; `Model.TYPE_COLORS` is read by V5 and is not mutated.
+2. **Output rhythm — the total label sits above the bar with a real gap to the Required line.**
+   The first attempt just increased the offset, and measuring showed that cannot work: the required
+   rate is a moving target and on several periods the bar is *taller* than it — week 12 totals 122h
+   against a required 97.4h, so the label crossed the line by 59px however far it was pushed. Every
+   value label now carries a backdrop chip (card-coloured fill, hairline border, small padding),
+   which separates it from whatever is behind it unconditionally. Applied to the output totals, the
+   month bars and the distribution counts for consistency.
+3. **Batch distribution — the six quartile tiles are gone**, leaving the chart alone. The figures
+   (slowest / quartiles / median / average / fastest) moved into the panel's ⓘ, so nothing was lost.
+4. **Behind plan, over time — added a 14-day centred moving average.** The raw shortfall is a
+   sawtooth, because the plan steps up on its own dates while flying arrives in bursts; the average
+   is what actually shows whether the gap is still widening. Raw line thinned to 1.5px so the trend
+   reads on top of it.
+5. **Month by month — the trend was a straight line, and that was the bug.** It was an ordinary
+   least-squares fit, which is a straight line by construction: it drew one flat line through months
+   that swung from 78h to 443h and told the reader nothing. Replaced with a **3-month centred moving
+   average**, which follows the data (125 → 227 → 349 → 315 → 220 → 109). **Added the dynamic
+   required rate** as a third series, evaluated at each month through `requiredAt()` rather than
+   stamped with today's figure — it climbs 639h → 1,335h per month across the batch's history.
+
+A shared `movingAvg(values, window)` helper backs both new trend lines; it shrinks the window at the
+series ends rather than dropping them, so the trend spans the whole chart including today.
+
+**Verified:** 35/35 invariants, 0 failing, in both themes. Dual measured as `#22d3ee`; the collision
+that prompted the chip was measured before and confirmed cleared after. Month trend confirmed
+non-linear against the raw monthly totals. V4 (10 charts) and V5 (12/12) unchanged; `git diff --stat`
+empty on every DB_Share-proxied file and every V5 file.
+
+Files: `js/view-cohort-v6.js`, `index.html`.

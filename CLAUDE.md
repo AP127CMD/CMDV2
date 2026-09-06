@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p191` (all currently at p190)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p193` (all currently at p192)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -142,7 +142,23 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p190` (2026-09-06 — **AP127 Detail V6 — round-3 feedback: 13 asks.**
+**Last known:** all files `p192` (2026-09-06 — **AP127 Detail V6 — round-4 feedback: five History
+fixes.** (1) **Output rhythm Dual → cyan**, via a V6-local `v6TypeColors()` — `Model.TYPE_COLORS` is
+read by V5 and stays unmutated. (2) **Total label now clears the Required line.** Increasing the
+offset cannot fix this and measuring proved it: the required rate is a moving target and on several
+periods the bar is TALLER than it (week 12: 122h actual vs 97.4h required), so the label crossed by
+59px at any offset. Every value label now carries a **backdrop chip** (card fill + hairline border),
+which separates it unconditionally — applied to output totals, month bars and distribution counts.
+(3) **Batch distribution: six quartile tiles removed**, chart only; the figures moved into the ⓘ.
+(4) **Behind plan, over time: added a 14-day centred moving average** — the raw shortfall is a
+sawtooth (plan steps on its own dates, flying arrives in bursts), so the average is what shows
+whether the gap is still widening. (5) **Month by month: the straight trend line WAS the bug** — it
+was an OLS fit, straight by construction, drawing one flat line through months swinging 78h→443h.
+Replaced with a **3-month centred moving average** (125→227→349→315→220→109) and **added the dynamic
+required rate** evaluated per month via `requiredAt()`, climbing 639h→1,335h. Shared
+`movingAvg(values, window)` backs both, shrinking the window at the ends so the trend spans the whole
+chart including today. Verified 35/35 in both themes; V4/V5 unchanged. Full write-up: REVAMP.md's
+p192 entry.) p190 (2026-09-06 — **AP127 Detail V6 — round-3 feedback: 13 asks.**
 (1) **Every explanation moved behind an ⓘ** — one `infoToggle()` helper used by both `actShell()` and
 `card()`, so sections and panels disclose prose identically; 16 moved. (2) **"Overflows right, no way
 to scroll"** — measured 3 tables wider than their cards (Roster 255px, pace table 34px, rate card

@@ -712,6 +712,17 @@
   }
   const V6_TYPES = ['Dual', 'Solo', 'Simulator'];
   const V6_TYPE_LABEL = { Dual: 'Dual + SPIC', Solo: 'Solo', Simulator: 'Simulator' };
+  // Sortie colours, resolved at draw time so they follow the theme. Dual is the
+  // cyan every other chart on this tab uses for its primary series; Solo and
+  // Simulator keep the model's palette. Defined HERE rather than mutating
+  // Model.TYPE_COLORS, which V5 also reads.
+  function v6TypeColors() {
+    return {
+      Dual: cssv('--v6-acc2', '#22d3ee'),
+      Solo: Model.TYPE_COLORS.Solo,
+      Simulator: Model.TYPE_COLORS.Simulator,
+    };
+  }
 
   // Period aggregation with V6's split. Keys and totals match model.output()
   // exactly; only the Dual/Solo boundary moves.
@@ -732,7 +743,7 @@
   function outputCfg() {
     const m = MODEL, unit = S.unit, period = S.outputPeriod;
     const out = v6Output(unit, period);
-    const tc = Model.TYPE_COLORS;
+    const tc = v6TypeColors();
     const isLes = unit === 'lessons';
     const labels = out.keys.map(k => new Date(k + 'T00:00:00Z').getTime());
     const fmtV = v => (isLes ? Math.round(v) : (v >= 10 ? v.toFixed(0) : v.toFixed(1)));
@@ -756,12 +767,12 @@
       type: 'bar', label: 'Total', stack: 'out',
       data: labels.map((x, i) => ({ x, y: 0 })),
       backgroundColor: 'transparent', borderWidth: 0, order: 4,
-      datalabels: {
+      datalabels: labelChip({
         display: ctx => totals[ctx.dataIndex] > 0,
-        anchor: 'end', align: 'end', offset: 2,
-        color: cssv('--v6-tx', '#eef2ff'), font: { size: 9.5, weight: '700', family: 'JetBrains Mono' },
+        anchor: 'end', align: 'end', offset: 8,
+        color: cssv('--v6-tx', '#eef2ff'), font: { size: 10, weight: '700', family: 'JetBrains Mono' },
         formatter: (v, ctx) => fmtV(totals[ctx.dataIndex]),
-      },
+      }),
     });
     // Each overlay gets its OWN stack group. Chart.js groups a dataset with no
     // explicit `stack` by its TYPE, so two un-stacked line overlays on a
@@ -796,7 +807,7 @@
     return {
       data: { datasets: ds },
       options: {
-        layout: { padding: { top: 16 } },
+        layout: { padding: { top: 30 } },
         interaction: { mode: 'index', intersect: false },
         scales: {
           x: timeScale({ stacked: true, offset: true, time: { unit: period === 'day' ? 'week' : 'month' } }),
@@ -854,7 +865,7 @@
         labels,
         datasets: [
           { label: 'SP in this band', data: d.counts, backgroundColor: d.bins.map(b => (inIqr(b) ? acc2 : acc2 + '44')), borderRadius: 3, order: 2,
-            datalabels: { display: v => v.dataset.data[v.dataIndex] > 0, anchor: 'end', align: 'end', offset: 1, color: cssv('--v6-tx2', '#9aa6c4'), font: { size: 9, family: 'JetBrains Mono' } } },
+            datalabels: labelChip({ display: v => v.dataset.data[v.dataIndex] > 0, anchor: 'end', align: 'end', offset: 4, color: cssv('--v6-tx', '#eef2ff'), font: { size: 9, weight: '600', family: 'JetBrains Mono' } }) },
           { label: 'shape', type: 'line', data: d.curve, borderColor: acc, borderWidth: 2, pointRadius: 0, tension: .4, fill: false, order: 1, datalabels: { display: false } },
         ],
       },
@@ -882,6 +893,34 @@
     };
   }
 
+  // A value label that always reads, whatever it lands on. Pushing labels
+  // further up cannot fix a collision with the Required line, because that line
+  // moves and on several periods the bar is taller than it — measured: week 12
+  // totals 122h against a required 97.4h, so the label crossed the line by 59px
+  // however large the offset. A backdrop chip separates them unconditionally.
+  function labelChip(extra) {
+    return Object.assign({
+      backgroundColor: () => cssv('--v6-glass', '#0c111d'),
+      borderColor: () => cssv('--v6-bd', 'rgba(255,255,255,.1)'),
+      borderWidth: 1,
+      borderRadius: 4,
+      padding: { top: 2, bottom: 1, left: 4, right: 4 },
+    }, extra || {});
+  }
+
+  // Centred moving average. The window shrinks at the ends rather than dropping
+  // them, so the trend line spans the whole series instead of stopping short of
+  // the two points a reader most wants it over — the start and today.
+  function movingAvg(vals, win) {
+    const half = Math.floor(win / 2);
+    return vals.map((_, i) => {
+      const lo = Math.max(0, i - half), hi = Math.min(vals.length - 1, i + half);
+      let sum = 0;
+      for (let k = lo; k <= hi; k++) sum += vals[k];
+      return +(sum / (hi - lo + 1)).toFixed(2);
+    });
+  }
+
   // ── Lead/lag history (V4's Batch Lagging History) ────────────────────────
   // The model publishes `lag` floored at zero — the batch is realistically
   // always behind, and a signed line spent its whole life below the axis
@@ -892,13 +931,23 @@
     const key = S.unit === 'lessons' ? 'lessons' : 'hours';
     const lag = MODEL.series[key].lag || [];
     const bad = cssv('--v6-bad', '#fb7185');
+    const xs = lag.map(p => new Date(p.x + 'T00:00:00Z').getTime());
+    // The raw shortfall is a sawtooth: the plan steps up on its own dates while
+    // flying arrives in bursts, so the daily line jitters even when the trend is
+    // flat. A 14-day centred average is what shows whether the gap is actually
+    // still widening.
+    const ma = movingAvg(lag.map(p => p.y), 14);
     return {
       type: 'line',
       data: {
         datasets: [{
-          label: 'Behind plan', data: lag.map(p => ({ x: new Date(p.x + 'T00:00:00Z').getTime(), y: p.y })),
-          borderColor: bad, backgroundColor: bad + '24', borderWidth: 2.2, fill: true,
-          pointRadius: 0, pointHoverRadius: 4, tension: .2, datalabels: { display: false },
+          label: 'Behind plan', data: lag.map((p, i) => ({ x: xs[i], y: p.y })),
+          borderColor: bad, backgroundColor: bad + '20', borderWidth: 1.5, fill: true,
+          pointRadius: 0, pointHoverRadius: 4, tension: .2, order: 2, datalabels: { display: false },
+        }, {
+          label: '14-day trend', data: ma.map((y, i) => ({ x: xs[i], y })),
+          borderColor: cssv('--v6-acc', '#e88aff'), borderWidth: 2.4, borderDash: [6, 4],
+          fill: false, pointRadius: 0, tension: .3, order: 1, datalabels: { display: false },
         }],
       },
       options: {
@@ -906,7 +955,7 @@
         scales: { x: timeScale(), y: valScale(S.unit === 'lessons' ? 'lessons behind plan' : 'hours behind plan') },
         plugins: {
           legend: { display: false },
-          tooltip: tooltipTheme({ callbacks: { label: c => (S.unit === 'lessons' ? fN(c.parsed.y) + ' lessons' : fH(c.parsed.y, 0)) + ' behind plan' } }),
+          tooltip: tooltipTheme({ callbacks: { label: c => c.dataset.label + ': ' + (S.unit === 'lessons' ? fN(c.parsed.y) + ' lessons' : fH(c.parsed.y, 0)) + ' behind plan' } }),
         },
       },
     };
@@ -918,29 +967,30 @@
     const acc = cssv('--v6-acc', '#e88aff'), acc2 = cssv('--v6-acc2', '#22d3ee');
     const labels = mo.map(x => new Date(x.key + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }));
     const ys = mo.map(x => x.hours);
-    // Ordinary least squares over the monthly totals — the plain-language
-    // "trend" a reader means, computed rather than eyeballed.
-    const n = ys.length;
-    let trend = ys.slice();
-    if (n >= 2) {
-      const mx = (n - 1) / 2, my = ys.reduce((a, b) => a + b, 0) / n;
-      let num = 0, den = 0;
-      ys.forEach((y, i) => { num += (i - mx) * (y - my); den += (i - mx) * (i - mx); });
-      const slope = den ? num / den : 0;
-      trend = ys.map((_, i) => +(my + slope * (i - mx)).toFixed(1));
-    }
+    // A 3-month centred moving average, NOT a least-squares fit. OLS is a
+    // straight line by construction, which is exactly the complaint: it drew
+    // one flat bar-to-bar line through months that swung from 78h to 442h and
+    // told the reader nothing. A moving average follows the data.
+    const trend = movingAvg(ys, 3);
+    // Required output for each month, evaluated AT that month rather than
+    // stamped with today's figure — same rule as the Output chart's line.
+    const req = mo.map(x => {
+      const r = MODEL.requiredAt(x.key + '-01');
+      return r ? +r.reqMonthHrsB.toFixed(0) : null;
+    });
     return {
       type: 'bar',
       data: {
         labels,
         datasets: [
-          { label: 'Hours flown', data: ys, backgroundColor: acc2, borderRadius: 3, order: 2,
-            datalabels: { anchor: 'end', align: 'end', offset: 1, color: cssv('--v6-tx2', '#9aa6c4'), font: { size: 9, family: 'JetBrains Mono' }, formatter: v => Math.round(v) } },
-          { label: 'Trend', type: 'line', data: trend, borderColor: acc, borderWidth: 2, borderDash: [6, 4], pointRadius: 0, tension: 0, fill: false, order: 1, datalabels: { display: false } },
+          { label: 'Hours flown', data: ys, backgroundColor: acc2, borderRadius: 3, order: 3,
+            datalabels: labelChip({ anchor: 'end', align: 'end', offset: 5, color: cssv('--v6-tx', '#eef2ff'), font: { size: 9.5, weight: '600', family: 'JetBrains Mono' }, formatter: v => Math.round(v) }) },
+          { label: '3-month trend', type: 'line', data: trend, borderColor: acc, borderWidth: 2.4, pointRadius: 0, tension: .35, fill: false, order: 2, datalabels: { display: false } },
+          { label: 'Required that month', type: 'line', data: req, borderColor: cssv('--v6-bad', '#fb7185'), borderWidth: 1.8, borderDash: [7, 4], pointRadius: 2, tension: .2, fill: false, order: 1, spanGaps: true, datalabels: { display: false } },
         ],
       },
       options: {
-        layout: { padding: { top: 18 } },
+        layout: { padding: { top: 22 } },
         scales: {
           x: { grid: { display: false }, ticks: { color: cssv('--v6-tx3', '#65708c'), font: { size: 9, family: 'JetBrains Mono' } } },
           y: valScale('hours flown'),
@@ -950,8 +1000,10 @@
           legend: { display: false },
           tooltip: tooltipTheme({
             callbacks: {
-              label: c => (c.dataset.label === 'Trend' ? 'Trend: ' : '') + fH(c.parsed.y, 0) +
-                (c.dataset.label === 'Trend' ? '' : ' · ' + fN(mo[c.dataIndex].lessons) + ' lessons · ' + Math.round(mo[c.dataIndex].utilisation * 100) + '% of days flew'),
+              label: c => c.dataset.label + ': ' + fH(c.parsed.y, 0) +
+                (c.dataset.label === 'Hours flown'
+                  ? ' · ' + fN(mo[c.dataIndex].lessons) + ' lessons · ' + Math.round(mo[c.dataIndex].utilisation * 100) + '% of days flew'
+                  : ''),
             },
           }),
         },
@@ -1035,7 +1087,7 @@
     const tc = Model.TYPE_COLORS;
     grid.appendChild(card('Output rhythm', 'what was actually flown, split by sortie type', [
       outBox,
-      legendRow([[tc.Dual, 'Dual + SPIC'], [tc.Solo, 'Solo'], [tc.Simulator, 'Simulator'],
+      legendRow([[cssv('--v6-acc2', '#22d3ee'), 'Dual + SPIC'], [Model.TYPE_COLORS.Solo, 'Solo'], [Model.TYPE_COLORS.Simulator, 'Simulator'],
         [cssv('--v6-acc', '#e88aff'), 'Moving average'], [cssv('--v6-bad', '#fb7185'), 'Required at the time']]),
     ], 'v6-c12', { tools: periodSeg, info: [
       el('p', {}, ['Bars are stacked by sortie type, labelled per segment where the segment is big enough to hold a number, with the period total above each bar.']),
@@ -1054,17 +1106,10 @@
     const dist = MODEL.distribution;
     grid.appendChild(card('Batch distribution', dist ? 'spread of lessons completed across ' + MODEL.students.length + ' SP' : 'no data', [
       distBox,
-      dist ? el('div', { class: 'v6-scrub-read', style: 'margin-top:12px' }, [
-        el('div', {}, [el('div', { class: 'l' }, ['Slowest']), el('div', { class: 'v' }, [String(dist.min)])]),
-        el('div', {}, [el('div', { class: 'l' }, ['Lower quartile']), el('div', { class: 'v' }, [String(dist.q1)])]),
-        el('div', {}, [el('div', { class: 'l' }, ['Median']), el('div', { class: 'v' }, [String(dist.median)])]),
-        el('div', {}, [el('div', { class: 'l' }, ['Average']), el('div', { class: 'v', style: 'color:var(--v6-acc)' }, [dist.avg.toFixed(1)])]),
-        el('div', {}, [el('div', { class: 'l' }, ['Upper quartile']), el('div', { class: 'v' }, [String(dist.q3)])]),
-        el('div', {}, [el('div', { class: 'l' }, ['Fastest']), el('div', { class: 'v' }, [String(dist.max)])]),
-      ]) : null,
     ], 'v6-c12', { info: [
       el('p', {}, ['How many SP sit in each band of lessons completed — the shape of the batch rather than its total. A tall single band means the cohort is moving together; a wide flat spread means it is splitting into a fast and a slow group, which is a scheduling problem long before it is a completion problem.']),
       el('p', { style: 'margin-top:8px' }, ['Solid bars are the middle half of the batch (lower to upper quartile); the dashed magenta line marks the average, drawn at its true fractional position inside its band rather than snapped to the nearest bar. Hover a bar to see exactly which SP are in it.']),
+      dist ? el('p', { style: 'margin-top:8px' }, ['Right now: slowest ' + dist.min + ', lower quartile ' + dist.q1 + ', median ' + dist.median + ', average ' + dist.avg.toFixed(1) + ', upper quartile ' + dist.q3 + ', fastest ' + dist.max + ' lessons.']) : null,
     ] }));
 
     // ── lead/lag history ──
@@ -1077,6 +1122,7 @@
     const lagFmt = v => (S.unit === 'lessons' ? fN(v) + ' les' : fH(v, 0));
     grid.appendChild(card('Behind plan, over time', 'the shortfall against the curriculum plan, day by day', [
       lagBox,
+      legendRow([[cssv('--v6-bad', '#fb7185'), 'behind plan'], [cssv('--v6-acc', '#e88aff'), '14-day trend']]),
       el('div', { class: 'v6-scrub-read', style: 'margin-top:12px' }, [
         el('div', {}, [el('div', { class: 'l' }, ['Behind today']), el('div', { class: 'v', style: 'color:var(--v6-bad)' }, [lagFmt(lagNow)])]),
         el('div', {}, [el('div', { class: 'l' }, ['Closest ever']), el('div', { class: 'v', style: 'color:var(--v6-good)' }, [lagBest === 0 ? 'on plan' : lagFmt(lagBest)])]),
@@ -1084,7 +1130,7 @@
         el('div', {}, [el('div', { class: 'l' }, ['Still growing?']), el('div', { class: 'v' }, [lagNow >= lagWorst - 0.01 ? 'yes' : 'off the peak'])]),
       ]),
     ], 'v6-c12', { info: [
-      el('p', {}, ['Cumulative work the batch owes the curriculum plan, evaluated every day since the plan began. It is floored at zero: a batch that got ahead would read as flat zero rather than dipping below the axis. This one has never been ahead.']),
+      el('p', {}, ['Cumulative work the batch owes the curriculum plan, evaluated every day since the plan began. It is floored at zero: a batch that got ahead would read as flat zero rather than dipping below the axis. This one has never been ahead. The dashed magenta line is a 14-day centred average — the raw shortfall is a sawtooth, because the plan steps up on its own dates while flying arrives in bursts, and the average is what shows whether the gap is still widening.']),
       el('p', { style: 'margin-top:8px' }, ['The shape is what matters more than the level — a line that flattens means the batch is finally matching the plan\u2019s daily rate even if it has not begun to catch up, while a line still climbing means the gap is widening every day.']),
     ] }));
 
@@ -1124,11 +1170,11 @@
     const monBox = el('div', { class: 'v6-chart', style: 'height:230px' }, [el('canvas', { id: 'v6-months' })]);
     grid.appendChild(card('Month by month', 'hours flown per month, with the trend through them', [
       monBox,
-      legendRow([[cssv('--v6-acc2', '#22d3ee'), 'hours flown'], [cssv('--v6-acc', '#e88aff'), 'trend']]),
+      legendRow([[cssv('--v6-acc2', '#22d3ee'), 'hours flown'], [cssv('--v6-acc', '#e88aff'), '3-month trend'], [cssv('--v6-bad', '#fb7185'), 'required that month']]),
       el('div', { style: 'height:12px' }),
       ribbon,
     ], 'v6-c12', { info: [
-      el('p', {}, ['Monthly totals with an ordinary least-squares trend line through them — the direction the batch is actually moving, computed rather than eyeballed. A month is counted whole, so the current month reads low until it closes.']),
+      el('p', {}, ['Monthly totals with a 3-month centred moving average through them, and the output that month actually required. The required line is evaluated at each month against the work outstanding then — not stamped with today\u2019s figure — so it climbs as the batch falls behind. A month is counted whole, so the current month reads low until it closes.']),
       el('p', { style: 'margin-top:8px' }, ['The cards beneath give each month its own detail: hours, lessons, and the share of that month\u2019s calendar days on which anything flew. That last figure is often the more useful one — a month can look thin because sorties were short, or because the line stood still for a fortnight, and only the flying-day share tells the two apart.']),
     ] }));
 
