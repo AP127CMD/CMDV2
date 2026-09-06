@@ -86,7 +86,7 @@ for the now-fixed upstream flakiness — left in place deliberately (no evidence
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p194` (all currently at p193)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p198` (all currently at p197)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the Verify section below with new token + change summary
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
@@ -142,7 +142,28 @@ ruled out as not currently live. No file touched; full reasoning in REVAMP.md's 
 **This closes the full 26-item audit from `.claude/plans/nested-sparking-tide.md` (Rounds A–E,
 p149–p152, all shipped and deploy-verified).**
 
-**Last known:** all files `p193` (2026-09-06 — **AP127 Detail V6 — round-5 feedback.**
+**Last known:** all files `p197` (2026-09-06 — **AP127 Detail V6 — round-6 feedback.**
+Act 04 retitled **"AP127 each SP"**; **the constellation is folded into the roster** (two surfaces
+listing the same 28 people, sorted the same way, was one too many) — a single table, one row per SP,
+carrying the progress bar and the 60-day trend the cards showed, with Call sign / Last flight / Next
+lesson / Finish / vs cohort / Standing removed; **default sort is now "Most behind"** (fewest lessons
+first) and **sort order is no longer persisted** — persisting it is what made the new default fail to
+appear, since the tab opened on whatever had last been clicked; **hover removed from the roster**
+(click a row); **race filters are now Student pilot + Aircraft** (Instructor and Standing gone; 28 SP
+needs a `<select>`, not a segmented control); and the **activity calendar is redrawn in V5's cell
+design with V5's colour code** — phase-tinted bordered cells at 24-88% intensity by hours, Monday
+rules, day-of-month header with today in accent, in-cell hours at ≥20px columns, `NL·XXh` period
+column, and V5's exact idle indexing (closed gap = red tint + dashed centre line, open gap = amber +
+dotted, never-flew = open throughout). **Every calendar cell is clickable including empty ones**,
+opening a day modal with both systems' records — an empty day can hide a cancelled or pending Ops
+booking. Tints use plain `rgba()`, never `color-mix()` (html2canvas can't parse it — that's what
+forced V4's PDF heatmap fallback).
+
+**⚠ Process note:** four edits this round were silently lost because a multi-edit Python script
+asserted fine on early replacements then **aborted on a later assertion before writing the file** —
+the browser showed old text while `node -c` passed. Batch edits must re-read the file and assert the
+expected strings are present ON DISK before reporting success. Full write-up: REVAMP.md's p197 entry.)
+p193 (2026-09-06 — **AP127 Detail V6 — round-5 feedback.**
 **02 Where the batch stands:** phase funnel removed (its sole caller of `openPhaseModal()` went too;
 `.v6-funnel` CSS stays — the SP drawer's per-phase breakdown still uses it); **"③ What it takes"
 folded into Required-against-actual**, since the band repeated the same period-by-period comparison

@@ -323,6 +323,8 @@ body[data-theme="light"] .v6-pbar>b{text-shadow:0 0 4px rgba(255,255,255,.85);}
 .v6-t td.bad{color:var(--v6-bad);}
 .v6-t td.warn{color:var(--v6-warn);}
 .v6-t tr.v6-hot td{background:var(--v6-glass-2);}
+.v6-spark-cell{display:block;height:22px;}
+.v6-spark-cell svg{width:100%;height:100%;}
 
 /* ---- Risk pills --------------------------------------------------------------- */
 .v6-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
@@ -335,28 +337,34 @@ body[data-theme="light"] .v6-pbar>b{text-shadow:0 0 4px rgba(255,255,255,.85);}
 .v6-pill.trailing{background:rgba(167,139,250,.16);color:var(--v6-acc3);}
 .v6-pill.unknown{background:rgba(127,127,127,.14);color:var(--v6-tx3);}
 
-/* ---- SP constellation ---------------------------------------------------------- */
-.v6-spgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:11px;}
-.v6-sp{
-  position:relative;padding:11px;border:1px solid var(--v6-bd);border-radius:12px;background:var(--v6-glass);
-  cursor:pointer;transition:transform .2s cubic-bezier(.2,.7,.3,1),border-color .2s,box-shadow .2s;
-}
-.v6-sp:hover{transform:translateY(-3px) scale(1.015);border-color:var(--v6-acc);box-shadow:var(--v6-shadow);}
-.v6-sp-top{display:flex;align-items:center;gap:9px;}
-.v6-sp-ring{width:42px;height:42px;flex-shrink:0;position:relative;}
-.v6-sp-ring svg{width:100%;height:100%;transform:rotate(-90deg);}
-.v6-sp-ring span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:9px;}
-.v6-sp-id{min-width:0;}
-.v6-sp-id b{display:block;font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.v6-sp-id span{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--v6-tx3);}
-.v6-sp-spark{height:24px;margin-top:8px;}
-.v6-sp-spark svg{width:100%;height:100%;}
-.v6-sp-ft{display:flex;justify-content:space-between;gap:6px;margin-top:7px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--v6-tx3);}
-
 /* Focus bus — hover/select an SP anywhere, everything else recedes. */
 .ap127-v6.v6-focusing [data-sp]{opacity:.26;filter:saturate(.35);transition:opacity .18s,filter .18s;}
 .ap127-v6.v6-focusing [data-sp].v6-hot{opacity:1;filter:none;box-shadow:0 0 0 1px var(--v6-acc);}
 
+/* ---- Activity calendar, in V5's cell design ----------------------------------------
+   Bordered cells tinted by phase and intensity, Monday rules, a dashed centre
+   line through a closed idle gap and a dotted one through an open gap, and an
+   outline on today. Tints are plain rgba(), never color-mix() — html2canvas
+   cannot parse color-mix, which is what forced V4's PDF export to fall back to
+   a text table for its heatmaps. */
+.v6-cal{border-collapse:separate;border-spacing:1px;font-size:7px;table-layout:fixed;}
+.v6-cal th,.v6-cal td{padding:0;margin:0;}
+.v6-cal .idc{position:sticky;z-index:3;background:var(--v6-bg-2);border-right:1px solid var(--v6-bd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;text-align:left;font-size:10px;}
+.v6-cal thead .idc{z-index:5;}
+.v6-cal thead th{position:sticky;top:0;z-index:4;background:var(--v6-bg-2);vertical-align:bottom;padding-bottom:2px;}
+.v6-cal .hl{font-size:7.5px;color:var(--v6-tx3);line-height:1.25;display:block;text-align:center;}
+.v6-cal .cal{height:21px;border-radius:2px;text-align:center;vertical-align:middle;line-height:1;user-select:none;cursor:pointer;}
+.v6-cal .mon{border-left:1px solid var(--v6-bd)!important;}
+.v6-cal .today{outline:1px solid var(--v6-acc2);outline-offset:-1px;}
+.v6-cal .idle{position:relative;background:rgba(251,113,133,.10)!important;}
+.v6-cal .idle::after{content:'';position:absolute;left:0;right:0;top:50%;border-top:1px dashed var(--v6-bad);opacity:.85;}
+.v6-cal .idle-open{background:rgba(251,191,36,.12)!important;}
+.v6-cal .idle-open::after{border-top-style:dotted;border-top-color:var(--v6-warn);}
+.v6-cal .nm{display:block;overflow:hidden;text-overflow:ellipsis;cursor:pointer;font-weight:600;color:var(--v6-tx2);}
+.v6-cal .nm:hover{color:var(--v6-acc);}
+.v6-cal tbody tr.grp td{padding:3px 7px;font-size:10px;font-weight:700;background:rgba(232,138,255,.09);border-radius:3px;}
+.v6-cal tfoot td{background:var(--v6-glass-2);font-size:7.5px;color:var(--v6-tx2);text-align:center;border-radius:2px;height:15px;}
+.v6-cal tfoot .idc{color:var(--v6-acc);font-size:9px;}
 
 /* ---- Grid tables: curriculum grid + activity calendar ------------------------------
    Real <table>s with sticky identity columns, ported in spirit from V5's

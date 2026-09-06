@@ -3919,3 +3919,58 @@ on every DB_Share-proxied file and every V5 file. CSS brace balance re-checked a
 removals.
 
 Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.
+
+---
+
+## p197
+
+**AP127 Detail V6 — round-6 feedback: Act 04 rebuilt as one table, race filters changed, activity
+calendar redrawn in V5's cell design.**
+
+- **Act 04 retitled "AP127 each SP".**
+- **The constellation is folded into the roster.** Two surfaces listing the same 28 people, sorted
+  the same way, was one surface too many. There is now a single table, one row per SP, carrying the
+  progress bar and the 60-day cumulative trend the cards used to show. Requested columns removed:
+  Call sign, Last flight, Next lesson, Finish, vs cohort, Standing. What remains is
+  `# · SP · SE · Instructor · Progress · % · Hours · vs plan · vs target · Idle · Last 60 days`.
+- **Default sort is now "Most behind"** — fewest lessons completed first, so the SP who most needs
+  looking at is row 1. The rank badge's colour flipped with it: red on the first three rows, green on
+  the last three. **Sort order is no longer persisted**, which is what made the new default fail to
+  appear at first — the tab was opening on whatever sort had last been clicked in an earlier session.
+  Sort is a view default, not a saved preference.
+- **Hover removed from the roster**, matching the curriculum grid: click a row for the record.
+- **The race filters are now Student pilot + Aircraft.** Instructor and Standing are gone. 28 SP is
+  far too many for a segmented control, so the SP filter is a `<select>`; picking one leaves that
+  single line against the plan, the revised target and the batch average, which is the "how is this
+  student doing" view rather than a race.
+- **Activity calendar redrawn in V5's cell design, with V5's colour code.** Bordered cells tinted by
+  phase at an intensity of 24–88% scaled by hours flown, with a slightly stronger border of the same
+  hue; Monday rules rather than month rules; day-of-month in the header with today's in accent; the
+  hours value printed in the cell once columns are ≥20px wide; a per-SP `NL·XXh` period column; and
+  group rows carrying SP count, lessons and hours. Idle runs now follow V5's exact indexing — a run
+  bounded by a later flight is a **closed** gap (red tint, dashed centre line), a run reaching the
+  last column is **open** (amber tint, dotted line), and an SP who never flew inside the range is
+  open throughout. **Every cell is clickable, including empty ones**, opening a new day modal with
+  both systems' records — an empty day can still hide a cancelled or pending Ops booking, which is
+  exactly what someone clicking an unexpected blank is asking about. Verified both paths: a flown
+  cell opened Progress + two Ops bookings, an empty cell opened Progress + Operations.
+
+Tints use plain `rgba()` rather than `color-mix()`, the same choice V5 documents: html2canvas cannot
+parse `color-mix`, and that is what forced V4's PDF export to fall back to a text table for its
+heatmaps.
+
+### Process note worth keeping
+
+Four edits in this round were silently lost because a multi-edit Python script asserted successfully
+on the early replacements and then **aborted on a later assertion before writing the file**. The
+symptom was confusing — the browser showed the old title and the old sort while `node -c` passed and
+the earlier asserts had not complained. Every batch edit now re-reads the file and asserts the
+expected strings are present **on disk** before reporting success.
+
+**Verified:** 35/35 invariants, 0 failing, both themes. Roster confirmed ascending by lessons
+completed (31 → 45) with "Most behind" active. Zero table overflow, zero page overflow. Report builds
+all five sections. Dead constellation card styles removed while keeping the focus-bus rules the race
+chart, calendar and roster still use; CSS brace balance re-checked at 0. V4 (10 charts) and V5
+(12/12) unchanged; `git diff --stat` empty on every protected file.
+
+Files: `js/view-cohort-v6.js`, `css/cohort-v6.css`, `index.html`.
