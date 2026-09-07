@@ -35,8 +35,31 @@ export function diffSnapshots(prev, next) {
   const prevKeys = new Set(Object.keys(prev));
   const nextKeys = new Set(Object.keys(next));
 
+  // 2026-09-07: a "record actual" completion arrives as TWO upstream edits — the planned booking
+  // row is removed and a new `ACTUAL_ONLY_<plannedId>` row is added with status Completed.
+  // `suppressActualPairs()` (below) collapses that pair into a single "✅ Completed" notice, but
+  // only when BOTH edits land in the SAME diff run. When the upstream feed stages them across runs
+  // (seen live when the Pi scraper hard-hung and rebooted mid-morning — CLAUDE.md), each half
+  // escaped on its own: a lone planned-row removal fired "❌ Cancelled", and an `ACTUAL_ONLY` row
+  // that appeared before its status settled to Completed fired "✈️ New". Real incident: one flight
+  // completion → three Telegram notices (New, Cancelled, Completed).
+  //
+  // These guards make the pairing stateful. They key off the `ACTUAL_ONLY_<plannedId>` naming,
+  // which is reliable for every `BK-*` booking id; genuinely unplanned actual records
+  // (`ACTUAL_ONLY_UNPLANNED_ACT_*`, short-form ids) simply have no planned twin to match here,
+  // which is the correct outcome for them.
+  const actualTwinBaseIds = new Set();
+  for (const k of nextKeys) {
+    if (k.startsWith('ACTUAL_ONLY_')) actualTwinBaseIds.add(k.slice('ACTUAL_ONLY_'.length));
+  }
+
   for (const id of nextKeys) {
     if (!prevKeys.has(id)) {
+      // A freshly-appeared ACTUAL_ONLY row that hasn't settled to Completed yet is a completion
+      // record still being filled in upstream, not a new booking — hold it. It fires a proper
+      // STATUS→Completed on the next run once its status flips (and if it instead vanishes while
+      // still un-settled, the REMOVED guard below drops that too, since we never announced it).
+      if (id.startsWith('ACTUAL_ONLY_') && next[id].status !== 'Completed') continue;
       events.push({ type: 'ADDED', flight: next[id], diff: {} });
       continue;
     }
@@ -74,6 +97,13 @@ export function diffSnapshots(prev, next) {
 
   for (const id of prevKeys) {
     if (!nextKeys.has(id)) {
+      // The planned booking row for a flight whose actual record is now present — this is the
+      // "cancel the planned twin" half of a completion, not a real cancellation. The completion is
+      // already announced (or will be) via the ACTUAL_ONLY row itself. See the note above.
+      if (actualTwinBaseIds.has(id)) continue;
+      // An ACTUAL_ONLY row we deliberately never announced (held above while non-Completed) that
+      // then vanished upstream — there is nothing to retract.
+      if (id.startsWith('ACTUAL_ONLY_') && prev[id].status !== 'Completed') continue;
       events.push({ type: 'REMOVED', flight: prev[id], diff: {} });
     }
   }

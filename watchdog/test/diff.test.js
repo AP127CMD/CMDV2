@@ -133,6 +133,77 @@ describe('diffSnapshots', () => {
     expect(events[0].type).toBe('CHANGED');
   });
 
+  // 2026-09-07 real incident: recording ONE flight complete produced THREE Telegram notices
+  // (✈️ New, ❌ Cancelled, ✅ Completed). Root cause — a "record actual" completion is two upstream
+  // edits (remove planned row, add `ACTUAL_ONLY_<plannedId>` row as Completed); suppressActualPairs
+  // only pairs them within a single run, and the feed staged them across runs when the Pi scraper
+  // hard-hung/rebooted mid-morning. diffSnapshots now makes the pairing stateful via the
+  // ACTUAL_ONLY_<plannedId> naming.
+  describe('staged "record actual" completion (cross-run)', () => {
+    const planned = { id: 'BK-AP-127-ANUS-RUDXK', date: '2026-09-07', start: '12:00', end: '13:15',
+      status: 'Pending', student: 'ANUSORN T.', instructor: 'KEVIN T.', lesson: 'CSPGL 37', tail: 'HS-TVE' };
+    const actual = (status) => ({ ...planned, id: 'ACTUAL_ONLY_BK-AP-127-ANUS-RUDXK', status });
+
+    it('holds a not-yet-Completed ACTUAL_ONLY row appearing (no "✈️ New")', () => {
+      const prev = { [planned.id]: planned };
+      const next = { [planned.id]: planned, [actual('Pending').id]: actual('Pending') };
+      expect(diffSnapshots(prev, next)).toHaveLength(0);
+    });
+
+    it('suppresses the planned-row removal once its ACTUAL_ONLY twin is present (no "❌ Cancelled")', () => {
+      const prev = { [planned.id]: planned, [actual('Pending').id]: actual('Pending') };
+      const next = { [actual('Pending').id]: actual('Pending') };
+      expect(diffSnapshots(prev, next)).toHaveLength(0);
+    });
+
+    it('fires exactly one STATUS→Completed when the held ACTUAL_ONLY row finally flips', () => {
+      const prev = { [actual('Pending').id]: actual('Pending') };
+      const next = { [actual('Completed').id]: actual('Completed') };
+      const events = diffSnapshots(prev, next);
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('STATUS');
+      expect(events[0].diff.status).toEqual({ from: 'Pending', to: 'Completed' });
+    });
+
+    it('end-to-end: 3 staged runs yield one Completed event and zero New/Cancelled', () => {
+      const runs = [
+        [{ [planned.id]: planned }, { [planned.id]: planned, [actual('Pending').id]: actual('Pending') }],
+        [{ [planned.id]: planned, [actual('Pending').id]: actual('Pending') }, { [actual('Pending').id]: actual('Pending') }],
+        [{ [actual('Pending').id]: actual('Pending') }, { [actual('Completed').id]: actual('Completed') }],
+      ];
+      const all = runs.flatMap(([p, n]) => suppressActualPairs(diffSnapshots(p, n)));
+      expect(all).toHaveLength(1);
+      expect(all[0].flight.status).toBe('Completed');
+      expect(all.some(e => e.type === 'REMOVED')).toBe(false);
+      expect(all.some(e => e.type === 'ADDED' && e.flight.status !== 'Completed')).toBe(false);
+    });
+
+    it('still fires a normal REMOVED for a planned row with no ACTUAL_ONLY twin', () => {
+      const prev = { [planned.id]: planned };
+      const events = diffSnapshots(prev, {});
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('REMOVED');
+    });
+
+    it('still fires ADDED for an unplanned Completed actual record (no planned twin to hold against)', () => {
+      const unplanned = { id: 'ACTUAL_ONLY_UNPLANNED_ACT_9001', date: '2026-09-07', start: '09:00',
+        end: '10:00', status: 'Completed', student: 'ANUSORN T.', lesson: 'CDGL 10', tail: 'HS-TVE' };
+      const events = diffSnapshots({}, { [unplanned.id]: unplanned });
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('ADDED');
+      expect(events[0].flight.status).toBe('Completed');
+    });
+
+    it('still collapses the classic same-run pair (planned removed + ACTUAL_ONLY added together)', () => {
+      const prev = { [planned.id]: planned };
+      const next = { [actual('Completed').id]: actual('Completed') };
+      const events = suppressActualPairs(diffSnapshots(prev, next));
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('ADDED');
+      expect(events[0].flight.status).toBe('Completed');
+    });
+  });
+
   it('returns empty array when nothing changed', () => {
     const events = diffSnapshots(base, { ...base });
     expect(events).toHaveLength(0);
