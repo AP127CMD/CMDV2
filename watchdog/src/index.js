@@ -1,4 +1,4 @@
-import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons, stabilizeCancelledFlights } from './diff.js';
+import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons, stabilizeCancelledFlights, stabilizeCompletedFlights } from './diff.js';
 import { buildCombinedMessages, sendTelegram } from './telegram.js';
 import { appendLog, getLog } from './log.js';
 
@@ -77,8 +77,16 @@ async function loadConfig(kv) {
 async function loadStatus(kv) {
   const raw = await kv.get('watchdog:status', 'text');
   return raw ? JSON.parse(raw)
-    : { lastRun: null, lastChange: null, lastError: null, runCount: 0, feedSig: null, anomalyStreak: 0 };
+    : { lastRun: null, lastChange: null, lastError: null, runCount: 0, feedSig: null, anomalyStreak: 0, recentSigs: [] };
 }
+
+// How many recently-processed feed signatures to remember, for the stale/flap guard in runWatchdog.
+// raw.githubusercontent.com serves whatever a given CDN edge has cached; during a burst of rapid
+// commits (or the Pi's post-reboot catch-up) a later poll can be handed an OLDER version than one
+// we already processed and moved past. Re-diffing it rolls the snapshot backwards and fires
+// spurious ADDED/REMOVED (a completed flight's planned row "reappears" → ✈️ New + ❌ Cancelled).
+// 8 covers ~15-40 min of feed history — well past any realistic CDN propagation lag.
+export const RECENT_SIG_HISTORY = 8;
 
 
 export function flightTimestampMs(flight) {
@@ -198,6 +206,7 @@ async function runWatchdog(env) {
       // signal watchdog-monitor needs to tell "quiet day" apart from "feed dead".
       feedFetchedAt: prevStatus.feedFetchedAt ?? null,
       anomalyStreak: prevStatus.anomalyStreak || 0,
+      recentSigs: prevStatus.recentSigs ?? [],
       ...fields,
     }));
   };
@@ -214,6 +223,18 @@ async function runWatchdog(env) {
     // first run after (re)deploy always does a full pass. The download already happened (I/O, not CPU).
     if (prevStatus.feedSig && sig === prevStatus.feedSig) {
       await writeStatus(); // heartbeat only, subject to the 25-min quiet-skip
+      return;
+    }
+
+    // Stale/flap guard (2026-09-07): this exact feed version is one we've already processed and
+    // moved PAST (it's in the recent-history ring but is not the current feedSig) → a lagging
+    // raw.githubusercontent.com edge handed us an older version than our snapshot reflects.
+    // Re-diffing it would roll the snapshot backwards and fire spurious events (real incident:
+    // PICHAKORN J.'s completed flight fired ✈️ New + ❌ Cancelled + ✅ Completed while the Pi
+    // scraper was catching up post-reboot). Do NOT touch the snapshot or feedSig — just wait for a
+    // consistent read. See RECENT_SIG_HISTORY.
+    if ((prevStatus.recentSigs || []).includes(sig)) {
+      await writeStatus(); // heartbeat only
       return;
     }
 
@@ -246,6 +267,15 @@ async function runWatchdog(env) {
     // this, that flap fires a duplicate REMOVED/ADDED notification every time it flickers. Applied
     // here — before diffing AND before the KV persist below — so the correction sticks for next run.
     newSnap = stabilizeCancelledFlights(newSnap, prevSnap, data.cancellations);
+    // 2026-09-07: the completion counterpart. A flown flight's `ACTUAL_ONLY_<id>` record, once
+    // present as Completed, is permanent — but a raw `flights[]` scrape hiccup can drop it for a
+    // pull (same flake class as the cancelled-booking flap above), making the planned row
+    // "reappear". Without this, that fires ✈️ New + ❌ Cancelled until the feed settles, then
+    // ✅ Completed — one completion, three notices. Carry a lost Completed ACTUAL_ONLY record
+    // forward and drop its re-surfaced planned twin. (The stale/flap guard above already catches
+    // the CDN-serves-an-older-version case before parse; this catches a genuinely-new commit that
+    // momentarily lost the record.)
+    newSnap = stabilizeCompletedFlights(newSnap, prevSnap);
 
     const events = diffSnapshots(prevSnap, newSnap);
     const typeFiltered = events.filter(e => config.eventTypes?.[e.type] !== false);
@@ -296,12 +326,15 @@ async function runWatchdog(env) {
     await appendLog(env.KV, logEntries, ts);
 
     // Feed changed → always persist the new sig (enables skip-on-unchanged next run) + reset streak.
+    // Also push it onto the recent-history ring so a later stale/lagging-CDN read of this same
+    // version is recognised and skipped rather than re-diffed backwards (see the stale/flap guard).
     await writeStatus({
       force: true,
       changed: notifiable.length > 0,
       feedSig: sig,
       feedFetchedAt: data.fetchedAt || null,
       anomalyStreak: 0,
+      recentSigs: [sig, ...(prevStatus.recentSigs || []).filter(s => s !== sig)].slice(0, RECENT_SIG_HISTORY),
     });
   } catch (err) {
     await env.KV.put('watchdog:status', JSON.stringify({

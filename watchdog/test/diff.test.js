@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons, stabilizeCancelledFlights } from '../src/diff.js';
+import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons, stabilizeCancelledFlights, stabilizeCompletedFlights } from '../src/diff.js';
 import { matchesBatchFilter, flightTimestampMs,
   SNAPSHOT_LOOKBACK_MS, SNAPSHOT_LOOKAHEAD_MS, withinSnapshotWindow,
   bangkokDateStr, isActionable, isAnomalousDrop, ANOMALY_MIN_BASELINE, ANOMALY_MAX_STREAK,
@@ -584,6 +584,45 @@ describe('suppressActualPairs', () => {
     const result = suppressActualPairs([completed, removed]);
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe('ADDED');
+  });
+});
+
+// 2026-09-07: the completion counterpart of stabilizeCancelledFlights. A raw `flights[]` scrape can
+// drop a completed flight's `ACTUAL_ONLY_<id>` row for a pull (or a lagging CDN edge serves an older
+// version), making the planned row "reappear" → spurious ✈️ New + ❌ Cancelled. Real incident:
+// PICHAKORN J., 2026-09-07 — one completion produced four notices.
+describe('stabilizeCompletedFlights', () => {
+  const actual = { id: 'ACTUAL_ONLY_BK-1', status: 'Completed', student: 'A', lesson: 'L1', date: '2026-09-07' };
+  const planned = { id: 'BK-1', status: 'Pending', student: 'A', lesson: 'L1', date: '2026-09-07' };
+
+  it('carries a lost Completed ACTUAL_ONLY record forward and drops its re-surfaced planned twin', () => {
+    const prev = { 'ACTUAL_ONLY_BK-1': actual };
+    const next = { 'BK-1': planned };
+    const out = stabilizeCompletedFlights(next, prev);
+    expect(out).toEqual({ 'ACTUAL_ONLY_BK-1': actual });
+    expect(diffSnapshots(prev, out)).toHaveLength(0); // no spurious New/Cancelled
+  });
+
+  it('is a no-op when the ACTUAL_ONLY record is still present', () => {
+    const prev = { 'ACTUAL_ONLY_BK-1': actual };
+    const next = { 'ACTUAL_ONLY_BK-1': { ...actual, ldg: 2 } };
+    expect(stabilizeCompletedFlights(next, prev)).toBe(next);
+  });
+
+  it('does not touch a planned row that never had a completed twin', () => {
+    const prev = { 'BK-2': { ...planned, id: 'BK-2' } };
+    const next = {};
+    expect(stabilizeCompletedFlights(next, prev)).toEqual({});
+  });
+
+  it('ignores a prev ACTUAL_ONLY row that was not Completed', () => {
+    const prev = { 'ACTUAL_ONLY_BK-1': { ...actual, status: 'Pending' } };
+    const next = { 'BK-1': planned };
+    expect(stabilizeCompletedFlights(next, prev)).toEqual({ 'BK-1': planned });
+  });
+
+  it('handles a missing prevSnap', () => {
+    expect(stabilizeCompletedFlights({ 'BK-1': planned }, undefined)).toEqual({ 'BK-1': planned });
   });
 });
 

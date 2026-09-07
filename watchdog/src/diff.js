@@ -175,6 +175,32 @@ export function stabilizeCancelledFlights(newSnap, prevSnap, cancellations) {
   return out;
 }
 
+// 2026-09-07: the completion counterpart of stabilizeCancelledFlights. A "record actual" completion
+// replaces the planned booking row with an `ACTUAL_ONLY_<plannedId>` row at status Completed — and
+// a flown flight never un-flies. But the raw `flights[]` can drop that ACTUAL_ONLY row for a single
+// scrape (the same flake class that makes cancelled bookings flap — see stabilizeCancelledFlights),
+// which makes the planned row momentarily "reappear" in the diff → spurious ✈️ New + ❌ Cancelled,
+// then ✅ Completed once it settles: one completion, three notices (real incident — PICHAKORN J.,
+// 2026-09-07, during the Pi scraper's post-reboot catch-up).
+//
+// If `prevSnap` tracked `ACTUAL_ONLY_<id>` as Completed and `newSnap` has lost it, carry the
+// Completed record forward and drop any re-surfaced planned `<id>` twin. Pure — never mutates input.
+// Runs right after stabilizeCancelledFlights and before diffSnapshots/KV-persist, so the correction
+// sticks across runs. Bounded automatically: once the flight ages out of the snapshot window it
+// drops from both snapshots and is no longer carried.
+export function stabilizeCompletedFlights(newSnap, prevSnap) {
+  let out = newSnap;
+  for (const [key, pf] of Object.entries(prevSnap || {})) {
+    if (!key.startsWith('ACTUAL_ONLY_') || pf.status !== 'Completed') continue;
+    if (out[key]) continue; // still present — nothing to correct
+    if (out === newSnap) out = { ...newSnap };
+    out[key] = pf;
+    const baseId = key.slice('ACTUAL_ONLY_'.length);
+    if (out[baseId]) delete out[baseId]; // the planned row this completion already replaced
+  }
+  return out;
+}
+
 // When a flight is recorded as complete the system cancels the planned entry and
 // adds a new ACTUAL_ONLY entry. Keep the ADDED(Completed) as "Flight completed",
 // suppress the paired cancel (REMOVED or status → Canceled for same SP + lesson + date).
