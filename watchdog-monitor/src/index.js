@@ -13,6 +13,8 @@
 
 const STATE_KEY = 'monitor:state';
 const FEED_STATE_KEY = 'monitor:feedState';
+const PI_STATE_KEY = 'monitor:piState';
+const PI_HEARTBEAT_KEY = 'monitor:piHeartbeat';
 
 // Healthy quiet runs only refresh the watchdog's status every ~25 min (its quiet-skip), so a gap up
 // to 25 min is normal; >30 min means the scheduled run is genuinely not completing.
@@ -70,6 +72,46 @@ export function evaluateFeed(status, config, nowMs) {
   if (!Number.isFinite(ageMin)) return { down: false, reason: 'feedFetchedAt unparseable' };
   if (ageMin > DATA_STALE_LIMIT_MIN) {
     return { down: true, reason: `flight data is ${ageMin} min old (Pi and cloud fallback both appear down)`, ageMin };
+  }
+  return { down: false, reason: 'ok', ageMin };
+}
+
+// ─── Third, independent detector: is the ORANGE PI ITSELF reachable? ────────
+//
+// Added 2026-09-12, same day a printer-troubleshooting session found the Pi hard-down for
+// ~1h49m with NOTHING having noticed — not this worker, not the user, nobody. The cloud
+// fallback (evaluateFeed above) was doing exactly its job and keeping the flight-data feed
+// fresh, which is correct, but it means "the Pi is dead" and "the Pi is a quiet standby"
+// look byte-identical from the feed's own freshness alone. This channel watches the Pi's
+// OWN pulse instead of a downstream symptom that a working fallback can mask completely.
+//
+// The Pi has no public IP the cloud can reach (private LAN, 20.20.x.x) — this has to be
+// push, not poll. `pi-native/run_fetch.sh` POSTs to /pi-heartbeat on EVERY timer firing
+// (every ~5 min), unconditionally, regardless of whether that cycle actually fetches or
+// stands by — so a heartbeat gap means the systemd timer itself isn't running, which is a
+// much stronger and earlier signal than "did it commit lately" (a standing-by Pi commits
+// nothing for long stretches on purpose, see the Pi's own STANDBY_MAX_AGE_MIN gate).
+export const PI_HEARTBEAT_STALE_MIN = 15; // 3x the Pi's own ~5 min timer cadence
+
+// KV writes are an ACCOUNT-WIDE shared budget (1,000/day free tier) — see AP127_V2/CLAUDE.md,
+// flagged repeatedly as the actual binding constraint (not Actions minutes). The Pi calls
+// this endpoint up to ~288 times/day; nothing ever reads it more often than this worker's
+// own 10-min cron, so writing on every call would be pure waste against a budget this
+// codebase has already been burned by more than once. /pi-heartbeat rate-gates its own KV
+// write to at most once per this many minutes — still comfortably inside
+// PI_HEARTBEAT_STALE_MIN, so alerting resolution is unaffected.
+export const PI_HEARTBEAT_WRITE_GATE_MIN = 8;
+
+export function evaluatePi(heartbeat, config, nowMs) {
+  if (config && config.enabled === false) return { down: false, reason: 'disabled by config (intentional)' };
+  // No heartbeat ever recorded — either this monitor was just deployed before the Pi-side
+  // script shipped, or genuinely never ran. Same convention as evaluateFeed: treat unknown
+  // as healthy, don't invent a page out of a field that hasn't started existing yet.
+  if (!heartbeat || !heartbeat.ts) return { down: false, reason: 'no Pi heartbeat received yet' };
+  const ageMin = Math.round((nowMs - Date.parse(heartbeat.ts)) / 60000);
+  if (!Number.isFinite(ageMin)) return { down: false, reason: 'heartbeat timestamp unparseable' };
+  if (ageMin > PI_HEARTBEAT_STALE_MIN) {
+    return { down: true, reason: `no heartbeat from the Pi in ${ageMin} min (last seen ${heartbeat.ts})`, ageMin };
   }
   return { down: false, reason: 'ok', ageMin };
 }
@@ -158,7 +200,15 @@ export async function runMonitor(env, nowMs = Date.now()) {
   const feedPrev = feedPrevRaw ? JSON.parse(feedPrevRaw) : { alertedDown: false, downStreak: 0 };
   const { state: feedState, alert: feedAlert } = decideAlert(feedPrev, feedVerdict.down);
 
-  if ((alert || feedAlert) && env.TELEGRAM_BOT_TOKEN) {
+  // Third, fully independent channel — see evaluatePi()'s comment for why this exists
+  // alongside evaluateFeed rather than folded into it.
+  const piHeartbeat = await readJson(env.KV, PI_HEARTBEAT_KEY);
+  const piVerdict = evaluatePi(piHeartbeat, config, nowMs);
+  const piPrevRaw = await env.KV.get(PI_STATE_KEY, 'text');
+  const piPrev = piPrevRaw ? JSON.parse(piPrevRaw) : { alertedDown: false, downStreak: 0 };
+  const { state: piState, alert: piAlert } = decideAlert(piPrev, piVerdict.down);
+
+  if ((alert || feedAlert || piAlert) && env.TELEGRAM_BOT_TOKEN) {
     const target = await pickTarget(env);
     if (target) {
       const messages = [];
@@ -171,6 +221,11 @@ export async function runMonitor(env, nowMs = Date.now()) {
         messages.push(feedAlert === 'down'
           ? `🚨 AP127 flight data STALE\n${feedVerdict.reason}\nPrimary is the Orange Pi (pi-native/); the GitHub Actions fallback should have taken over at 35 min and did not. Check the Pi first.`
           : `✅ AP127 flight data flowing again\nFeed is fresh (${feedVerdict.ageMin} min old).`);
+      }
+      if (piAlert) {
+        messages.push(piAlert === 'down'
+          ? `🚨 AP127 Pi is unreachable\n${piVerdict.reason}\nThis also takes AirPrint (Canon E410) down — same board. Flight data itself is likely fine (cloud fallback covers it; check separately). Needs physical power-cycle / network check at Hua Hin — nothing to do remotely, no route to the box.`
+          : `✅ AP127 Pi is back\nHeartbeat received again (${piVerdict.ageMin} min old).`);
       }
       for (const text of messages) {
         try { await sendTelegram(env.TELEGRAM_BOT_TOKEN, target.chatId, text, target.threadId); }
@@ -200,17 +255,57 @@ export async function runMonitor(env, nowMs = Date.now()) {
       ...feedState, reason: feedVerdict.reason, lastCheck: new Date(nowMs).toISOString(),
     }));
   }
+
+  // Same rationing again for the Pi channel — transitions and alerts only.
+  const piChanged = piState.alertedDown !== piPrev.alertedDown || piState.downStreak !== piPrev.downStreak;
+  if (piChanged || piAlert) {
+    await env.KV.put(PI_STATE_KEY, JSON.stringify({
+      ...piState, reason: piVerdict.reason, lastCheck: new Date(nowMs).toISOString(),
+    }));
+  }
 }
 
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runMonitor(env));
   },
-  // Tiny status endpoint so the monitor itself is inspectable (and so a curl can confirm deploy).
   async fetch(request, env) {
-    if (new URL(request.url).pathname === '/state') {
-      const raw = await env.KV.get(STATE_KEY, 'text');
-      return new Response(raw || '{}', { headers: { 'Content-Type': 'application/json' } });
+    const url = new URL(request.url);
+
+    // Pushed by pi-native/run_fetch.sh on every timer firing (fetch OR standby — see
+    // evaluatePi()'s comment). Auth is a shared secret, not because the payload is
+    // sensitive, but because an unauthenticated writer could mask a real outage by
+    // forging a fresh heartbeat. Rate-gates its own write — see PI_HEARTBEAT_WRITE_GATE_MIN.
+    if (url.pathname === '/pi-heartbeat' && request.method === 'POST') {
+      if (!env.PI_HEARTBEAT_KEY || request.headers.get('X-API-Key') !== env.PI_HEARTBEAT_KEY) {
+        return new Response('unauthorized', { status: 401 });
+      }
+      const now = Date.now();
+      const existing = await readJson(env.KV, PI_HEARTBEAT_KEY);
+      const lastMs = existing && existing.ts ? Date.parse(existing.ts) : NaN;
+      if (!Number.isFinite(lastMs) || (now - lastMs) >= PI_HEARTBEAT_WRITE_GATE_MIN * 60000) {
+        await env.KV.put(PI_HEARTBEAT_KEY, JSON.stringify({ ts: new Date(now).toISOString() }));
+      }
+      return new Response('ok', { status: 200 });
+    }
+
+    // Tiny status endpoint so the monitor itself is inspectable (and so a curl can confirm
+    // deploy). `pi` is additive (2026-09-12) — nothing outside this repo was found reading
+    // this endpoint's shape, so it's safe to extend rather than needing a separate route.
+    if (url.pathname === '/state') {
+      const [watchdogRaw, feedRaw, piRaw, piHeartbeatRaw] = await Promise.all([
+        env.KV.get(STATE_KEY, 'text'),
+        env.KV.get(FEED_STATE_KEY, 'text'),
+        env.KV.get(PI_STATE_KEY, 'text'),
+        env.KV.get(PI_HEARTBEAT_KEY, 'text'),
+      ]);
+      const body = JSON.stringify({
+        watchdog: watchdogRaw ? JSON.parse(watchdogRaw) : null,
+        feed: feedRaw ? JSON.parse(feedRaw) : null,
+        pi: piRaw ? JSON.parse(piRaw) : null,
+        piLastHeartbeat: piHeartbeatRaw ? JSON.parse(piHeartbeatRaw) : null,
+      });
+      return new Response(body, { headers: { 'Content-Type': 'application/json' } });
     }
     return new Response('ap127-watchdog-monitor', { status: 200 });
   },

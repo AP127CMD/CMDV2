@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { evaluate, evaluateFeed, decideAlert, CONFIRM_DOWN, DATA_STALE_LIMIT_MIN, HEARTBEAT_MS, runMonitor } from '../src/index.js';
+import {
+  evaluate, evaluateFeed, evaluatePi, decideAlert, CONFIRM_DOWN, DATA_STALE_LIMIT_MIN,
+  HEARTBEAT_MS, PI_HEARTBEAT_STALE_MIN, PI_HEARTBEAT_WRITE_GATE_MIN, runMonitor,
+} from '../src/index.js';
+import worker from '../src/index.js';
 
 // Minimal in-memory KV that counts writes — lets us assert the write-budget behavior.
 function mockKV(seed = {}) {
@@ -160,6 +164,119 @@ describe('evaluateFeed (flight-data staleness → down/up verdict)', () => {
 
   it('unparseable feedFetchedAt fails safe (no alert)', () => {
     expect(evaluateFeed({ feedFetchedAt: 'not-a-date' }, null, NOW).down).toBe(false);
+  });
+});
+
+describe('evaluatePi (Pi heartbeat staleness → down/up verdict)', () => {
+  const NOW = Date.parse('2026-09-12T08:00:00Z');
+  const ago = (min) => new Date(NOW - min * 60000).toISOString();
+
+  it('a fresh heartbeat is UP', () => {
+    const v = evaluatePi({ ts: ago(3) }, null, NOW);
+    expect(v.down).toBe(false);
+    expect(v.ageMin).toBe(3);
+  });
+
+  it('a heartbeat right at the limit is still UP', () => {
+    expect(evaluatePi({ ts: ago(PI_HEARTBEAT_STALE_MIN) }, null, NOW).down).toBe(false);
+  });
+
+  it('past the limit is DOWN and names the gap', () => {
+    const v = evaluatePi({ ts: ago(PI_HEARTBEAT_STALE_MIN + 1) }, null, NOW);
+    expect(v.down).toBe(true);
+    expect(v.reason).toMatch(/no heartbeat from the Pi/);
+  });
+
+  // Must not page the moment this monitor is deployed, before the Pi-side script has
+  // shipped the heartbeat call — same convention as evaluateFeed's missing-field handling.
+  it('no heartbeat ever received is treated as healthy, not as an alert', () => {
+    expect(evaluatePi(null, null, NOW).down).toBe(false);
+    expect(evaluatePi({}, null, NOW).down).toBe(false);
+  });
+
+  it('an intentionally disabled watchdog never reports a dead Pi', () => {
+    expect(evaluatePi({ ts: ago(9999) }, { enabled: false }, NOW).down).toBe(false);
+  });
+
+  it('unparseable timestamp fails safe (no alert)', () => {
+    expect(evaluatePi({ ts: 'not-a-date' }, null, NOW).down).toBe(false);
+  });
+});
+
+describe('/pi-heartbeat endpoint', () => {
+  const env = (kv, key = 'secret123') => ({ KV: kv, PI_HEARTBEAT_KEY: key });
+  const post = (extraHeaders = {}) =>
+    new Request('https://x/pi-heartbeat', { method: 'POST', headers: extraHeaders });
+
+  it('rejects a request with no key configured on the worker', async () => {
+    const res = await worker.fetch(post({ 'X-API-Key': 'anything' }), env(mockKV(), undefined));
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a request with a missing or wrong X-API-Key', async () => {
+    const kv = mockKV();
+    expect((await worker.fetch(post(), env(kv))).status).toBe(401);
+    expect((await worker.fetch(post({ 'X-API-Key': 'wrong' }), env(kv))).status).toBe(401);
+    expect(kv.puts).toBe(0);
+  });
+
+  it('accepts the correct key and writes a heartbeat on first call', async () => {
+    const kv = mockKV();
+    const res = await worker.fetch(post({ 'X-API-Key': 'secret123' }), env(kv));
+    expect(res.status).toBe(200);
+    expect(kv.puts).toBe(1);
+  });
+
+  it('rate-gates: a second call inside the write-gate window does NOT write again', async () => {
+    const kv = mockKV({ 'monitor:piHeartbeat': JSON.stringify({ ts: new Date().toISOString() }) });
+    const res = await worker.fetch(post({ 'X-API-Key': 'secret123' }), env(kv));
+    expect(res.status).toBe(200); // still 200 — the Pi doesn't need to know or care
+    expect(kv.puts).toBe(0);
+  });
+
+  it('writes again once the write-gate window has passed', async () => {
+    const staleTs = new Date(Date.now() - (PI_HEARTBEAT_WRITE_GATE_MIN + 1) * 60000).toISOString();
+    const kv = mockKV({ 'monitor:piHeartbeat': JSON.stringify({ ts: staleTs }) });
+    const res = await worker.fetch(post({ 'X-API-Key': 'secret123' }), env(kv));
+    expect(res.status).toBe(200);
+    expect(kv.puts).toBe(1);
+  });
+});
+
+describe('Pi heartbeat is a third, independent alert channel', () => {
+  const NOW = Date.parse('2026-09-12T08:00:00Z');
+  const ago = (min) => new Date(NOW - min * 60000).toISOString();
+
+  // The exact blind spot this was built for: watchdog alive, feed fresh (cloud fallback
+  // covering it perfectly), yet the Pi itself has been unreachable for well over an hour.
+  it('pages on a dead Pi even though the watchdog and the feed are both healthy', async () => {
+    const kv = mockKV({
+      'watchdog:status': JSON.stringify({ lastRun: ago(2), feedFetchedAt: ago(5) }),
+      'monitor:piHeartbeat': JSON.stringify({ ts: ago(PI_HEARTBEAT_STALE_MIN + 5) }),
+    });
+    const sent = [];
+    const env = { KV: kv, TELEGRAM_BOT_TOKEN: 't', TELEGRAM_CHAT_ID: '1' };
+    globalThis.fetch = async (_url, opts) => {
+      sent.push(JSON.parse(opts.body).text);
+      return { ok: true };
+    };
+    for (let i = 0; i < CONFIRM_DOWN; i++) await runMonitor(env, NOW);
+    expect(sent.some((m) => /Pi is unreachable/.test(m))).toBe(true);
+    expect(sent.some((m) => /Watchdog DOWN/.test(m))).toBe(false);
+    expect(sent.some((m) => /flight data STALE/.test(m))).toBe(false);
+  });
+
+  it('recovers with one all-clear once the heartbeat resumes', async () => {
+    const kv = mockKV({
+      'watchdog:status': JSON.stringify({ lastRun: ago(2), feedFetchedAt: ago(5) }),
+      'monitor:piState': JSON.stringify({ alertedDown: true, downStreak: CONFIRM_DOWN }),
+      'monitor:piHeartbeat': JSON.stringify({ ts: ago(1) }),
+    });
+    const sent = [];
+    const env = { KV: kv, TELEGRAM_BOT_TOKEN: 't', TELEGRAM_CHAT_ID: '1' };
+    globalThis.fetch = async (_url, opts) => { sent.push(JSON.parse(opts.body).text); return { ok: true }; };
+    await runMonitor(env, NOW);
+    expect(sent.some((m) => /Pi is back/.test(m))).toBe(true);
   });
 });
 
