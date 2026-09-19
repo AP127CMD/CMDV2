@@ -200,7 +200,6 @@
     : half === 'PM' ? `linear-gradient(90deg, ${tint(c, 12)} 50%, ${c} 50%)`
     : half ? `linear-gradient(0deg, ${c} 50%, ${tint(c, 12)} 50%)` : c;
 
-  const personLabel = r => r.callsign ? `${r.name} · ${r.callsign}` : r.name;
 
   // ── KPI strip ──────────────────────────────────────────────────────────────
   function Kpi({ label, value, sub, color, onClick, title }) {
@@ -215,7 +214,7 @@
   }
 
   // ── Leave card (Day view) ──────────────────────────────────────────────────
-  function LeaveCard({ r, date, onOpen }) {
+  function LeaveCard({ r, date, onOpen, hideWho }) {
     const c = CAT[r.cat].c;
     const conf = conflictsOf(r).filter(f => !date || f.date === date);
     return h('div', {
@@ -223,8 +222,8 @@
       style: { background: 'var(--surface)', border: '1px solid var(--line)', borderLeft: '4px solid ' + c, borderRadius: 8,
         padding: '10px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6 },
     },
-      h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-        h('span', { style: { fontWeight: 700, fontSize: 14 } }, r.name),
+      !hideWho && h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+        h(PersonLink, { name: r.name, style: { fontSize: 14, fontWeight: 700 } }),
         r.callsign && h('span', { className: 'mono', style: { fontSize: 11, color: 'var(--batch-ap127)' } }, r.callsign),
         h('span', { style: { flex: 1 } }),
         r.batch && h(Pill, { c: batchColor(r.batch) }, r.batch),
@@ -237,12 +236,67 @@
         ' · ', fmtDays(r.span * r.unit), r.span * r.unit === 1 ? ' day' : ' days',
         date && r.span > 1 ? ` · day ${diffD(r.start, date) + 1} of ${r.span}` : ''),
       r.note && h('div', { style: { fontSize: 12, color: 'var(--ink-2)', background: 'var(--bg-2)', borderRadius: 6, padding: '5px 8px', fontStyle: 'italic' } }, '“' + r.note + '”'),
-      r.spFi && h('div', { style: { fontSize: 11, color: 'var(--ink-3)' } }, 'FI: ' + r.spFi),
+      !hideWho && r.spFi && h('div', { style: { fontSize: 11, color: 'var(--ink-3)' } }, 'FI: ' + r.spFi),
       conf.length > 0 && h('div', { style: { fontSize: 11, color: txt('var(--col-cancel)'), background: tint('var(--col-cancel)', 12), borderRadius: 6, padding: '5px 8px' } },
         `⚠ ${conf.length} flight${conf.length > 1 ? 's' : ''} still booked: `,
         conf.slice(0, 3).map(f => `${f.start}–${f.end} ${f.lesson || ''}`.trim()).join(' · '),
         conf.length > 3 ? ' …' : ''),
       r.reversed && h('div', { style: { fontSize: 11, color: txt('var(--col-pending)') } }, '⚠ Start/end were reversed in the source record'));
+  }
+
+  // ── Person link: any SP/FI name opens their full leave history ───────────
+  let _openPerson = () => {};
+  const PersonLink = ({ name, style }) => h('span', {
+    role: 'button', tabIndex: 0, title: `All leave for ${name}`,
+    onClick: e => { e.stopPropagation(); _openPerson(name); },
+    onKeyDown: e => { if (e.key === 'Enter') { e.stopPropagation(); _openPerson(name); } },
+    style: Object.assign({ cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--line)', textUnderlineOffset: 3 }, style),
+  }, name);
+
+  // ── Person drawer: every leave record for one person, in full ─────────────
+  function PersonDetail({ name, allRecs, onClose, onOpen }) {
+    useEffect(() => {
+      const k = e => { if (e.key === 'Escape') onClose(); };
+      window.addEventListener('keydown', k);
+      return () => window.removeEventListener('keydown', k);
+    }, []);
+    const mine = allRecs.filter(x => x.name === name).sort((a, b) => b.start.localeCompare(a.start));
+    const roster = window.AP127_ROSTER_BY_KEY ? window.AP127_ROSTER_BY_KEY[name] : null;
+    const f = mine[0] || { group: roster ? 'ap127' : 'sp', batch: roster ? 'AP-127' : '', role: roster ? 'Student' : '', callsign: roster ? roster.nick : '', fullName: roster ? roster.name : '', spFi: roster && window.AP127_FI_FULL ? (window.AP127_FI_FULL[roster.fi] || roster.fi) : '' };
+    const occ = occupancy(mine, '0000-01-01', '9999-12-31');
+    const t = today();
+    let total = 0, past = 0, future = 0; const byCat = {};
+    Object.entries(occ).forEach(([d, day]) => { const o = day[name]; total += o.unit; (d <= t ? (past += o.unit) : (future += o.unit)); byCat[o.recs[0].cat] = (byCat[o.recs[0].cat] || 0) + o.unit; });
+    const current = mine.find(r => r.start <= t && r.end >= t);
+    const clashes = mine.reduce((n, r) => n + conflictsOf(r).length, 0);
+    const stat = (l, v, c) => h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px' } },
+      h(Label, null, l), h('div', { className: 'head num', style: { fontSize: 20, fontWeight: 700, color: c ? txt(c) : 'var(--ink)' } }, v));
+    return h('div', { onClick: onClose, style: { position: 'fixed', inset: 0, background: 'oklch(0 0 0 / 0.45)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end' } },
+      h('div', { onClick: e => e.stopPropagation(), style: { width: 'min(520px, 100vw)', height: '100%', overflowY: 'auto', background: 'var(--bg)', borderLeft: '1px solid var(--line)', boxShadow: 'var(--shadow)', padding: 18 } },
+        h('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 } },
+          h('div', { style: { flex: 1 } },
+            h(Label, null, 'Leave history'),
+            h('div', { className: 'head', style: { fontSize: 24, fontWeight: 700, lineHeight: 1.15 } }, name),
+            h('div', { style: { fontSize: 12, color: 'var(--ink-3)' } }, [f.fullName, f.callsign, f.role, f.batch, f.spFi && 'FI: ' + f.spFi].filter(Boolean).join(' · '))),
+          h('button', { onClick: onClose, 'aria-label': 'Close', style: { background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', borderRadius: 6, width: 30, height: 30, cursor: 'pointer', fontSize: 16 } }, '×')),
+        current && h('div', { style: { marginBottom: 10, fontSize: 12, padding: '6px 10px', borderRadius: 6, background: tint('var(--highlight)', 14), color: txt('var(--highlight)') } },
+          `On leave today — ${current.reason}, until ${fmtDW(current.end)}`),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 10 } },
+          stat('Records', mine.length), stat('Leave days', fmtDays(total), 'var(--col-stby)'),
+          stat('Taken', fmtDays(past)), stat('Upcoming', fmtDays(future), 'var(--col-pending)')),
+        total > 0 && h('div', { style: { marginBottom: 12 } },
+          h('div', { style: { display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 6 } },
+            CATS.filter(c => byCat[c.k]).map(c => h('div', { key: c.k, title: `${c.label} ${fmtDays(byCat[c.k])}d`, style: { flex: byCat[c.k], background: c.c } }))),
+          h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 11, color: 'var(--ink-2)' } },
+            CATS.filter(c => byCat[c.k]).map(c => h('span', { key: c.k, style: { display: 'inline-flex', alignItems: 'center', gap: 4 } }, h(Dot, { c: c.c }), `${c.label} ${fmtDays(byCat[c.k])}d (${Math.round(byCat[c.k] / total * 100)}%)`)))),
+        clashes > 0 && h('div', { style: { fontSize: 11, marginBottom: 10, color: txt('var(--col-cancel)') } }, `⚠ ${clashes} flight${clashes > 1 ? 's' : ''} booked on leave days (details on each record)`),
+        h(Label, null, `All records · newest first`),
+        mine.length === 0
+          ? h('div', { style: { padding: 24, textAlign: 'center', color: 'var(--ink-3)', border: '1px dashed var(--line)', borderRadius: 8, marginTop: 6 } }, 'No leave records for this person.')
+          : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 } },
+              mine.map(r => h('div', { key: r.key, style: { position: 'relative' } },
+                r.start > t && h('span', { className: 'mono uc', style: { position: 'absolute', right: 10, bottom: 8, fontSize: 9, color: txt('var(--col-pending)') } }, 'upcoming'),
+                h(LeaveCard, { r, onOpen, hideWho: true })))) ));
   }
 
   // ── Detail drawer ──────────────────────────────────────────────────────────
@@ -264,7 +318,7 @@
         h('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 } },
           h('div', { style: { flex: 1 } },
             h(Label, null, 'Leave record'),
-            h('div', { className: 'head', style: { fontSize: 24, fontWeight: 700, lineHeight: 1.15 } }, r.name),
+            h('div', { className: 'head', style: { fontSize: 24, fontWeight: 700, lineHeight: 1.15 } }, h(PersonLink, { name: r.name })),
             (r.fullName || r.callsign) && h('div', { style: { fontSize: 12, color: 'var(--ink-3)' } }, [r.fullName, r.callsign].filter(Boolean).join(' · '))),
           h('button', { onClick: onClose, 'aria-label': 'Close', style: { background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', borderRadius: 6, width: 30, height: 30, cursor: 'pointer', fontSize: 16 } }, '×')),
         h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 } },
@@ -350,6 +404,7 @@
           days.map(d => {
             const n = Object.keys(occ[d] || {}).length;
             return h('div', { key: d, onClick: () => onDay(d), title: 'Open day view', style: { padding: '6px 4px', textAlign: 'center', cursor: 'pointer', background: headBg(d), borderLeft: '1px solid var(--line-soft)' } },
+              h('div', { className: 'mono uc', style: { fontSize: 9, color: 'var(--ink-2)', fontWeight: 600 } }, MON[+d.slice(5, 7) - 1]),
               h('div', { className: 'mono uc', style: { fontSize: 9, color: 'var(--ink-3)' } }, DOW[dow(d)] + (hol.has(d) ? ' · HOL' : '')),
               h('div', { className: 'head', style: { fontSize: 16, fontWeight: 700, color: d === t ? 'var(--highlight)' : 'var(--ink)' } }, +d.slice(8)),
               h('div', { className: 'mono', style: { fontSize: 10, color: n ? 'var(--ink-2)' : 'var(--ink-3)' } }, n ? `${n} off` : '—'));
@@ -359,7 +414,7 @@
           const rs = inWeek.filter(r => r.name === p.name);
           return h('div', { key: p.name, style: { display: 'grid', gridTemplateColumns: cols, gridAutoRows: 'minmax(34px, auto)', borderBottom: '1px solid var(--line-soft)', alignItems: 'center' } },
             h('div', { style: { gridRow: `1 / span ${rs.length}`, gridColumn: 1, padding: '6px 8px', position: 'sticky', left: 0, background: 'var(--surface)', zIndex: 1, alignSelf: 'stretch', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: '1px solid var(--line-soft)' } },
-              h('div', { style: { fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 } }, h(Dot, { c: GROUP[p.group].c, size: 6 }), p.name),
+              h('div', { style: { fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 } }, h(Dot, { c: GROUP[p.group].c, size: 6 }), h(PersonLink, { name: p.name })),
               h('div', { className: 'mono', style: { fontSize: 10, color: 'var(--ink-3)' } }, [p.callsign, p.batch || (p.group === 'fi' ? 'FI' : '')].filter(Boolean).join(' · '))),
             days.map((d, i) => h('div', { key: d, style: { gridRow: `1 / span ${rs.length}`, gridColumn: i + 2, alignSelf: 'stretch', background: headBg(d), borderLeft: '1px solid var(--line-soft)' } })),
             rs.map((r, j) => {
@@ -394,7 +449,7 @@
               background: d === t ? tint('var(--highlight)', 10) : hol.has(d) ? tint('var(--col-pending)', 9) : isWkd(d) ? 'var(--bg-2)' : 'transparent',
               opacity: inM ? 1 : 0.4, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 } },
             h('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
-              h('span', { className: 'head', style: { fontWeight: 700, fontSize: 14, color: d === t ? 'var(--highlight)' : 'var(--ink)' } }, +d.slice(8)),
+              h('span', { className: 'head', style: { fontWeight: 700, fontSize: 14, color: d === t ? 'var(--highlight)' : 'var(--ink)' } }, +d.slice(8) + (d.slice(8) === '01' || d === days[0] ? ' ' + MON[+d.slice(5, 7) - 1] : '')),
               hol.has(d) && !mobile && h('span', { className: 'mono uc', style: { fontSize: 8, color: txt('var(--col-pending)') } }, 'HOL'),
               h('span', { style: { flex: 1 } }),
               names.length > 0 && h('span', { className: 'mono', style: { fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: tint('var(--highlight)', 18), color: txt('var(--highlight)') } }, names.length)),
@@ -435,13 +490,14 @@
           days.map(d => h('th', { key: d, onClick: () => onDay(d), title: fmtDY(d),
             style: { position: 'sticky', top: 0, zIndex: 2, width: cw, minWidth: cw, padding: '4px 0', cursor: 'pointer', borderBottom: '1px solid var(--line)',
               background: d === t ? 'color-mix(in oklch, var(--highlight) 20%, var(--surface))' : hol.has(d) ? 'color-mix(in oklch, var(--col-pending) 14%, var(--surface))' : isWkd(d) ? 'var(--bg-2)' : 'var(--surface)' } },
+            h('div', { className: 'mono uc', style: { fontSize: 7.5, color: 'var(--ink-2)', fontWeight: 600 } }, MON[+d.slice(5, 7) - 1]),
             h('div', { className: 'mono', style: { fontSize: 8, color: 'var(--ink-3)', fontWeight: 400 } }, DOW[dow(d)][0]),
             h('div', { className: 'mono', style: { fontSize: 10, color: d === t ? 'var(--highlight)' : 'var(--ink-2)' } }, +d.slice(8)))),
           h('th', { style: { position: 'sticky', top: 0, zIndex: 2, background: 'var(--surface)', padding: '4px 8px', borderBottom: '1px solid var(--line)' } }, h(Label, null, 'Days')))),
         h('tbody', null,
           list.map(p => h('tr', { key: p.name },
             h('td', { style: Object.assign({}, stickyL, { padding: '4px 8px', borderBottom: '1px solid var(--line-soft)', borderRight: '1px solid var(--line-soft)', whiteSpace: 'nowrap' }) },
-              h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600 } }, h(Dot, { c: GROUP[p.group].c, size: 6 }), p.name),
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600 } }, h(Dot, { c: GROUP[p.group].c, size: 6 }), h(PersonLink, { name: p.name })),
               h('div', { className: 'mono', style: { fontSize: 9.5, color: 'var(--ink-3)' } }, [p.callsign, p.batch || (p.group === 'fi' ? 'FI' : '')].filter(Boolean).join(' · '))),
             days.map(d => {
               const o = (occ[d] || {})[p.name], r = o && o.recs[0];
@@ -472,7 +528,7 @@
           h('tbody', null, rs.map(r => {
             const n = conflictsOf(r).length;
             return h('tr', { key: r.key, onClick: () => onOpen(r), style: { cursor: 'pointer' } },
-              td(h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 600, whiteSpace: 'nowrap' } }, h(Dot, { c: GROUP[r.group].c, size: 6 }), personLabel(r))),
+              td(h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 600, whiteSpace: 'nowrap' } }, h(Dot, { c: GROUP[r.group].c, size: 6 }), h(PersonLink, { name: r.name }), r.callsign ? ' · ' + r.callsign : '')),
               td(r.role || '—', { color: 'var(--ink-2)' }),
               td(r.batch || '—', { whiteSpace: 'nowrap', color: txt(batchColor(r.batch)) }),
               td(h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' } }, h(Dot, { c: CAT[r.cat].c }), r.reason)),
@@ -504,6 +560,8 @@
     const [q, setQ]           = useState('');
     const [sortBy, setSortBy] = useState(init.sortBy || 'name');
     const [sel, setSel]       = useState(null);
+    const [person, setPerson] = useState(null);
+    _openPerson = n => { setSel(null); setPerson(n); };
 
     useEffect(() => { saveUI({ view, groups, batches, fiScope, cats, sortBy }); }, [view, groups, batches, fiScope, cats, sortBy]);
 
@@ -585,7 +643,7 @@
     // Keyboard: ← → move period, T today, D/W/M/R switch view (ignored while typing).
     useEffect(() => {
       const k = e => {
-        if (sel || /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '') || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (sel || person || /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '') || e.metaKey || e.ctrlKey || e.altKey) return;
         if (e.key === 'ArrowLeft') step(-1);
         else if (e.key === 'ArrowRight') step(1);
         else if (e.key === 't' || e.key === 'T') setDate(today());
@@ -654,11 +712,6 @@
           sub: k.topCat ? `${Math.round(k.topCat[1] / k.days * 100)}% of leave days` : '—' }),
         view !== 'day' && h(Kpi, { label: 'Peak day', value: k.peak.d ? fmtD(k.peak.d) : '—', onClick: k.peak.d ? () => goDay(k.peak.d) : null,
           sub: k.peak.d ? `${k.peak.n} people off · ${DOW[dow(k.peak.d)]}` : 'No leave in period' }),
-        view !== 'day' && h(Kpi, { label: 'Most leave', value: k.top ? k.top[0] : '—',
-          onClick: k.top ? () => { const r = recs.find(x => x.name === k.top[0] && x.end >= a && x.start <= b); r && openRec(r); } : null,
-          sub: k.top ? `${fmtDays(k.top[1])} days ${periodWord}` : '—' }),
-        h(Kpi, { label: 'Booked while on leave', value: k.clashFlights, color: k.clashFlights ? 'var(--col-cancel)' : 'var(--col-done)',
-          sub: k.clashFlights ? `${k.clashDays} person-day${k.clashDays > 1 ? 's' : ''} with an active flight` : 'No clashes' }),
         h(Kpi, { label: 'Starting next 14 days', value: k.upcoming.length, color: 'var(--col-pending)',
           sub: k.upcoming.length ? k.upcoming.slice(0, 2).map(r => `${r.name.split(' ')[0]} ${fmtD(r.start)}`).join(', ') + (k.upcoming.length > 2 ? ' …' : '') : 'None announced' })),
       // Body
@@ -670,6 +723,7 @@
         view !== 'day' && h(RecordTable, { key: a, recs, onOpen: openRec, a, b })),
       h('div', { className: 'mono', style: { fontSize: 10, color: 'var(--ink-3)', paddingBottom: 8 } },
         `${all.length} leave records (${(window.LEAVES || []).length} feed rows, duplicates merged) · ${all[0] ? fmtD(all[0].start) + ' ' + all[0].start.slice(0, 4) : ''} – ${all.length ? (() => { const e = all.reduce((m, r) => r.end > m ? r.end : m, ''); return fmtD(e) + ' ' + e.slice(0, 4); })() : ''} · keys: ← → T D W M R`),
+      person && !sel && h(PersonDetail, { name: person, allRecs: all, onClose: () => setPerson(null), onOpen: setSel }),
       sel && h(Detail, { r: sel, onClose: () => setSel(null), onJump: setSel, allRecs: all }));
   }
 
