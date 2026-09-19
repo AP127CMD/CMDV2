@@ -28,6 +28,8 @@
     { id: 'week',   label: 'Week',   get: () => window.WeeklyBoard },
     { id: 'month',  label: 'Month',  get: () => window.CalendarBoard },
     { id: 'roster', label: 'Roster', get: () => window.RosterBoard },
+    // Leave calendar — its own WHO/reason filters, built on leave records not flights.
+    { id: 'leave',  label: 'Leave',  get: () => window.LeaveBoard },
   ];
 
   function ScheduleView() {
@@ -118,8 +120,8 @@
       },
         h('span', { className: 'mono uc', style: { fontSize: 9, color: 'var(--ink-3)', letterSpacing: '0.1em', marginRight: 4 } }, 'LAYOUT'),
         MODES.map(modeChip)),
-      // Batch-type filter row
-      h('div', {
+      // Batch-type filter row (flight boards only — the Leave board has its own filters)
+      mode !== 'leave' && h('div', {
         style: {
           display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap',
           padding: '5px 10px', borderBottom: '1px solid var(--line-soft)',
