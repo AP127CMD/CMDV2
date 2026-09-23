@@ -157,20 +157,33 @@ describe('runWatchdog — multi-leg completion is held until the trip is on reco
     expect(notices()).toEqual(['✅ Completed']);              // and never again
   });
 
-  it('a one-way leg is released on a quiet run once it has settled (no feed change needed)', async () => {
+  it('a one-way leg waits through quiet runs and goes out on the next scrape that adds nothing', async () => {
     feedText = feed('2026-09-07T07:00:00Z', [...filler(), xcBooked()]);
     await baseline();
     feedText = feed('2026-09-07T07:10:00Z', [...filler(), xcDone([L[0]])]);
     await run();
+    now += 20 * 60e3;
+    await run();                                             // same feed (quiet run) — keep waiting
     expect(notices()).toEqual([]);
-    now += 5 * 60e3;
-    await run();                                             // same feed, not yet due
-    expect(notices()).toEqual([]);
-    now += 6 * 60e3;
-    await run();                                             // same feed, now past SETTLE_MS
+    now += 20 * 60e3;
+    feedText = feed('2026-09-07T07:50:00Z', [...filler(), xcDone([L[0]])]);
+    await run();                                             // next scrape, still only leg 1 → send
     expect(notices()).toEqual(['✅ Completed']);
     expect(telegramSends[0].text).toContain('1 VTPH→VTSB 06:30 06:40 08:35 08:40');
-    now += 10 * 60e3;
+    now += 60 * 60e3;
+    await run();
+    expect(notices()).toEqual(['✅ Completed']);
+  });
+
+  it('a feed that stops changing still releases the hold at MAX_HOLD_MS (quiet run)', async () => {
+    feedText = feed('2026-09-07T07:00:00Z', [...filler(), xcBooked()]);
+    await baseline();
+    feedText = feed('2026-09-07T07:10:00Z', [...filler(), xcDone([L[0]])]);
+    await run();
+    now += 59 * 60e3;
+    await run();
+    expect(notices()).toEqual([]);
+    now += 60e3;
     await run();
     expect(notices()).toEqual(['✅ Completed']);
   });

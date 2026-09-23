@@ -86,58 +86,63 @@ export function legsSignature(f) {
 // 14:24:11, 14:25:20, 14:27:26), and the scraper can land between two of them. Sending the Completed
 // notice straight away would then show leg 1 only — and a later "now with 3 legs" notice is exactly
 // the duplicate noise this watchdog has been fixed for three times. So a completion whose trip isn't
-// complete yet (see tripComplete) is held — and sent ONCE, with every leg — when the trip closes,
-// when its legs have stopped changing for SETTLE_MS, or at MAX_HOLD_MS regardless. An ordinary
-// local sortie is never held.
-export const SETTLE_MS = 10 * 60 * 1000;
-export const MAX_HOLD_MS = 30 * 60 * 1000;
+// complete yet (see tripComplete) is held — and sent ONCE, with every leg — when the trip closes, when
+// the NEXT feed version shows its legs unchanged (i.e. a whole further scrape found nothing more), or
+// at MAX_HOLD_MS regardless. An ordinary local sortie is never held.
+//
+// Settling is counted in feed versions, not minutes, on purpose: the scrape cadence is ~7 min when the
+// Pi is the writer but ~40 min when the cloud fallback is (the Pi was down 2026-09-18 → 09-24), and a
+// fixed "10 minutes without change" would release a leg-1-only notice long before a 40-minute cycle
+// brought the other legs. MAX_HOLD_MS is only the backstop for a feed that stops changing entirely.
+export const MAX_HOLD_MS = 60 * 60 * 1000;
 
 export function isCompletionEvent(e) {
   return (e.type === 'ADDED' && e.flight?.status === 'Completed')
     || (e.type === 'STATUS' && e.diff?.status?.to === 'Completed');
 }
 
-// held: { [flightId]: { type, diff, flight, since, changedAt, sig } } (persisted in KV).
-// snap: this run's snapshot, or null on a run where the feed didn't change (timeouts only).
+// held: { [flightId]: { type, diff, flight, since, sig } } (persisted in KV).
+// snap: this run's snapshot — only passed on a run whose feed CHANGED (a new scrape), which is what
+// makes "legs unchanged here" mean "a whole further scrape found nothing more". null on a quiet run,
+// where only the MAX_HOLD_MS backstop can release.
 // Returns { events, held, dirty } — `events` is what to notify now (non-completions untouched).
 export function settleCompletions({ events = [], held = {}, snap = null, nowMs }) {
   const next = { ...held };
   const out = [];
   let dirty = false;
+  const release = (id, h) => {
+    out.push({ type: h.type, diff: h.diff || {}, flight: h.flight });
+    delete next[id];
+    dirty = true;
+  };
 
-  for (const [id, h0] of Object.entries(held)) {
-    let h = h0;
+  for (const [id, h] of Object.entries(held)) {
     if (snap) {
       const f = snap[id];
       // Gone, or no longer Completed: a real change the normal diff already reports — drop quietly.
       if (!f || f.status !== 'Completed') { delete next[id]; dirty = true; continue; }
       const sig = legsSignature(f);
-      h = { ...h, flight: f, ...(sig !== h.sig ? { sig, changedAt: nowMs } : {}) };
-      next[id] = h;
-      if (sig !== h0.sig) dirty = true;
-    }
-    if (tripComplete(h.flight) || nowMs - h.changedAt >= SETTLE_MS || nowMs - h.since >= MAX_HOLD_MS) {
-      out.push({ type: h.type, diff: h.diff || {}, flight: h.flight });
-      delete next[id];
+      if (sig === h.sig || tripComplete(f)) { release(id, { ...h, flight: f }); continue; }
+      next[id] = { ...h, flight: f, sig }; // more legs arrived — wait one more scrape
       dirty = true;
     }
+    if (next[id] && nowMs - h.since >= MAX_HOLD_MS) release(id, next[id]);
   }
 
   for (const e of events) {
     if (!isCompletionEvent(e) || tripComplete(e.flight)) { out.push(e); continue; }
     const id = String(e.flight.id);
     if (next[id]) continue;
-    next[id] = { type: e.type, diff: e.diff || {}, flight: e.flight,
-      since: nowMs, changedAt: nowMs, sig: legsSignature(e.flight) };
+    next[id] = { type: e.type, diff: e.diff || {}, flight: e.flight, since: nowMs, sig: legsSignature(e.flight) };
     dirty = true;
   }
 
   return { events: out, held: next, dirty };
 }
 
-// Earliest time any held completion becomes due (ms), or null when nothing is held — stored in
+// When the MAX_HOLD_MS backstop next falls due (ms), or null when nothing is held — stored in
 // watchdog:status so a run whose feed didn't change only reads the hold list when something's due.
 export function nextHeldDueAt(held) {
-  const due = Object.values(held || {}).map(h => Math.min(h.changedAt + SETTLE_MS, h.since + MAX_HOLD_MS));
+  const due = Object.values(held || {}).map(h => h.since + MAX_HOLD_MS);
   return due.length ? Math.min(...due) : null;
 }

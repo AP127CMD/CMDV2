@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   routeCodes, legRoute, flightLegs, spanMinutes, fmtMinutes, tripComplete, legsSignature,
-  settleCompletions, nextHeldDueAt, isCompletionEvent, SETTLE_MS, MAX_HOLD_MS,
+  settleCompletions, nextHeldDueAt, isCompletionEvent, MAX_HOLD_MS,
 } from '../src/completion.js';
 
 // Real 2026-09-23 SETASIT P. CSXV 45 XC legs (see CMD_CTR scripts/tests/test_flight_legs.py).
@@ -81,7 +81,7 @@ describe('settleCompletions', () => {
     const r1 = settleCompletions({ events: [completion(leg1)], nowMs: T0 });
     expect(r1.events).toEqual([]);
     expect(Object.keys(r1.held)).toEqual(['X']);
-    expect(nextHeldDueAt(r1.held)).toBe(T0 + SETTLE_MS);
+    expect(nextHeldDueAt(r1.held)).toBe(T0 + MAX_HOLD_MS);
 
     // Next feed: the Flight Records for legs 2 and 3 have landed. No new diff event for X.
     const snap = { X: done({ leg: '3', ...L3, legs: [L1, L2, L3] }) };
@@ -92,28 +92,33 @@ describe('settleCompletions', () => {
     expect(r2.held).toEqual({});
   });
 
-  it('a one-way trip is released once its legs stop changing for SETTLE_MS', () => {
+  it('a one-way trip is released on the NEXT scrape that finds no more legs (cadence-independent)', () => {
     const leg1 = done({ leg: '1', ...L1 });
     const { held } = settleCompletions({ events: [completion(leg1)], nowMs: T0 });
-    const snap = { X: leg1 };
-    expect(settleCompletions({ held, snap, nowMs: T0 + SETTLE_MS - 1 }).events).toEqual([]);
-    const r = settleCompletions({ held, snap, nowMs: T0 + SETTLE_MS });
+    // 40 minutes later (cloud-fallback cadence) — a new feed, same single leg → nothing more coming.
+    const r = settleCompletions({ held, snap: { X: leg1 }, nowMs: T0 + 40 * 60e3 });
     expect(r.events.map(e => e.flight.id)).toEqual(['X']);
+    expect(r.held).toEqual({});
   });
 
-  it('new legs restart the settle clock; MAX_HOLD_MS releases regardless', () => {
+  it('more legs arriving keeps it held for one more scrape; MAX_HOLD_MS releases regardless', () => {
     const leg1 = done({ leg: '1', ...L1 });
     let { held } = settleCompletions({ events: [completion(leg1)], nowMs: T0 });
-    ({ held } = settleCompletions({ held, snap: { X: done({ legs: [L1, L2] }) }, nowMs: T0 + 9 * 60e3 }));
-    expect(held.X.changedAt).toBe(T0 + 9 * 60e3);
-    expect(settleCompletions({ held, snap: { X: done({ legs: [L1, L2] }) }, nowMs: T0 + 12 * 60e3 }).events).toEqual([]);
-    expect(settleCompletions({ held, nowMs: T0 + MAX_HOLD_MS }).events).toHaveLength(1);
+    let r = settleCompletions({ held, snap: { X: done({ legs: [L1, L2] }) }, nowMs: T0 + 7 * 60e3 });
+    expect(r.events).toEqual([]);                        // legs changed → wait another scrape
+    held = r.held;
+    expect(held.X.flight.legs).toHaveLength(2);
+    r = settleCompletions({ held, snap: { X: done({ legs: [L1, L2] }) }, nowMs: T0 + 14 * 60e3 });
+    expect(r.events[0].flight.legs).toHaveLength(2);     // unchanged → release what's there
+    const stillChanging = settleCompletions({ events: [completion(leg1)], nowMs: T0 }).held;
+    expect(settleCompletions({ held: stillChanging, snap: null, nowMs: T0 + MAX_HOLD_MS }).events).toHaveLength(1);
   });
 
-  it('a quiet run (no snapshot) can still release on time, with the last flight it saw', () => {
+  it('a quiet run (feed unchanged) never releases early — only at MAX_HOLD_MS, with the last flight seen', () => {
     const leg1 = done({ leg: '1', ...L1 });
     const { held } = settleCompletions({ events: [completion(leg1)], nowMs: T0 });
-    const r = settleCompletions({ held, snap: null, nowMs: T0 + SETTLE_MS });
+    expect(settleCompletions({ held, snap: null, nowMs: T0 + MAX_HOLD_MS - 1 }).events).toEqual([]);
+    const r = settleCompletions({ held, snap: null, nowMs: T0 + MAX_HOLD_MS });
     expect(r.events[0].flight).toEqual(leg1);
   });
 
