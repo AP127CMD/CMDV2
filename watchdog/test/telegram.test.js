@@ -256,66 +256,89 @@ describe('buildCombinedMessages', () => {
     expect(msg).toContain('- 🎮 🆕 no longer SIM');
   });
 
-  it('Completed: ✅ prefixes SP, no "planned"/"flew" words, no 🆕 anywhere, bare ⏰ then ✍️ lines', () => {
-    const event = { type: 'STATUS',
-      flight: { ...BASE_FLIGHT, student: 'RATTANASUDA', lesson: 'LPC SEP', instructor: 'WUTTHICHAI L.',
-                 tail: 'HS-TPX', date: '2026-07-17', start: '08:34', end: '09:58' },
-      diff: { status: { from: 'Pending', to: 'Completed' },
-              start: { from: '08:30', to: '08:34' }, end: { from: '10:10', to: '09:58' } } };
-    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
-    expect(msg).toContain('✅ Completed');
-    expect(msg).toContain('✅ RATTANASUDA');
-    expect(msg).toContain('LPC SEP · 🗣️ WUTTHICHAI L. · 📅 17 Jul');
-    expect(msg).toContain('- ⏰ 08:30–10:10');
-    expect(msg).toContain('- ✍️ 08:34–09:58');
-    expect(msg).toContain('- 🛩 HS-TPX');
-    expect(msg).not.toContain('planned');
-    expect(msg).not.toContain('flew');
+  // 2026-09-24 redesign: the Completed notice shows the FLIGHT RECORD, not the booked slot — leg,
+  // block off, take-off, landing, block on, departure, destination — as a monospace <pre> table
+  // (combined messages are sent with parse_mode=HTML). Fixtures mirror real 2026-09-23 records.
+  const XC_LEGS = [
+    { leg: '1', routeFrom: 'VTPH', routeTo: 'VTSB', blockOff: '06:30', tkoff: '06:40', ldgTime: '08:35', blockOn: '08:40', to: 1, ldg: 1, tail: 'HS-TPO' },
+    { leg: '2', routeFrom: 'VTSB', routeTo: 'VTSE', blockOff: '08:46', tkoff: '08:50', ldgTime: '10:20', blockOn: '10:25', to: 1, ldg: 1, tail: 'HS-TPO' },
+    { leg: '3', routeFrom: 'VTSE', routeTo: 'VTPH', blockOff: '10:30', tkoff: '10:36', ldgTime: '11:47', blockOn: '11:52', to: 1, ldg: 1, tail: 'HS-TPO' },
+  ];
+  const completedXc = (over = {}) => ({ type: 'ADDED', diff: {}, flight: {
+    ...BASE_FLIGHT, id: 'ACTUAL_ONLY_BK-AP-127-SETA-EHX3N', status: 'Completed', student: 'SIWAKORN P.',
+    lesson: 'CSXV 45', flightType: 'Solo', date: '2026-09-23', start: '06:30', end: '11:30', tail: 'HS-TPO',
+    instructor: 'SANTI PO.', leg: '3', routeFrom: 'VTSE', routeTo: 'VTPH', legs: XC_LEGS, ...over } });
+
+  it('Completed multi-leg: whole route, one table row per leg with off/T-O/LDG/on, totals', () => {
+    const [msg] = buildCombinedMessages('AP127', [completedXc()], ROSTER);
+    expect(msg).toContain('✅ SIWAKORN P. (@siwakorn_p)');
+    expect(msg).toContain('CSXV 45 · Solo · 📅 23 Sept');
+    expect(msg).toContain('- 🗣️ SANTI PO. · 🛩 HS-TPO');
+    expect(msg).toContain('- 🗺️ VTPH → VTSB → VTSE → VTPH');
+    expect(msg).toContain('<pre># Route     Off   T/O   LDG   On\n'
+      + '1 VTPH→VTSB 06:30 06:40 08:35 08:40\n'
+      + '2 VTSB→VTSE 08:46 08:50 10:20 10:25\n'
+      + '3 VTSE→VTPH 10:30 10:36 11:47 11:52</pre>');
+    // block 2:10 + 1:39 + 1:22 = 5:11 · air 1:55 + 1:30 + 1:11 = 4:36
+    expect(msg).toContain('- ⏱ Block 5:11 · Air 4:36');
+    expect(msg).toContain('- 🛬 3 T/O · 3 LDG');
+    expect(msg).not.toContain('06:30–11:30'); // the booked slot is not the record
     expect(msg).not.toContain('🆕');
   });
 
-  it('Completed via ADDED (ACTUAL_ONLY record, no diff) shows only the ✍️ line, no ⏰ line', () => {
-    const event = { type: 'ADDED',
-      flight: { ...BASE_FLIGHT, status: 'Completed', lesson: 'CDGL 03', tail: 'HS-TPT' }, diff: {} };
+  it('Completed single leg (in-place STATUS): one-row table from the flight\'s own record, no route line', () => {
+    const event = { type: 'STATUS', diff: { status: { from: 'Pending', to: 'Completed' } },
+      flight: { ...BASE_FLIGHT, status: 'Completed', flightType: 'Dual', routeFrom: 'VTPH', routeTo: 'VTPH',
+                blockOff: '06:50', tkoff: '06:58', ldgTime: '07:48', blockOn: '07:50', to: 1, ldg: 1, inst: 0 } };
     const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
-    expect(msg).toContain('✅ Completed');
-    expect(msg).toContain('- ✍️ 08:00–09:30');
-    expect(msg).not.toContain('- ⏰');
-  });
-
-  it('Completed shows touch-and-go count and actual clock times on separate dash lines', () => {
-    const event = { type: 'STATUS',
-      flight: { ...BASE_FLIGHT, status: 'Completed', to: 1, ldg: 1, tkoff: '08:34', ldgTime: '09:56', inst: 0 },
-      diff: { status: { from: 'Pending', to: 'Completed' } } };
-    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('CDGL 04 · Dual · 📅 10 Jun');
+    expect(msg).toContain('<pre># Route     Off   T/O   LDG   On\n1 VTPH→VTPH 06:50 06:58 07:48 07:50</pre>');
+    expect(msg).toContain('- ⏱ Block 1:00 · Air 0:50');
     expect(msg).toContain('- 🛬 1 T/O · 1 LDG');
-    expect(msg).toContain('- 🕘 TO 08:34 · LDG 09:56');
+    expect(msg).not.toContain('🗺️');
     expect(msg).not.toContain('INST'); // inst is 0 — must not show
   });
 
-  it('Completed omits actual-data lines entirely when the feed has none (older records)', () => {
+  it('Completed keeps the leg number a single record carries (a /2 leg booked on its own)', () => {
+    const event = { type: 'ADDED', diff: {}, flight: { ...BASE_FLIGHT, status: 'Completed', leg: '2',
+      routeFrom: 'VTPH', routeTo: 'VTBP', blockOff: '11:00', tkoff: '11:10', ldgTime: '12:00', blockOn: '12:00' } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('\n2 VTPH→VTBP 11:00 11:10 12:00 12:00</pre>');
+  });
+
+  it('Completed shows INST when non-zero and a missing time as --:--', () => {
+    const event = { type: 'ADDED', diff: {}, flight: { ...BASE_FLIGHT, status: 'Completed', inst: 2,
+      routeFrom: 'VTPH', routeTo: 'VTPH', blockOff: '08:00', tkoff: '08:10', ldgTime: '09:40', to: 3, ldg: 3 } };
+    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('1 VTPH→VTPH 08:00 08:10 09:40 --:--');
+    expect(msg).toContain('- ⏱ Air 1:30');
+    expect(msg).toContain('- 🛬 3 T/O · 3 LDG · 2 INST');
+  });
+
+  it('Completed with no flight record yet: says so and shows the planned slot instead', () => {
     const event = { type: 'ADDED', flight: { ...BASE_FLIGHT, status: 'Completed' }, diff: {} };
     const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
+    expect(msg).toContain('- 📋 Planned 08:00–09:30 · flight record not entered yet');
+    expect(msg).not.toContain('<pre>');
     expect(msg).not.toContain('🛬');
-    expect(msg).not.toContain('🕘');
   });
 
-  it('Completed shows INST only when non-zero, on the 🕘 line', () => {
-    const event = { type: 'STATUS', flight: { ...BASE_FLIGHT, status: 'Completed', inst: 2 },
-      diff: { status: { from: 'Pending', to: 'Completed' } } };
-    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
-    expect(msg).toContain('- 🕘 INST 2');
+  it('Completed remarks: plain for one leg, prefixed with the leg on a multi-leg trip', () => {
+    const one = { type: 'ADDED', diff: {}, flight: { ...BASE_FLIGHT, status: 'Completed', routeFrom: 'VTPH',
+      routeTo: 'VTBP', blockOff: '06:35', remark: 'Incomplete mission due engine problem' } };
+    expect(buildCombinedMessages('AP127', [one], ROSTER)[0]).toContain('- 💬 Incomplete mission due engine problem');
+    const legs = XC_LEGS.map(l => (l.leg === '2' ? { ...l, remark: 'diverted wx' } : l));
+    expect(buildCombinedMessages('AP127', [completedXc({ legs })], ROSTER)[0]).toContain('- 💬 Leg 2: diverted wx');
   });
 
-  it('actual clock times of "00:00" are treated as not-recorded and omitted, even when counts are present', () => {
-    const event = { type: 'STATUS',
-      flight: { ...BASE_FLIGHT, status: 'Completed', tkoff: '00:00', ldgTime: '00:00', to: 2, ldg: 2 },
-      diff: { status: { from: 'Pending', to: 'Completed' } } };
-    const [msg] = buildCombinedMessages('AP127', [event], ROSTER);
-    expect(msg).toContain('- 🛬 2 T/O · 2 LDG');
-    expect(msg).not.toContain('TO 00:00');
-    expect(msg).not.toContain('LDG 00:00');
-    expect(msg).not.toContain('🕘'); // both clock times absent and inst=0 → no 🕘 line at all
+  it('escapes HTML in every piece of text (parse_mode=HTML) — names, remarks, routes', () => {
+    const event = { type: 'ADDED', diff: {}, flight: { ...BASE_FLIGHT, status: 'Completed', student: 'A<B> & C',
+      routeFrom: 'VTPH', routeTo: '<X>', blockOff: '06:00', remark: 'x < y & z' } };
+    const [msg] = buildCombinedMessages('Ops & <Admin>', [event], []);
+    expect(msg).toContain('📋 Ops &amp; &lt;Admin&gt; — 1 update');
+    expect(msg).toContain('✅ A&lt;B&gt; &amp; C');
+    expect(msg).toContain('- 💬 x &lt; y &amp; z');
+    expect(msg).not.toMatch(/<(?!\/?pre>)/); // the only raw tags are the table's own <pre></pre>
   });
 
   // 2026-07-26: cancelReason/remarks (joined by diff.js's attachCancelReasons) render as two
@@ -390,5 +413,36 @@ describe('sendTelegram', () => {
   it('throws on HTTP error', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 401 })));
     await expect(sendTelegram('TOKEN', '-100123', 'hello')).rejects.toThrow('401');
+  });
+});
+
+describe('sendTelegram — HTML parse mode (2026-09-24)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('sends parse_mode=HTML when asked', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, result: { message_id: 7 } }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    await sendTelegram('T', '1', '<pre>x</pre>', null, 'HTML');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ parse_mode: 'HTML', text: '<pre>x</pre>' });
+  });
+
+  it('falls back to plain text if Telegram rejects the markup — the notice is never lost', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 400,
+        json: () => Promise.resolve({ ok: false, description: "Bad Request: can't parse entities: unclosed tag" }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true, result: { message_id: 8 } }) });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const id = await sendTelegram('T', '1', 'a &amp; b\n<pre>1 VTPH→VTSB</pre>', null, 'HTML');
+    expect(id).toBe(8);
+    const retry = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(retry.parse_mode).toBeUndefined();
+    expect(retry.text).toBe('a & b\n1 VTPH→VTSB');
+  });
+
+  it('does not swallow other errors in HTML mode', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 403,
+      json: () => Promise.resolve({ ok: false, description: 'Forbidden: bot was kicked' }) })));
+    await expect(sendTelegram('T', '1', 'x', null, 'HTML')).rejects.toThrow('403');
   });
 });

@@ -20,6 +20,13 @@ export function buildSnapshot(flights) {
       // flight's TRACKED-field transition already produces (most commonly Pending→Completed) and
       // are rendered on the Completed message block by telegram.js's buildCombinedMessages().
       to: f.to, ldg: f.ldg, tkoff: f.tkoff, ldgTime: f.ldgTime, inst: f.inst,
+      // 2026-09-24: the rest of the flight record, for the per-leg Completed notice (block
+      // off/on, route, leg number, flight type, remark, and — on a multi-leg booking — every
+      // leg in `legs`). Display-only exactly like the fields above: NOT in TRACKED, so a flight
+      // record being filled in or corrected never fires an event on its own.
+      blockOff: f.blockOff, blockOn: f.blockOn, airborne: f.airborne,
+      routeFrom: f.routeFrom, routeTo: f.routeTo, leg: f.leg,
+      flightType: f.flightType, remark: f.remark, legs: f.legs,
       // 2026-08-06: recover_vanished_bookings() (fetch_schedule.py) marks a synthesized
       // Canceled entry `recovered: true` when no Cancel Record was ever found for it (removed
       // via some portal path other than the Cancel Flight form). Not diffable — telegram.js

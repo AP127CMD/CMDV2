@@ -114,3 +114,64 @@ describe('runWatchdog — staged/flapping "record actual" completion (PICHAKORN 
     expect(notices()).toEqual(['✅ Completed']);
   });
 });
+
+// 2026-09-24: per-leg Completed notices + the settle hold (completion.js). Students submit an XC's
+// Flight Records in a burst (SETASIT P., 2026-09-23: three legs within ~3 min); a scrape that lands
+// mid-burst sees leg 1 only. The notice must wait and go out ONCE, with every leg.
+describe('runWatchdog — multi-leg completion is held until the trip is on record', () => {
+  const XC_ID = 'ACTUAL_ONLY_BK-AP-127-SETA-EHX3N';
+  const L = [
+    { leg: '1', routeFrom: 'VTPH', routeTo: 'VTSB', blockOff: '06:30', tkoff: '06:40', ldgTime: '08:35', blockOn: '08:40', to: 1, ldg: 1 },
+    { leg: '2', routeFrom: 'VTSB', routeTo: 'VTSE', blockOff: '08:46', tkoff: '08:50', ldgTime: '10:20', blockOn: '10:25', to: 1, ldg: 1 },
+    { leg: '3', routeFrom: 'VTSE', routeTo: 'VTPH', blockOff: '10:30', tkoff: '10:36', ldgTime: '11:47', blockOn: '11:52', to: 1, ldg: 1 },
+  ];
+  const xcBooked = () => ({ id: 'BK-AP-127-SETA-EHX3N', batch: 'AP-127', date: today(), start: '06:30', end: '11:30',
+    status: 'Pending', student: 'SETASIT P.', instructor: 'SANTI PO.', lesson: 'CSXV 45', tail: 'HS-TPO', type: 'DA40TDI' });
+  const xcDone = (legs) => ({ ...xcBooked(), id: XC_ID, status: 'Completed', flightType: 'Solo',
+    ...legs[legs.length - 1], ...(legs.length > 1 ? { legs } : {}) });
+
+  let now;
+  beforeEach(() => { now = Date.now(); vi.spyOn(Date, 'now').mockImplementation(() => now); });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('leg-1-only scrape → no notice; next scrape with all legs → ONE notice with the full table', async () => {
+    feedText = feed('2026-09-07T07:00:00Z', [...filler(), xcBooked()]);
+    await baseline();
+    feedText = feed('2026-09-07T07:10:00Z', [...filler(), xcDone([L[0]])]);
+    await run();
+    expect(notices()).toEqual([]);                           // held — leg 1 alone is VTPH→VTSB
+
+    now += 7 * 60e3;
+    feedText = feed('2026-09-07T07:17:00Z', [...filler(), xcDone(L)]);
+    await run();
+    expect(notices()).toEqual(['✅ Completed']);
+    const sent = telegramSends[0];
+    expect(sent.parse_mode).toBe('HTML');
+    expect(sent.text).toContain('- 🗺️ VTPH → VTSB → VTSE → VTPH');
+    expect(sent.text).toContain('1 VTPH→VTSB 06:30 06:40 08:35 08:40');
+    expect(sent.text).toContain('3 VTSE→VTPH 10:30 10:36 11:47 11:52');
+
+    now += 7 * 60e3;
+    feedText = feed('2026-09-07T07:24:00Z', [...filler(), xcDone(L)]);
+    await run();
+    expect(notices()).toEqual(['✅ Completed']);              // and never again
+  });
+
+  it('a one-way leg is released on a quiet run once it has settled (no feed change needed)', async () => {
+    feedText = feed('2026-09-07T07:00:00Z', [...filler(), xcBooked()]);
+    await baseline();
+    feedText = feed('2026-09-07T07:10:00Z', [...filler(), xcDone([L[0]])]);
+    await run();
+    expect(notices()).toEqual([]);
+    now += 5 * 60e3;
+    await run();                                             // same feed, not yet due
+    expect(notices()).toEqual([]);
+    now += 6 * 60e3;
+    await run();                                             // same feed, now past SETTLE_MS
+    expect(notices()).toEqual(['✅ Completed']);
+    expect(telegramSends[0].text).toContain('1 VTPH→VTSB 06:30 06:40 08:35 08:40');
+    now += 10 * 60e3;
+    await run();
+    expect(notices()).toEqual(['✅ Completed']);
+  });
+});

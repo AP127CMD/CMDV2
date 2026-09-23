@@ -1,5 +1,10 @@
 import { buildSnapshot, diffSnapshots, suppressActualPairs, attachCancelReasons, stabilizeCancelledFlights, stabilizeCompletedFlights } from './diff.js';
 import { buildCombinedMessages, sendTelegram } from './telegram.js';
+import { settleCompletions, nextHeldDueAt } from './completion.js';
+
+// Completions held back until their multi-leg trip has settled (see completion.js
+// settleCompletions). Small: a handful of entries at most, each a copy of one flight.
+const HELD_KEY = 'watchdog:heldCompletions';
 import { appendLog, getLog } from './log.js';
 
 // 2026-08-16: points at CMD_CTR's small, watchdog-only pre-windowed feed (see
@@ -181,6 +186,38 @@ export function planNotifications(events, dests) {
   return plan;
 }
 
+// Send one combined message per destination (chunked only past Telegram's char limit) and log
+// every event. Shared by the normal diff path and the held-completion release on a quiet run.
+async function dispatchEvents(env, config, events, ts) {
+  if (!events.length) return;
+  // Destinations: from config, or fall back to env var (legacy single-chat).
+  const allDests = config.destinations?.length
+    ? config.destinations
+    : [{ label: 'Default', chatId: env.TELEGRAM_CHAT_ID, threadId: null, mention: true, enabled: true, batchFilter: '*' }];
+
+  // Every matched SP is @mentioned in every run, including bursts. HTML parse mode for the
+  // Completed notice's monospace leg table (telegram.js escapes all text for it).
+  for (const { dest, items } of planNotifications(events, allDests)) {
+    try {
+      const roster = dest.mention !== false ? (config.roster || []) : [];
+      const messages = buildCombinedMessages(dest.label, items, roster);
+      for (const message of messages) {
+        await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, message, dest.threadId, 'HTML');
+        await new Promise(r => setTimeout(r, 3500)); // Telegram ~20 msg/min per chat
+      }
+    } catch (e) {
+      console.error(`Telegram send to "${dest.label}" failed:`, e.message);
+    }
+  }
+
+  // Log every actionable event (full detail retained even when Telegram was summarized).
+  await appendLog(env.KV, events.map(e => ({
+    type: e.type, flightId: e.flight.id, student: e.flight.student,
+    lesson: e.flight.lesson, date: e.flight.date, start: e.flight.start,
+    end: e.flight.end, tail: e.flight.tail, instructor: e.flight.instructor, diff: e.diff,
+  })), ts);
+}
+
 async function runWatchdog(env) {
   const ts = new Date().toISOString();
   const nowMs = Date.now();
@@ -207,6 +244,10 @@ async function runWatchdog(env) {
       feedFetchedAt: prevStatus.feedFetchedAt ?? null,
       anomalyStreak: prevStatus.anomalyStreak || 0,
       recentSigs: prevStatus.recentSigs ?? [],
+      // Held-completion bookkeeping (completion.js): lets a quiet run skip reading the hold list
+      // entirely unless something in it has come due.
+      heldCount: prevStatus.heldCount || 0,
+      heldDueAt: prevStatus.heldDueAt ?? null,
       ...fields,
     }));
   };
@@ -215,6 +256,20 @@ async function runWatchdog(env) {
     const config = await loadConfig(env.KV);
     if (!config.enabled) return;
 
+    // A run with nothing new in the feed: heartbeat — unless a held completion has come due, in
+    // which case release it now rather than waiting for the next feed change (settle hold, 2026-09-24).
+    const heartbeatOrReleaseDue = async () => {
+      if (!prevStatus.heldDueAt || nowMs < prevStatus.heldDueAt) { await writeStatus(); return; }
+      const held = JSON.parse((await env.KV.get(HELD_KEY, 'text')) || '{}');
+      const settled = settleCompletions({ held, snap: null, nowMs });
+      if (settled.dirty) await env.KV.put(HELD_KEY, JSON.stringify(settled.held));
+      await dispatchEvents(env, config, settled.events, ts);
+      await writeStatus({
+        force: true, changed: settled.events.length > 0,
+        heldCount: Object.keys(settled.held).length, heldDueAt: nextHeldDueAt(settled.held),
+      });
+    };
+
     const text = await fetchFeedText();
     const sig = extractFeedSig(text);
 
@@ -222,7 +277,7 @@ async function runWatchdog(env) {
     // ~1.4 MB JSON.parse (the dominant CPU cost) entirely. Gated on having processed before, so the
     // first run after (re)deploy always does a full pass. The download already happened (I/O, not CPU).
     if (prevStatus.feedSig && sig === prevStatus.feedSig) {
-      await writeStatus(); // heartbeat only, subject to the 25-min quiet-skip
+      await heartbeatOrReleaseDue(); // heartbeat subject to the 25-min quiet-skip
       return;
     }
 
@@ -234,7 +289,7 @@ async function runWatchdog(env) {
     // scraper was catching up post-reboot). Do NOT touch the snapshot or feedSig — just wait for a
     // consistent read. See RECENT_SIG_HISTORY.
     if ((prevStatus.recentSigs || []).includes(sig)) {
-      await writeStatus(); // heartbeat only
+      await heartbeatOrReleaseDue();
       return;
     }
 
@@ -297,40 +352,25 @@ async function runWatchdog(env) {
       await env.KV.put('watchdog:snapshot', JSON.stringify(newSnap));
     }
 
-    // Destinations: from config, or fall back to env var (legacy single-chat).
-    const allDests = config.destinations?.length
-      ? config.destinations
-      : [{ label: 'Default', chatId: env.TELEGRAM_CHAT_ID, threadId: null, mention: true, enabled: true, batchFilter: '*' }];
+    // 2026-09-24 settle hold (completion.js): a Completed whose multi-leg trip isn't fully on
+    // record yet waits — and goes out ONCE, with every leg — instead of a leg-1-only notice now.
+    // Everything else passes straight through. The hold list is only read when non-empty.
+    const held = prevStatus.heldCount > 0
+      ? JSON.parse((await env.KV.get(HELD_KEY, 'text')) || '{}') : {};
+    const settled = settleCompletions({ events: notifiable, held, snap: newSnap, nowMs });
+    if (settled.dirty) await env.KV.put(HELD_KEY, JSON.stringify(settled.held));
+    const toSend = settled.events;
 
-    // Send — one combined message per destination per run (chunked only if it would exceed
-    // Telegram's char limit). Every matched SP is @mentioned in every run now, including bursts.
-    for (const { dest, items } of planNotifications(notifiable, allDests)) {
-      try {
-        const roster = dest.mention !== false ? (config.roster || []) : [];
-        const messages = buildCombinedMessages(dest.label, items, roster);
-        for (const message of messages) {
-          await sendTelegram(env.TELEGRAM_BOT_TOKEN, dest.chatId, message, dest.threadId);
-          await new Promise(r => setTimeout(r, 3500)); // Telegram ~20 msg/min per chat
-        }
-      } catch (e) {
-        console.error(`Telegram send to "${dest.label}" failed:`, e.message);
-      }
-    }
-
-    // Log every actionable event (full detail retained even when Telegram was summarized).
-    const logEntries = notifiable.map(e => ({
-      type: e.type, flightId: e.flight.id, student: e.flight.student,
-      lesson: e.flight.lesson, date: e.flight.date, start: e.flight.start,
-      end: e.flight.end, tail: e.flight.tail, instructor: e.flight.instructor, diff: e.diff,
-    }));
-    await appendLog(env.KV, logEntries, ts);
+    await dispatchEvents(env, config, toSend, ts);
 
     // Feed changed → always persist the new sig (enables skip-on-unchanged next run) + reset streak.
     // Also push it onto the recent-history ring so a later stale/lagging-CDN read of this same
     // version is recognised and skipped rather than re-diffed backwards (see the stale/flap guard).
     await writeStatus({
       force: true,
-      changed: notifiable.length > 0,
+      changed: toSend.length > 0,
+      heldCount: Object.keys(settled.held).length,
+      heldDueAt: nextHeldDueAt(settled.held),
       feedSig: sig,
       feedFetchedAt: data.fetchedAt || null,
       anomalyStreak: 0,

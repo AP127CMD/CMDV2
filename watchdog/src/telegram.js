@@ -1,4 +1,36 @@
+import { flightLegs, legRoute, routeCodes, spanMinutes, fmtMinutes } from './completion.js';
+
 const TELEGRAM_BASE = 'https://api.telegram.org/bot';
+
+// 2026-09-24: combined messages are sent with parse_mode=HTML so the Completed notice's per-leg
+// table can be a monospace <pre> block (columns line up on a phone). Every piece of text in a
+// message therefore goes through escapeHtml — names, remarks (often free Thai text), routes.
+// sendTelegram() still falls back to plain text if Telegram ever rejects the markup.
+export function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// A block's lines are plain strings (escaped here) or { html } (pre-built, already safe).
+function joinLines(lines) {
+  return lines.map(l => (typeof l === 'string' ? escapeHtml(l) : l.html)).join('\n');
+}
+
+// The per-leg table (plain text — the caller escapes it into a <pre>):
+//   # Route     Off   T/O   LDG   On
+//   1 VTPH→VTSB 06:30 06:40 08:35 08:40
+// Route is padded to the widest leg so the four time columns stay aligned; a missing time is --:--.
+function legTable(legs) {
+  const t = v => (/^\d{1,2}:\d{2}$/.test(String(v ?? '')) ? String(v).padStart(5, '0') : '--:--');
+  const rows = legs.map((l, i) => ({
+    n: String(l.leg || (legs.length === 1 ? '1' : i + 1)),
+    route: legRoute(l),
+    times: [l.blockOff, l.tkoff, l.ldgTime, l.blockOn].map(t).join(' '),
+  }));
+  const nw = Math.max(1, ...rows.map(r => r.n.length));
+  const rw = Math.max(5, ...rows.map(r => r.route.length));
+  return [`${'#'.padEnd(nw)} ${'Route'.padEnd(rw)} Off   T/O   LDG   On`,
+    ...rows.map(r => `${r.n.padEnd(nw)} ${r.route.padEnd(rw)} ${r.times}`)].join('\n');
+}
 
 function fmtDateShort(dateStr) {
   if (!dateStr) return '—';
@@ -107,24 +139,37 @@ function renderEventBlock(event, roster) {
   if (diff.reassignedFrom) reassignLine = `- ↪ reassigned from ${diff.reassignedFrom.student} (${diff.reassignedFrom.batch})`;
 
   if (group === 'completed') {
-    // No "planned"/"flew" words (icon alone is enough) and no 🆕 anywhere — this is a factual
-    // record of what happened, not a change to flag.
-    lines.push(`${f.lesson || '—'} · 🗣️ ${f.instructor || '—'} · 📅 ${fmtDateShort(f.date)}`);
-    if (diff.start || diff.end) {
-      const plannedRange = timeRange(diff.start?.from ?? f.start, diff.end?.from ?? f.end);
-      if (plannedRange !== currentRange) lines.push(`- ⏰ ${plannedRange}`);
+    // 2026-09-24 redesign: show the FLIGHT RECORD, not the booking — every leg with its block
+    // off / take-off / landing / block on and where it went (see completion.js). The table is a
+    // monospace <pre> block so the four time columns line up on a phone; everything else stays one
+    // fact per dash line. No 🆕 anywhere — this is a factual record, not a change to flag.
+    const legs = flightLegs(f);
+    lines.push([f.lesson || '—', f.flightType, `📅 ${fmtDateShort(f.date)}`].filter(Boolean).join(' · '));
+    const tails = [...new Set(legs.map(l => l.tail || f.tail).filter(Boolean))];
+    const fi = f.instructor && f.instructor !== '-' ? `🗣️ ${f.instructor}` : null;
+    lines.push(`- ${[fi, `🛩 ${(tails.length ? tails : [f.tail || '—']).join(', ')}`].filter(Boolean).join(' · ')}`);
+
+    if (legs.length === 0) {
+      // Completed, but nobody has entered the flight record yet (seen live: BK-AP-129-RAVE-000IR).
+      lines.push(`- 📋 Planned ${currentRange} · flight record not entered yet`);
+    } else {
+      if (legs.length > 1) {
+        lines.push(`- 🗺️ ${routeCodes(...legs.flatMap(l => [l.routeFrom, l.routeTo])).join(' → ')}`);
+      }
+      lines.push({ html: `<pre>${escapeHtml(legTable(legs))}</pre>` });
+      const sum = pick => legs.reduce((acc, l) => { const v = pick(l); return v == null ? acc : (acc ?? 0) + v; }, null);
+      const block = sum(l => spanMinutes(l.blockOff, l.blockOn));
+      const air = sum(l => spanMinutes(l.tkoff, l.ldgTime));
+      const durs = [block != null && `Block ${fmtMinutes(block)}`, air != null && `Air ${fmtMinutes(air)}`].filter(Boolean);
+      if (durs.length) lines.push(`- ⏱ ${durs.join(' · ')}`);
+      const tos = sum(l => l.to), ldgs = sum(l => l.ldg), inst = sum(l => l.inst);
+      if (tos || ldgs) lines.push(`- 🛬 ${tos ?? 0} T/O · ${ldgs ?? 0} LDG${inst ? ` · ${inst} INST` : ''}`);
+      const remarks = [...new Map(legs.filter(l => l.remark).map(l => [l.remark, l])).values()];
+      for (const l of remarks) lines.push(`- 💬 ${legs.length > 1 && l.leg ? `Leg ${l.leg}: ` : ''}${l.remark}`);
     }
-    lines.push(`- ✍️ ${currentRange}`);
-    lines.push(`- 🛩 ${f.tail || '—'}`);
-    if (f.to || f.ldg) lines.push(`- 🛬 ${f.to ?? 0} T/O · ${f.ldg ?? 0} LDG`);
-    const clocks = [];
-    if (f.tkoff   && f.tkoff   !== '00:00') clocks.push(`TO ${f.tkoff}`);
-    if (f.ldgTime && f.ldgTime !== '00:00') clocks.push(`LDG ${f.ldgTime}`);
-    if (f.inst) clocks.push(`INST ${f.inst}`);
-    if (clocks.length) lines.push(`- 🕘 ${clocks.join(' · ')}`);
     if (reassignLine) lines.push(reassignLine);
     lines.push(...reasonLines);
-    return lines.join('\n');
+    return joinLines(lines);
   }
 
   // Context line: lesson/FI/date, but only the ones that did NOT change (a changed one is
@@ -164,7 +209,7 @@ function renderEventBlock(event, roster) {
 
   if (reassignLine) lines.push(reassignLine);
   lines.push(...reasonLines);
-  return lines.join('\n');
+  return joinLines(lines);
 }
 
 // Telegram's sendMessage `text` hard limit is 4,096 chars (verified against the Bot API). Leave
@@ -194,7 +239,7 @@ export function buildCombinedMessages(destLabel, events, roster) {
   }
 
   for (const group of groups) {
-    const header = `${group.emoji} ${group.label}`;
+    const header = escapeHtml(`${group.emoji} ${group.label}`);
     pushBlock(header);
     for (const event of group.events) {
       const startedNewChunk = pushBlock(renderEventBlock(event, roster));
@@ -210,7 +255,7 @@ export function buildCombinedMessages(destLabel, events, roster) {
   const total = bodies.length;
   return bodies.map((body, i) => {
     const suffix = total > 1 ? ` (${i + 1}/${total})` : '';
-    const label = destLabel ? `${destLabel} — ` : '';
+    const label = destLabel ? `${escapeHtml(destLabel)} — ` : '';
     const header = `📋 ${label}${events.length} update${events.length === 1 ? '' : 's'}${suffix}`;
     return `${header}\n${body}`;
   });
@@ -228,16 +273,39 @@ async function _doSend(token, body) {
     await new Promise(r => setTimeout(r, wait));
     return null; // signal retry
   }
-  if (!res.ok) throw new Error(`Telegram HTTP ${res.status}`);
-  const data = await res.json();
-  if (!data.ok) throw new Error(`Telegram: ${data.description || 'unknown error'}`);
+  // A non-2xx reply still carries Telegram's `description` — it's how the HTML fallback below
+  // recognises a markup rejection — but don't assume a parseable body.
+  const data = typeof res.json === 'function' ? await res.json().catch(() => ({})) : {};
+  if (!res.ok || !data.ok) {
+    throw new Error(`Telegram HTTP ${res.status}: ${data.description || 'unknown error'}`);
+  }
   return data.result.message_id;
 }
 
-export async function sendTelegram(token, chatId, text, threadId) {
-  const body = { chat_id: chatId, text };
-  if (threadId) body.message_thread_id = threadId;
+// HTML → the plain text Telegram would have displayed (tags dropped, entities decoded).
+export function htmlToPlain(html) {
+  return String(html).replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
+async function _sendWithRetry(token, body) {
   const result = await _doSend(token, body);
   if (result === null) return _doSend(token, body); // one retry after rate-limit wait
   return result;
+}
+
+// parseMode: omit for plain text (/test, the monitor); 'HTML' for combined notices. If Telegram
+// rejects the markup ("can't parse entities") the SAME content is re-sent as plain text, so a
+// rendering slip can cost the table's alignment but never the notification itself.
+export async function sendTelegram(token, chatId, text, threadId, parseMode) {
+  const body = { chat_id: chatId, text };
+  if (threadId) body.message_thread_id = threadId;
+  if (!parseMode) return _sendWithRetry(token, body);
+  try {
+    return await _sendWithRetry(token, { ...body, parse_mode: parseMode });
+  } catch (e) {
+    if (!/parse entities/i.test(e.message)) throw e;
+    console.error(`Telegram rejected ${parseMode} markup (${e.message}) — resending as plain text`);
+    return _sendWithRetry(token, { ...body, text: htmlToPlain(text) });
+  }
 }
