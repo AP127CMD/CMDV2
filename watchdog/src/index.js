@@ -301,7 +301,19 @@ async function runWatchdog(env) {
     const newCount = Object.keys(newSnap).length;
 
     const prevRaw = await env.KV.get('watchdog:snapshot', 'text');
-    const prevSnap = prevRaw ? JSON.parse(prevRaw) : {};
+    // 2026-09-24: bound the PREVIOUS snapshot to the window too, not just the new one. Both
+    // stabilizers below carry a record forward from prevSnap when the new feed "lost" it — but a
+    // flight that merely aged out of the window looks lost as well, so every completed flight since
+    // 2026-09-07 (stabilizeCompletedFlights) and every cancelled one since 2026-07-27
+    // (stabilizeCancelledFlights, whose cancellations[] is unwindowed) was being carried forward
+    // forever. Found live: 832 stored entries dated 07-25 → 09-25 against ~176 in the window, which
+    // (a) tripped the bad-feed guard below on EVERY feed change (832→176 looks like a >50% drop —
+    // each change held 3 runs, /status healthy:false) and (b) grew the snapshot the worker parses
+    // every run to 293 KB on a 10 ms-CPU Free plan. Filtering here makes the carry-forward, the
+    // anomaly count and the diff all see only in-window flights; the pruned snapshot is persisted.
+    const storedSnap = prevRaw ? JSON.parse(prevRaw) : {};
+    const prevSnap = Object.fromEntries(Object.entries(storedSnap).filter(([, f]) => withinSnapshotWindow(f, nowMs)));
+    const pruned = Object.keys(storedSnap).length - Object.keys(prevSnap).length;
     const prevCount = Object.keys(prevSnap).length;
 
     // Bad-feed guard (see isAnomalousDrop). Hold — but not forever — on a suspicious sudden shrink.
@@ -348,7 +360,7 @@ async function runWatchdog(env) {
 
     // Update snapshot whenever the window changed at all (or first run) — keeps the baseline exactly
     // current so non-actionable churn doesn't re-diff every run. Independent of notify gating.
-    if (events.length > 0 || !prevRaw) {
+    if (events.length > 0 || !prevRaw || pruned > 0) {
       await env.KV.put('watchdog:snapshot', JSON.stringify(newSnap));
     }
 

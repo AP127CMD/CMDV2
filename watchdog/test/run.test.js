@@ -188,3 +188,34 @@ describe('runWatchdog — multi-leg completion is held until the trip is on reco
     expect(notices()).toEqual(['✅ Completed']);
   });
 });
+
+// 2026-09-24 regression: the stabilizers carried flights forward after they aged OUT of the window
+// (a flight leaving the window also looks "lost"), so the stored snapshot grew without bound — found
+// live at 832 entries (07-25 → 09-25) vs ~176 in window, which tripped the bad-feed guard on every
+// feed change. prevSnap is now window-filtered on load.
+describe('runWatchdog — snapshot stays bounded to the window', () => {
+  const daysAgo = n => new Date(Date.now() + 7 * 3600e3 - n * 864e5).toISOString().slice(0, 10);
+
+  it('prunes out-of-window carried-forward flights without notifying, and never trips the bad-feed guard', async () => {
+    // Stored snapshot: today's 25 flights + 700 stale completed/cancelled records from weeks ago.
+    const stale = {};
+    for (let i = 0; i < 700; i++) {
+      const id = i % 2 ? `ACTUAL_ONLY_BK-OLD-${i}` : `BK-OLD-${i}`;
+      stale[id] = { id, date: daysAgo(5 + (i % 40)), start: '08:00', end: '09:00', student: `OLD${i}`,
+        batch: 'AP-127', status: i % 2 ? 'Completed' : 'Canceled', lesson: 'L', tail: 'HS-A' };
+    }
+    await baseline();                                           // today's feed → real snapshot
+    const real = JSON.parse(kv._store.get('watchdog:snapshot'));
+    kv._store.set('watchdog:snapshot', JSON.stringify({ ...real, ...stale }));
+
+    feedText = feed('2026-09-07T08:00:00Z', [...filler(), plannedFlight()]); // new sig, same flights
+    await run();
+    const status = JSON.parse(kv._store.get('watchdog:status'));
+    expect(status.lastError).toBeNull();
+    expect(status.anomalyStreak).toBe(0);
+    expect(notices()).toEqual([]);                              // pruning past flights is silent
+    const stored = JSON.parse(kv._store.get('watchdog:snapshot'));
+    expect(Object.keys(stored)).toHaveLength(Object.keys(real).length);
+    expect(Object.keys(stored).some(k => k.includes('OLD'))).toBe(false);
+  });
+});

@@ -193,8 +193,9 @@ export function stabilizeCancelledFlights(newSnap, prevSnap, cancellations) {
 // If `prevSnap` tracked `ACTUAL_ONLY_<id>` as Completed and `newSnap` has lost it, carry the
 // Completed record forward and drop any re-surfaced planned `<id>` twin. Pure — never mutates input.
 // Runs right after stabilizeCancelledFlights and before diffSnapshots/KV-persist, so the correction
-// sticks across runs. Bounded automatically: once the flight ages out of the snapshot window it
-// drops from both snapshots and is no longer carried.
+// sticks across runs. NOT self-bounding (a 2026-09-07 comment here wrongly said it was): a flight
+// that ages out of the window also looks "lost" to this function. It relies on runWatchdog
+// window-filtering prevSnap before calling it — see the 2026-09-24 note in index.js.
 export function stabilizeCompletedFlights(newSnap, prevSnap) {
   let out = newSnap;
   for (const [key, pf] of Object.entries(prevSnap || {})) {
