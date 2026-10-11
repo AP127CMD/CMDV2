@@ -18,7 +18,6 @@
       { id: 'cohort-v4', label: 'AP127 Detail V4', icon: '◈' },
       { id: 'cohort-v5', label: 'AP127 Detail V5 (Draft)', icon: '◆' },
       { id: 'cohort-v6', label: 'AP127 Detail V6', icon: '◉' },
-      { id: 'stats', label: 'Batch Stats', icon: '▥' },
       { id: 'student', label: 'Student Lens', icon: '👤' },
       { id: 'plans', label: 'Curriculum Prog', icon: '▤' },
     ] },
@@ -530,7 +529,6 @@
       'cohort-v4': window.CohortViewV4,
       'cohort-v5': window.CohortViewV5,
       'cohort-v6': window.CohortViewV6,
-      stats: window.StatsView,
       plans: window.ProgressDetailView,
       performance: window.SchoolPerformanceView,
       'school-analysis': window.SchoolAnalysisView,
@@ -547,9 +545,10 @@
 
   function Shell() {
     const d = window.useData();
-    const ALIAS = { today: 'overview' };
+    const ALIAS = { today: 'overview', stats: 'crosscheck' };   // Batch Stats now lives inside Cross-Check
     const [view, setView] = useState(() => {
       const raw = (location.hash || '').replace('#/', '').replace('#', '') || localStorage.getItem('ap127v2-view') || 'overview';
+      if (raw === 'stats') { try { sessionStorage.setItem('ap127-cc-mode', 'stats'); } catch (e) {} }
       if (_sharePreset && !_sharePreset.includes(raw)) return _sharePreset[0];
       return ALIAS[raw] || raw;
     });
@@ -557,7 +556,7 @@
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('ap127v2-collapsed') === '1');
     const mobile = d.isMobile;
     useEffect(() => {
-      const onGo = e => { const v = ALIAS[e.detail] || e.detail; if (_sharePreset && !_sharePreset.includes(v)) return; setView(v); setMenu(false); };
+      const onGo = e => { if (e.detail === 'stats') { try { sessionStorage.setItem('ap127-cc-mode', 'stats'); } catch (err) {} } const v = ALIAS[e.detail] || e.detail; if (_sharePreset && !_sharePreset.includes(v)) return; setView(v); setMenu(false); };
       window.addEventListener('ap127-go', onGo); return () => window.removeEventListener('ap127-go', onGo);
     }, []);
     useEffect(() => { localStorage.setItem('ap127v2-view', view); try { history.replaceState(null, '', location.search + '#/' + view); } catch (e) {} }, [view]);

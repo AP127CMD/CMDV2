@@ -267,12 +267,20 @@
   }
 
   function CrossCheckShell() {
-    const [mode, setMode] = useState('perflight'); // 'perflight' | 'monthly'
-    return h('div', { style: { padding: 16, display: 'grid', gap: 14, overflow: 'auto', height: '100%' } },
-      h('div', { style: { display: 'flex', gap: 8 } },
-        h('span', { className: 'chip' + (mode === 'perflight' ? ' sel' : ''), onClick: () => setMode('perflight') }, 'Per-Flight Reconciliation'),
-        h('span', { className: 'chip' + (mode === 'monthly' ? ' sel' : ''), onClick: () => setMode('monthly') }, 'Monthly OPS ⇄ PROG')),
-      mode === 'perflight' ? h(PerFlightView) : h(MonthlyView));
+    // 'perflight' | 'monthly' | 'stats' — a #/stats deep link (shell.js aliases it here) opens Batch Stats.
+    const [mode, setMode] = useState(() => {
+      try { if (sessionStorage.getItem('ap127-cc-mode') === 'stats') { sessionStorage.removeItem('ap127-cc-mode'); return 'stats'; } } catch (e) {}
+      return 'perflight';
+    });
+    const chip = (k, label) => h('span', { className: 'chip' + (mode === k ? ' sel' : ''), onClick: () => setMode(k) }, label);
+    const Stats = window.StatsView;
+    return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 } },
+      h('div', { style: { display: 'flex', gap: 8, padding: '16px 16px 0', flexWrap: 'wrap' } },
+        chip('perflight', 'Per-Flight Reconciliation'), chip('monthly', 'Monthly OPS ⇄ PROG'), chip('stats', 'Batch Stats')),
+      mode === 'stats'
+        ? h('div', { style: { flex: 1, minHeight: 0, position: 'relative' } }, h('div', { style: { position: 'absolute', inset: 0 } }, Stats ? h(Stats) : 'Batch Stats failed to load.'))
+        : h('div', { style: { flex: 1, minHeight: 0, padding: 16, display: 'grid', gap: 14, overflow: 'auto', alignContent: 'start' } },
+            mode === 'perflight' ? h(PerFlightView) : h(MonthlyView)));
   }
 
   window.CrossCheckView = CrossCheckShell;
