@@ -1,0 +1,674 @@
+{
+"1": {
+"code": "CDGL 01",
+"dur": "1:00",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "First Air Experience & Familiarization"
+},
+"2": {
+"code": "CDGL 02",
+"dur": "1:00",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Effect of Controls"
+},
+"3": {
+"code": "CDGL 03",
+"dur": "1:00",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Standard and Medium Turns"
+},
+"4": {
+"code": "CDGL 04",
+"dur": "1:00",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Climb and Descent"
+},
+"5": {
+"code": "CDGL 05",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Turns in Various Configurations"
+},
+"6": {
+"code": "CDGL 06",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Basic UPRT (1) — Arrest Divergence / Avoid Spin"
+},
+"7": {
+"code": "CDGL 07",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Basic UPRT (2) — Flight Path Management"
+},
+"8": {
+"code": "CDGL 08",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Basic UPRT (3) — Stall Recognition & Recovery"
+},
+"9": {
+"code": "CDGL 09",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Simulated Forced Landing"
+},
+"10": {
+"code": "CDGL 10",
+"dur": "1:00",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Circuit, Take-Off and Landing (1)"
+},
+"11": {
+"code": "CDGL 11",
+"dur": "1:00",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Circuit, Take-Off and Landing (2)"
+},
+"12": {
+"code": "CDGL 12",
+"dur": "1:00",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Circuit, Take-Off and Landing (3)"
+},
+"13": {
+"code": "CDGL 13",
+"dur": "0:45",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "Final Pre-Solo"
+},
+"14": {
+"code": "CSGL 14",
+"dur": "0:20",
+"cond": "Day VFR / Local",
+"crew": "Solo",
+"title": "First Solo Flight"
+},
+"15": {
+"code": "CDIL 15",
+"dur": "1:15",
+"cond": "Day VFR / Local (IFR hood)",
+"crew": "Dual",
+"title": "Basic Instrument Flying (1) — Full Panel"
+},
+"16": {
+"code": "CSGL 16",
+"dur": "0:45",
+"cond": "Day VFR / Local",
+"crew": "Solo",
+"title": "Solo Circuit"
+},
+"17": {
+"code": "CDIL 17",
+"dur": "1:30",
+"cond": "Day VFR / Local (IFR hood)",
+"crew": "Dual",
+"title": "Basic Instrument Flying (2) — Instrument Pattern & Steep Turns"
+},
+"18": {
+"code": "CSGL 18",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Solo",
+"title": "Solo General Handling"
+},
+"19": {
+"code": "CDIL 19",
+"dur": "1:30",
+"cond": "Day VFR / Local (IFR hood)",
+"crew": "Dual",
+"title": "Basic Instrument Flying (3) — Radio Navigation"
+},
+"20": {
+"code": "CSGL 20",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Solo",
+"title": "Solo General Handling"
+},
+"21": {
+"code": "CDIL 21",
+"dur": "1:30",
+"cond": "Day VFR / Local (IFR hood)",
+"crew": "Dual",
+"title": "Basic Instrument Flying (4) — Unusual Attitude / Partial Panel"
+},
+"22": {
+"code": "CSGL 22",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Solo",
+"title": "Solo General Handling"
+},
+"23": {
+"code": "CDIL 23",
+"dur": "1:15",
+"cond": "Day VFR / Local (IFR hood)",
+"crew": "Dual",
+"title": "Basic Instrument Flying (5) — Stall & Radio Nav"
+},
+"24": {
+"code": "CSGL 24",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Solo",
+"title": "Solo General Handling"
+},
+"25": {
+"code": "CDIL 25",
+"dur": "1:30",
+"cond": "Day VFR / Local (IFR hood)",
+"crew": "Dual",
+"title": "Basic Instrument Flying (6) — Limited Panel"
+},
+"26": {
+"code": "CSGL 26",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "Solo",
+"title": "Solo General Handling"
+},
+"27": {
+"code": "CDIL 27",
+"dur": "1:30",
+"cond": "Day VFR / Local (IFR hood)",
+"crew": "Dual",
+"title": "Basic Instrument Flying (7) — Limited Panel & Stall"
+},
+"28": {
+"code": "CSGL 28",
+"dur": "1:20",
+"cond": "Day VFR / Local",
+"crew": "Solo",
+"title": "Solo General Handling"
+},
+"29": {
+"code": "CDXV 29",
+"dur": "1:30",
+"cond": "Day VFR / Cross Country",
+"crew": "Dual",
+"title": "VFR Cross Country (1)"
+},
+"30": {
+"code": "CSGL 30",
+"dur": "1:20",
+"cond": "Day VFR / Local",
+"crew": "Solo",
+"title": "Solo General Handling"
+},
+"31": {
+"code": "CDXV 31",
+"dur": "1:30",
+"cond": "Day VFR / Cross Country",
+"crew": "Dual",
+"title": "VFR Cross Country (2)"
+},
+"32": {
+"code": "CDXV 32",
+"dur": "2:00",
+"cond": "Day VFR / Cross Country",
+"crew": "Dual",
+"title": "VFR Cross Country (3)"
+},
+"33": {
+"code": "CSXV 33",
+"dur": "1:30",
+"cond": "Day VFR / Cross Country",
+"crew": "Solo",
+"title": "First Solo VFR Cross Country"
+},
+"34": {
+"code": "CDGL 34",
+"dur": "1:00",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "General Handling Review (1) — Flight Path Management & Steep Turns"
+},
+"35": {
+"code": "CDGL 35",
+"dur": "1:00",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "General Handling Review (2) — Stall Recovery All Configs"
+},
+"36": {
+"code": "CSPGL 36",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "SPIC",
+"title": "SPIC General Handling (1) — Emergency & Abnormal Procedures"
+},
+"37": {
+"code": "CSPGL 37",
+"dur": "1:15",
+"cond": "Day VFR / Local",
+"crew": "SPIC",
+"title": "SPIC General Handling (2) — Instrument Pattern"
+},
+"38": {
+"code": "CSPXV 38",
+"dur": "2:00",
+"cond": "Day VFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC VFR Cross Country (1)"
+},
+"39": {
+"code": "CSPXV 39",
+"dur": "3:00",
+"cond": "Day VFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC VFR Cross Country (2)"
+},
+"40": {
+"code": "CSPXV 40",
+"dur": "3:00",
+"cond": "Day VFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC VFR Cross Country (3)"
+},
+"41": {
+"code": "CSPXV 41",
+"dur": "3:00",
+"cond": "Day VFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC VFR Cross Country (4) — Track Deviation Correction"
+},
+"42": {
+"code": "CSPXV 42",
+"dur": "3:00",
+"cond": "Day VFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC VFR Cross Country (5) — Consolidation"
+},
+"43": {
+"code": "CSPXV 43",
+"dur": "3:00",
+"cond": "Day VFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC VFR Cross Country (6) — Long-Range Validation"
+},
+"44": {
+"code": "CSPXV 44",
+"dur": "5:00",
+"cond": "Day VFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC VFR Cross Country (7) — Qualifying Flight ≥300 NM"
+},
+"45": {
+"code": "CSXV 45",
+"dur": "5:00",
+"cond": "Day VFR / Cross Country",
+"crew": "Solo",
+"title": "Solo Long Cross Country ≥300 NM"
+},
+"46": {
+"code": "CDNL 46",
+"dur": "1:00",
+"cond": "Night VFR / Local",
+"crew": "Dual",
+"title": "Dual Night Flying (1) — Night Circuits"
+},
+"47": {
+"code": "CDNL 47",
+"dur": "1:00",
+"cond": "Night VFR / Local",
+"crew": "Dual",
+"title": "Dual Night Flying (2) — Night Traffic Pattern"
+},
+"48": {
+"code": "CDNXC 48",
+"dur": "1:00",
+"cond": "Night VFR / Cross Country",
+"crew": "Dual",
+"title": "Dual Night Cross Country"
+},
+"49": {
+"code": "CSNL 49",
+"dur": "1:00",
+"cond": "Night VFR / Local",
+"crew": "Solo",
+"title": "Solo Night (1) — Night Circuits"
+},
+"50": {
+"code": "CSNL 50",
+"dur": "1:00",
+"cond": "Night VFR / Local",
+"crew": "Solo",
+"title": "Solo Night (2) — Night Circuit Consolidation"
+},
+"51": {
+"code": "CSPGL 51",
+"dur": "1:20",
+"cond": "Day VFR / Local",
+"crew": "SPIC",
+"title": "SPIC General Handling (3) — S&L, Turns, Climbs, Descents Review"
+},
+"52": {
+"code": "CSPGL 52",
+"dur": "1:20",
+"cond": "Day VFR / Local",
+"crew": "SPIC",
+"title": "SPIC General Handling (4) — Steep Turns, Slow/High-Speed Flight"
+},
+"53": {
+"code": "CSPGL 53",
+"dur": "1:20",
+"cond": "Day VFR / Local",
+"crew": "SPIC",
+"title": "SPIC General Handling (5) — Stall All Configs & Forced Landing"
+},
+"54": {
+"code": "CSPGLC 54",
+"dur": "1:30",
+"cond": "Day VFR / Local",
+"crew": "SPIC",
+"title": "General Handling Progress Check (SPIC)"
+},
+"55": {
+"code": "CSPXVC 55",
+"dur": "1:30",
+"cond": "Day VFR / Cross Country",
+"crew": "SPIC",
+"title": "VFR Cross Country Progress Check (SPIC)"
+},
+"56": {
+"code": "CDIF(SIM) 56",
+"dur": "2:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (1) — ADF/VOR Intercept & Tracking"
+},
+"57": {
+"code": "CDIF(SIM) 57",
+"dur": "2:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (2) — NDB Holding & NDB Approach"
+},
+"58": {
+"code": "CDIF(SIM) 58",
+"dur": "2:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (3) — VOR Holding & VOR Approach"
+},
+"59": {
+"code": "CDIF(SIM) 59",
+"dur": "2:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (4) — Localizer / ILS Approach"
+},
+"60": {
+"code": "CDIF(SIM) 60",
+"dur": "2:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (5) — 2D/3D Approach Consolidation"
+},
+"61": {
+"code": "CDIF(SIM) 61",
+"dur": "2:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (6) — Holdings & Segment Transitions"
+},
+"62": {
+"code": "CDIF(SIM) 62",
+"dur": "2:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (7) — Full IFR Route with SID"
+},
+"63": {
+"code": "CDIF(SIM) 63",
+"dur": "2:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (8) — Abnormal Scenarios"
+},
+"64": {
+"code": "CDIF(SIM) 64",
+"dur": "3:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (9) — Missed Approach & Circling"
+},
+"65": {
+"code": "CDIF(SIM) 65",
+"dur": "3:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (10) — Full IFR Mission Profile"
+},
+"66": {
+"code": "CDIF(SIM) 66",
+"dur": "3:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (11) — Complex Scenario Decision-Making"
+},
+"67": {
+"code": "CDIF(SIM) 67",
+"dur": "3:00",
+"cond": "IFR / Simulator",
+"crew": "Dual",
+"title": "IFR SIM (12) — Pre-Aircraft Readiness Validation"
+},
+"68": {
+"code": "CDXI 68",
+"dur": "2:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (1) — Initial Aircraft Transfer from SIM"
+},
+"69": {
+"code": "CDXI 69",
+"dur": "2:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (2) — Holdings & ATC Transitions"
+},
+"70": {
+"code": "CDXI 70",
+"dur": "2:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (3) — IFR Departure & Full-Profile"
+},
+"71": {
+"code": "CDXI 71",
+"dur": "2:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (4) — Multi-Leg Route Navigation"
+},
+"72": {
+"code": "CDXI 72",
+"dur": "2:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (5) — Alternate Diversion Planning"
+},
+"73": {
+"code": "CDXI 73",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (6) — GPS/RNAV Navigation"
+},
+"74": {
+"code": "CDXI 74",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (7) — Missed Approach Procedures"
+},
+"75": {
+"code": "CDXI 75",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (8) — High Workload Management"
+},
+"76": {
+"code": "CDXI 76",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (9) — Abnormal IFR Scenarios"
+},
+"77": {
+"code": "CDXI 77",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (10) — Flight Path & Fuel Management"
+},
+"78": {
+"code": "CDXI 78",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (11) — Approach Minima & Decision"
+},
+"79": {
+"code": "CDXI 79",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (12) — Complex Airspace Operations"
+},
+"80": {
+"code": "CDXI 80",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (13) — Autonomous IFR Management"
+},
+"81": {
+"code": "CDXI 81",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (14) — Pre-SPIC Consolidation"
+},
+"82": {
+"code": "CDXI 82",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "Dual",
+"title": "SE IFR XC (15) — SPIC Readiness Validation"
+},
+"83": {
+"code": "CDGL 83",
+"dur": "1:30",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "General Handling Review — Performance & UPRT (SE)"
+},
+"84": {
+"code": "CDGL 84",
+"dur": "1:30",
+"cond": "Day VFR / Local",
+"crew": "Dual",
+"title": "General Handling Review — Stall & Upset Recovery (SE)"
+},
+"85": {
+"code": "CSPXI 85",
+"dur": "2:00",
+"cond": "IFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC IFR XC (1) — Independent IFR Basics"
+},
+"86": {
+"code": "CSPXI 86",
+"dur": "2:00",
+"cond": "IFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC IFR XC (2) — Complete IFR XC as SPIC"
+},
+"87": {
+"code": "CSPXI 87",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC IFR XC (3) — Multiple Approach Types"
+},
+"88": {
+"code": "CSPXI 88",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC IFR XC (4) — Diversion Decision-Making"
+},
+"89": {
+"code": "CSPXI 89",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "SPIC",
+"title": "SPIC IFR XC (5) — Pre-Check Review"
+},
+"90": {
+"code": "CSPXIC 90",
+"dur": "3:00",
+"cond": "IFR / Cross Country",
+"crew": "SPIC",
+"title": "SE SPIC IFR Progress Check"
+},
+"91": {
+"code": "CMDIF(SIM) 91",
+"dur": "1:00",
+"cond": "IFR / Simulator / ME",
+"crew": "Dual",
+"title": "ME SIM (1) — ME Normal Operations"
+},
+"92": {
+"code": "CMDIF(SIM) 92",
+"dur": "1:00",
+"cond": "IFR / Simulator / ME",
+"crew": "Dual",
+"title": "ME SIM (2) — Engine-Out Operations (OEI)"
+},
+"93": {
+"code": "CMDGL 93",
+"dur": "1:30",
+"cond": "Day VFR / Local / ME",
+"crew": "Dual",
+"title": "ME Dual General Handling — Upset & Stall Recovery"
+},
+"94": {
+"code": "CMDXV 94",
+"dur": "1:30",
+"cond": "Day VFR / Cross Country / ME",
+"crew": "Dual",
+"title": "ME Dual VFR Cross Country"
+},
+"95": {
+"code": "CMSPXI 95",
+"dur": "2:00",
+"cond": "IFR / Cross Country / ME",
+"crew": "SPIC",
+"title": "ME SPIC IFR Cross Country"
+},
+"96": {
+"code": "CMSPXIC 96",
+"dur": "2:00",
+"cond": "IFR / Cross Country / ME",
+"crew": "SPIC",
+"title": "ME SPIC IFR Final Check"
+}
+}

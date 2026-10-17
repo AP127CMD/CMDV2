@@ -99,6 +99,17 @@ bookingId-reassignment guard, the anomaly-drop guard, `suppressActualPairs()`) w
 for the now-fixed upstream flakiness — left in place deliberately (no evidence they cause harm by
 staying, removing them is a separate future cleanup, not bundled into the upstream fix).
 
+## Note (2026-10-17): screen feed — `scripts/build_screen.mjs` depends on two things in this repo
+
+The ESP32 desk screen (`/Users/nugui/CLAUDE/MicroProject/AP127_Screen`) reads `screen.json` from the
+`screen-data` branch, rebuilt every 10 min by `.github/workflows/screen-feed.yml`. The builder runs
+CMDV2's own engine files in a Node vm, so it breaks (loudly — the workflow fails) if either of these
+changes: **(1)** the `// ─── Maintenance & leave helpers` marker in `js/shared.js` (everything above it
+must stay runnable without React/DOM — it is executed with a stubbed `React`), **(2)** the function name
+`opsAugmentV5(` in `js/view-cohort-v5.js`. Rename either → update `build_screen.mjs` in the same commit.
+Verify: `node scripts/build_screen.mjs /tmp/screen.json` → prints `selfCheck PASS`. The branch is a single
+force-pushed `[CI Skip]` commit — never merge it into main.
+
 ## ⚠️ Update rule — do this after EVERY code change
 1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p208` (all currently at p207; `ops/index.html` is on its own `?v=rNN`, now r42)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`

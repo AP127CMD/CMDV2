@@ -1,0 +1,50 @@
+name: Screen feed
+
+# Builds screen.json (~3.5 KB) for the AP127 Smart Screen (ESP32 desk display,
+# MicroProject/AP127_Screen) by running CMDV2's own engine files in Node — see
+# scripts/build_screen.mjs. Published as ONE force-pushed commit on the
+# `screen-data` branch so main's history doesn't grow; [CI Skip] keeps it off
+# the Cloudflare Pages build quota. The device reads
+# raw.githubusercontent.com/AP127CMD/CMDV2/screen-data/screen.json.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screen-feed
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build screen.json
+        run: node scripts/build_screen.mjs "$RUNNER_TEMP/screen.json"
+
+      - name: Publish to the screen-data branch (single commit, force-pushed)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pub="$RUNNER_TEMP/pub"
+          rm -rf "$pub" && mkdir -p "$pub" && cd "$pub"
+          git init -q -b screen-data
+          cp "$RUNNER_TEMP/screen.json" screen.json
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add screen.json
+          git commit -q -m "screen feed $(date -u +%Y-%m-%dT%H:%M:%SZ) [CI Skip]"
+          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" screen-data
