@@ -157,6 +157,53 @@ const base = Stats.build({
 });
 const wk = Stats.summarize(base, { from: addD(today, -6), to: today, gran: 'day' }).kpi;
 
+// ── My training stats (MY STATS page): today / this week / this month / all time ──
+// Block time only (fMin), completed sorties, CMDV2's de-duplicated FLIGHTS. Lessons = first
+// completions from the V5 model (same rule as the Batch Stats tab).
+const myDone = FL.filter(f => f.status === 'Completed' && !f.isNonFlight && nickOf(f.student) === ME_NICK);
+const apDone = FL.filter(f => f.status === 'Completed' && !f.isNonFlight && nickOf(f.student));
+const dowMon = d => (new Date(d + 'T00:00:00Z').getUTCDay() + 6) % 7;
+const weekStart = addD(today, -dowMon(today));
+const monthStart = today.slice(0, 8) + '01';
+const tagOf = f => (String(f.flightType || '') + ' ' + String(f.cond || '')).toUpperCase();
+const statsFor = from => {
+  const rows = myDone.filter(f => f.date >= from && f.date <= today);
+  const mins = rows.reduce((a, f) => a + S.fMin(f), 0);
+  const simM = rows.filter(f => f.isSim).reduce((a, f) => a + S.fMin(f), 0);
+  const les = me ? me.flown.filter(f => !f.isRetake && f.date >= from && f.date <= today).length : 0;
+  const batchM = apDone.filter(f => f.date >= from && f.date <= today).reduce((a, f) => a + S.fMin(f), 0);
+  return {
+    n: rows.length, h: r1(mins / 60), ac: r1((mins - simM) / 60), sim: r1(simM / 60), les,
+    ldg: rows.reduce((a, f) => a + (+f.ldg || 0), 0), app: rows.reduce((a, f) => a + (+f.inst || 0), 0),
+    solo: r1(rows.filter(f => /SOLO|SPIC/.test(tagOf(f))).reduce((a, f) => a + S.fMin(f), 0) / 60),
+    night: r1(rows.filter(f => /NIGHT/.test(tagOf(f))).reduce((a, f) => a + S.fMin(f), 0) / 60),
+    xc: rows.filter(f => /XC/.test(tagOf(f))).length,
+    avg: r1(batchM / 60 / roster.length),
+  };
+};
+const firstDay = myDone.map(f => f.date).sort()[0] || today;
+const longest = myDone.slice().sort((a, b) => S.fMin(b) - S.fMin(a))[0];
+const tails = {};
+myDone.filter(f => !f.isSim && f.tail).forEach(f => { const t = tailOf(f); tails[t] = (tails[t] || 0) + 1; });
+const topAc = Object.entries(tails).sort((a, b) => b[1] - a[1])[0];
+const weeks = [...new Set(myDone.map(f => addD(f.date, -dowMon(f.date))))].sort();
+let streak = 0, wkRun = 0, prev = null;
+weeks.forEach(w => { wkRun = prev && addD(prev, 7) === w ? wkRun + 1 : 1; streak = Math.max(streak, wkRun); prev = w; });
+const HEAT_DAYS = 112;
+const perDay = {};
+myDone.forEach(f => { perDay[f.date] = (perDay[f.date] || 0) + S.fMin(f); });
+const heat = [];
+for (let i = HEAT_DAYS - 1; i >= 0; i--) heat.push(Math.round((perDay[addD(today, -i)] || 0) / 10));
+const ts = {
+  wk0: weekStart, mo0: monthStart, since: firstDay,
+  d: statsFor(today), w: statsFor(weekStart), m: statsFor(monthStart), a: statsFor(firstDay),
+  rec: {
+    lm: longest ? S.fMin(longest) : 0, ll: longest ? longest.lesson : '', ld: longest ? longest.date : '',
+    ac: topAc ? topAc[0] : '', acn: topAc ? topAc[1] : 0, streak,
+  },
+  heat,
+};
+
 const out = {
   v: 1,
   gen: new Date().toISOString(),
@@ -194,6 +241,7 @@ const out = {
     canx: wk.cancels, lessons: wk.lessons,
     cr: wk.cancelRate != null ? Math.round(wk.cancelRate * 100) : null,
   },
+  ts,
   board: ranked.map(s => [s.nick || s.name.split(' ')[0], s.lessonsCompleted, s.nick === ME_NICK ? 1 : 0, s.vsTarget == null ? null : Math.round(s.vsTarget)]),
 };
 
