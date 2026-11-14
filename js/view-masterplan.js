@@ -122,6 +122,7 @@
     useEffect(() => { const t = setTimeout(() => setPd(P), 220); return () => clearTimeout(t); }, [P]);
     const res = useMemo(() => (Pd && measured ? MP().plan(ctx, Pd, { asOf, measured }) : null), [Pd, measured]);
     const baseRes = useMemo(() => (baseP && measured ? MP().plan(ctx, Object.assign({}, baseP, { runs: 0 }), { asOf, measured }) : null), [baseP, measured]);
+    const altSP = useMemo(() => (Pd && measured && Pd.checkMode === 'batch' ? MP().plan(ctx, Object.assign({}, Pd, { checkMode: 'individual', runs: 0 }), { asOf, measured }) : null), [Pd, measured]);
     const bt = useMemo(() => (measured ? MP().backtest(ctx, MP().util.addDays(asOf, -7), MP().util.addDays(asOf, -1)) : null), [measured]);
     const bt2 = useMemo(() => (measured ? MP().backtest(ctx, MP().util.addDays(asOf, -11), MP().util.addDays(asOf, -1)) : null), [measured]);
     const sc = useMemo(() => (res ? MP().selfCheck(res, bt) : null), [res, bt]);
@@ -144,13 +145,14 @@
     // ── KPI strip
     const kpis = h('div', { className: 'kpis' },
       h('div', { className: 'kpi acc' }, h('div', { className: 'kl' }, 'Course complete · whole batch'), h('div', { className: 'kv' }, fDY(B.planComplete)),
-        h('div', { className: 'ks' }, `P50 ${fD(B.p50)} · P80 ${fD(B.p80)}${bB ? delta(B.planComplete, bB.planComplete) : ''}`)),
+        h('div', { className: 'ks' }, `P50 ${fD(B.p50)} · P80 ${fD(B.p80)}${bB ? delta(B.planComplete, bB.planComplete) : ''}`),
+        altSP ? h('div', { className: 'ks', title: 'Same plan, but each SP starts checks on their own lesson 96 + gap instead of waiting for the batch block' }, `if checks ran per SP: ${fD(altSP.batch.planComplete)}`) : null),
       h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'Lesson 96 · last SP'), h('div', { className: 'kv' }, fDY(B.plan96)),
         h('div', { className: 'ks' }, `P50 ${fD(B.p50_96)} · P80 ${fD(B.p80_96)}${bB ? delta(B.plan96, bB.plan96) : ''}`)),
       h('div', { className: 'kpi' }, h('div', { className: 'kl' }, 'First SP complete'), h('div', { className: 'kv' }, fDY(Object.values(res.perSP).map(v => v.plan.complete).filter(v => v && v !== 'done').sort()[0])),
         h('div', { className: 'ks' }, `${res.state.sps.length} SPs · ${res.state.sps.reduce((a, s) => a + s.remaining.length, 0)} lessons + ${res.state.sps.reduce((a, s) => a + 5 - s.auprtDone, 0)} UPRT + ${res.state.sps.reduce((a, s) => a + 3 - s.checksDone.length, 0)} checks left`)),
-      h('div', { className: 'kpi ' + (crit ? 'rev' : 'ok') }, h('div', { className: 'kl' }, 'Bottleneck'), h('div', { className: 'kv' }, crit ? MP().POOL_LABEL[crit.p] : 'none'),
-        h('div', { className: 'ks' }, crit ? `≥90% used for ${crit.n} week${crit.n > 1 ? 's' : ''}, through wk ${fD(crit.last)}` : 'no pool ≥90% in any week')),
+      h('div', { className: 'kpi rev' }, h('div', { className: 'kl' }, 'What sets the end date'), h('div', { className: 'kv' }, res.driver ? (res.driver.kind === 'check' ? 'Examiners' : res.driver.kind === 'auprt' ? 'C172 (UPRT)' : MP().POOL_LABEL[res.driver.pool]) : '—'),
+        h('div', { className: 'ks' }, (res.driver ? `last sortie: ${res.driver.code} on ${fD(res.driver.date)}` : '') + (crit ? ` · longest saturated: ${MP().POOL_LABEL[crit.p]} ${crit.n} wk` : ''))),
       h('div', { className: 'kpi ' + (sc && sc.pass ? 'ok' : 'bad') }, h('div', { className: 'kl' }, 'Backtest · last 7 days'), h('div', { className: 'kv' }, bt ? `${bt.batchErrPct >= 0 ? '+' : ''}${bt.batchErrPct.toFixed(0)}%` : '—'),
         h('div', { className: 'ks' }, bt ? `${bt.predicted} predicted vs ${bt.actual} flown · ±${bt.mae}/SP` : '')));
 
@@ -171,9 +173,11 @@
         h(Num, { label: 'Examiner check sorties / weekday', value: P.poolCap.EXAM, base: baseP.poolCap.EXAM, step: 0.2, onChange: v => set('poolCap.EXAM', v), src: m.pools.EXAM.source }),
         h(Sel, { label: 'UPRT policy', value: P.auprtPolicy, onChange: v => set('auprtPolicy', v), opts: [['spare', 'Fit into C172 slots (as practised)'], ['after96', 'Only after lesson 96']], src: 'AP-127 today: started between lessons 74–91' }),
         h(Num, { label: 'UPRT may start after lesson', value: P.auprtFrom, base: baseP.auprtFrom, onChange: v => set('auprtFrom', v), src: 'earliest AP-127 start so far' }),
-        h(Sel, { label: 'Final checks start', value: P.checkMode, onChange: v => set('checkMode', v), opts: [['individual', 'Per SP: own lesson 96 + gap'], ['batch', 'Batch window: when X% have lesson 96']], src: 'AP-126 ran its checks as one block, 21 Sep–18 Oct' }),
-        h(Num, { label: 'Gap after lesson 96 → first check', unit: 'days', value: P.checkGap, base: baseP.checkGap, onChange: v => set('checkGap', v), src: `AP-126: min ${m.checkGap.min}, median ${m.checkGap.median} (n=${m.checkGap.n})` }),
-        P.checkMode === 'batch' ? h(Num, { label: 'Batch window opens at', unit: '% with L96', value: P.checkBatchPct, base: 90, onChange: v => set('checkBatchPct', v) }) : null,
+        h(Sel, { label: 'Final checks start', value: P.checkMode, onChange: v => set('checkMode', v), opts: [['batch', 'As AP-126: one block after the batch'], ['individual', 'Per SP: own lesson 96 + gap']], src: `AP-126: last L96 ${fD(m.checkGap.batchLast96)} → first check ${fD(m.checkGap.batchFirstCheck)}, then one block` }),
+        P.checkMode === 'batch'
+          ? h(Num, { label: 'Block opens after last SP\'s L96', unit: 'days', value: P.checkGap, base: baseP.checkGap, onChange: v => set('checkGap', v), src: `AP-126: ${m.checkGap.batch} days` })
+          : h(Num, { label: 'Gap after own lesson 96', unit: 'days', value: P.checkGapSP, base: baseP.checkGapSP, onChange: v => set('checkGapSP', v), src: `AP-126 per SP: min ${m.checkGap.min}, median ${m.checkGap.median} (mostly waiting for the batch)` }),
+        P.checkMode === 'batch' ? h(Num, { label: 'Block opens when', unit: '% with L96', value: P.checkBatchPct, base: baseP.checkBatchPct, onChange: v => set('checkBatchPct', v) }) : null,
         h(Num, { label: 'SIRME re-fly rate', value: P.sirmeRefly, base: baseP.sirmeRefly, step: 0.05, min: 0, max: 1, onChange: v => set('sirmeRefly', v), src: 'AP-126 SPs who needed a 2nd SIRME sortie' }),
         h(Num, { label: 'Max sorties per SP / 7 days', value: P.spMaxPerWeek, base: baseP.spMaxPerWeek, onChange: v => set('spMaxPerWeek', v), src: 'p90 of AP-127 SPs, last 30 days' }),
         h(Num, { label: 'Max AP-127 sorties per FI / day', value: P.fiMaxPerDay, base: baseP.fiMaxPerDay, onChange: v => set('fiMaxPerDay', v), src: 'p95, last 30 days' }),
@@ -243,7 +247,7 @@
     const proof = h('div', { className: 'panel' },
       h('div', { className: 'ph' }, h('b', null, 'How this plan is built — and proof it matches reality')),
       h('div', { className: 'note' },
-        h('div', null, `Baseline (the recent week, ${m.windows.base.map(fD).join('–')}): AP-127 flew ${m.counts.comp7} sorties = ${m.budget.last7Total} block hours = ${m.budget.perDay} h/day. Over 30 days it averaged ${m.budget.last30PerDay} h/day even as the mix moved from SIM to aircraft — the school gives the batch a stable share of its day, so that share is the plan's main constraint. Day-of-week shape (30 days): ${DOWS.map((n, i) => n + ' ' + m.budget.dowShape[i].toFixed(2)).join(' · ')}. Cancels ${(m.cancelRate30 * 100).toFixed(1)}% (30 days) are already netted out of these flown hours; the Monte-Carlo runs replay the real day-to-day swing (${m.budget.dayFactors.length} sampled days) plus a 6% SP no-show.`),
+        h('div', null, `Baseline (the recent week, ${m.windows.base.map(fD).join('–')}): AP-127 flew ${m.counts.comp7} sorties; ${m.budget.last7Total} block hours on DA40/DA42/SIM = ${m.budget.perDay} h/day. Over 30 days it averaged ${m.budget.last30PerDay} h/day even as the mix moved from SIM to aircraft — the school gives the batch a stable share of its day, so that share is the plan's main constraint. Day-of-week shape (30 days): ${DOWS.map((n, i) => n + ' ' + m.budget.dowShape[i].toFixed(2)).join(' · ')}. Cancels ${(m.cancelRate30 * 100).toFixed(1)}% (30 days) are already netted out of these flown hours; the Monte-Carlo runs replay the real day-to-day swing (${m.budget.dayFactors.length} working days, sampled as 7-day blocks) plus a 6% SP no-show. The budget excludes the C172 (UPRT has its own aircraft and FI).`),
         h('div', { style: { marginTop: 6 } }, 'Course = 96 curriculum lessons + 5 Advanced UPRT (C172, 60 min) + 3 final skill checks as AP-126 flew them: SCPLME (CPL ME, DA42, 100 min), SCRSE (CPL/IR SE, DA40, 60 min), SIRME (IR ME, DA42, 120 min). Lesson durations are the median actual block time of each lesson across AP-124…129.')),
       h('table', null, h('thead', null, h('tr', null, h('th', null, 'Pool'), h('th', null, 'Cap used by plan'), h('th', null, 'AP-127 last 7d avg'), h('th', null, 'Source'))), h('tbody', null, poolRows)),
       h('div', { className: 'note' }, h('b', null, 'Backtests'), ' — stand at a past date, measure only what was known then, plan forward, compare with what each SP actually flew:'),
@@ -252,7 +256,7 @@
           h('td', { className: 'n' }, `${b.batchErrPct >= 0 ? '+' : ''}${b.batchErrPct.toFixed(1)}%`), h('td', { className: 'n' }, '±' + b.mae), h('td', { className: 'n' }, b.avgActual))))),
       h('div', { className: 'note' }, h('b', null, 'Self-check '), sc ? h('span', { className: sc.pass ? 'pass' : 'fail' }, sc.pass ? 'PASS' : 'FAIL') : null,
         h('ul', { style: { margin: '6px 0 0', paddingLeft: 18 } }, (sc ? sc.checks : []).map((c, i) => h('li', { key: i }, h('span', { className: c.pass ? 'pass' : 'fail' }, c.pass ? '✓ ' : '✗ '), c.name, c.detail ? h('span', { className: 'sub' }, ' — ' + c.detail) : null)))),
-      h('div', { className: 'note sub' }, 'Not modelled: individual leave, aircraft maintenance downtime and weather seasons beyond the last 30 days — add days off above, or lower a pool cap, to try them. The plan re-measures itself from the live feed every time the page loads.'));
+      h('div', { className: 'note sub' }, 'P50/P80 replay the last 30 days\u2019 day-to-day swing in whole 7-day blocks (the 24\u201325 Oct stand-down included) plus a 6% SP no-show; they do NOT include longer stand-downs, leave or maintenance, so the real spread is wider. An UPRT sortie normally takes the SP\u2019s day (only 9 of 166 UPRT sorties had another sortie the same day), so more C172 capacity pulls UPRT forward but can push a few lessons later. The C172 and its FI sit outside the AP-127 hour budget. '), h('div', { className: 'note sub' }, 'Not modelled: individual leave, aircraft maintenance downtime and weather seasons beyond the last 30 days — add days off above, or lower a pool cap, to try them. The plan re-measures itself from the live feed every time the page loads.'));
 
     return h('div', { className: 'mp' },
       h('div', { className: 'row', style: { justifyContent: 'space-between' } },
