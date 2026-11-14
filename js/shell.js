@@ -27,6 +27,7 @@
     ] },
     { label: 'Planning', items: [
       { id: 'autoslotfinder', label: 'Slot Finder', icon: '⚡' },
+      { id: 'masterplan', label: 'Master Plan', icon: '▥' },
     ] },
     { label: 'School', items: [
       { id: 'performance', label: "School Perf.", icon: '◷' },
@@ -523,6 +524,7 @@
       board: window.OpsBoard, gantt: window.GanttBoard,
       weekly: window.WeeklyBoard, roster: window.RosterBoard, calendar: window.CalendarBoard,
       autoslotfinder: window.AutoSlotFinderBoard,
+      masterplan: window.MasterPlanView,
       analytics: window.SummaryBoard,
       aircraft: window.AircraftStatusView,
       cohort: window.CohortView,

@@ -43,10 +43,11 @@ with `Math.random()` — a forecast that moves on every render cannot be put in 
 
 
 ## Current state
-- All `index.html` script tags at `?v=p207`; `ops/index.html` at `?v=r42` (2026-10-11 — Batch Stats moved under Cross-Check). Next bump: **p208**.
+- All `index.html` script tags at `?v=p208`; `ops/index.html` at `?v=r42` (2026-11-14 — new Planning → Master Plan tab). Next bump: **p209**.
+- **Master Plan** (`js/ap127-masterplan-model.js` + `js/view-masterplan.js`): per-SP day-by-day plan to course end (96 lessons + 5 AUPRT + 3 checks), every default measured live from the feed. Seeded like V6 — never `Math.random`. Verify: `node scripts/check_masterplan.mjs` → `selfCheck PASS` (includes a 7-day backtest within ±15%).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p208` (all currently at p207; `ops/index.html` is on its own `?v=rNN`, now r42)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p209` (all currently at p208; `ops/index.html` is on its own `?v=rNN`, now r42)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the **Current state** line above (new token, one-line summary) — edit it in place; the full write-up belongs in `REVAMP.md`, not this file
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
