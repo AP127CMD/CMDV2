@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex, nofollow"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<title>AP-127 Master Plan</title>
+<!-- Standalone page (owner, 2026-11-14: "Dont put this tab in the CMD V2. Give me a separate URL").
+     Same data plane as CMDV2's index.html — ops feed from the ap127-data Worker, progress snapshot +
+     live fetch via shared.js's DataProvider, shared.js's FLIGHTS dedup — but no sidebar, no other views. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../css/theme.css?v=p210"/>
+<style>
+  html,body{margin:0;min-height:100%;}
+  .mp-top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:20;}
+  .mp-top b{font-family:'Rajdhani',sans-serif;font-size:16px;letter-spacing:.06em;}
+  .mp-top .th{display:flex;gap:4px;}
+</style>
+</head>
+<body data-theme="cockpit">
+<div id="root">
+  <div style="padding:40px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink-3,#889)">Loading AP-127 master plan…</div>
+</div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+
+<script src="../assets/reconcile.js?v=p210"></script>
+<script src="https://ap127-data.anusorn-tanmetha.workers.dev/flight-data.js"></script>
+<script src="../progress-data.js"></script>
+<script src="../ngt-data.js"></script>
+<script src="../js/ap127-targets-data.js?v=p210"></script>
+<script type="text/babel" src="../js/shared.js?v=p210"></script>
+<script src="../js/ap127-masterplan-model.js?v=p210"></script>
+<script src="../js/view-masterplan.js?v=p210"></script>
+
+<script type="text/babel" data-presets="env,react">
+  function MasterPlanPage() {
+    const [theme, setTheme] = React.useState(() => { try { return localStorage.getItem('ap127-theme') || 'cockpit'; } catch (e) { return 'cockpit'; } });
+    const setT = t => { setTheme(t); try { localStorage.setItem('ap127-theme', t); } catch (e) {} };
+    const tweaks = { theme, showSim: false, showStandby: true, groupBy: 'tail' };
+    const Provider = window.DataProvider, View = window.MasterPlanView;
+    if (!Provider || !View) return <div style={{ padding: 40 }}>Master Plan failed to load.</div>;
+    return (
+      <Provider tweaks={tweaks} setTweak={() => {}}>
+        <div className="mp-top">
+          <b>AP-127 · MASTER PLAN</b>
+          <div className="th">
+            {[['cockpit', 'Dark'], ['light', 'Light'], ['warm', 'Warm']].map(([k, l]) =>
+              <button key={k} className={'chip' + (theme === k ? ' sel' : '')} onClick={() => setT(k)}>{l}</button>)}
+          </div>
+        </div>
+        <View/>
+      </Provider>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<MasterPlanPage/>);
+</script>
+</body>
+</html>

@@ -64,6 +64,11 @@
   // Thai public holidays not yet in shared.js's AP127_HOLIDAYS (which ends 31 Dec 2026).
   // Editable on the page; kept here, not in shared.js (DB_Share mirrors shared.js).
   const EXTRA_HOLIDAYS = ['2027-01-01'];
+  // Owner's planning days off (14 Nov 2026: "Just 1-3 Jan for day off"). Editable on the page.
+  const DAYS_OFF = ['2027-01-01', '2027-01-02', '2027-01-03'];
+  // FI roster code -> ops-feed instructor name (same table as ap127-v5-model.js FI_FULL).
+  const FI_FULL = { 'W-CHAI': 'WUTTHICHAI L.', 'P-YUTH': 'PHAHOLYUTH P.', 'P-YA': 'PARINYA B.', 'S-TI': 'SANTI SUK.', 'N-TORN': 'NAPATTORN S.', 'I-POL': 'ITTIPOL P.', 'SN-TI': 'SANTI PO.', 'A-WAT': 'THAWATANAN P.', 'W-NU': 'WISANU T.', 'K-POL': 'KOONPHOL U.', 'C-CHAI': 'CHAROENCHAI U.', 'E-PHOB': 'EKKAPHOP R.', 'S-WAN': 'SOWAN C.', 'K-CHAI': 'KITTICHAI C.' };
+  const UPRT_FI_WINDOW = 28;
 
   const lessonNum = c => { const m = String(c || '').replace(/\s*\(.*?\)\s*$/, '').replace(/\/\d+\s*$/, '').match(/(\d+)\s*$/); return m ? +m[1] : null; };   // 'CSPXI 87/1' → 87
   const keyFromFull = name => { const p = String(name || '').trim().split(/\s+/); if (!p[0]) return ''; return p.length < 2 ? p[0].toUpperCase() : (p[0] + ' ' + p[1][0]).toUpperCase() + '.'; };
@@ -207,11 +212,28 @@
     // AP-126 reference for UPRT
     const up126 = a126.filter(f => isAuprt(f.lesson)); const up126d = new Set(up126.map(f => f.date));
     pools.C172.ref126 = up126d.size ? +(up126.length / up126d.size).toFixed(1) : null;
+    const upAll = all.filter(f => isAuprt(f.lesson) && f.status === 'Completed'); const upAllD = {}; upAll.forEach(f => { upAllD[f.date] = (upAllD[f.date] || 0) + 1; });
+    pools.C172.maxPerDay = Math.max(1, ...Object.values(upAllD));         // one C172's best UPRT day (AP-126/127)
+
+    // The UPRT FI's duty ledger (owner: "Limit is Kittichai 90hr per 28days"): every block hour he
+    // flew in the last 28 days (any batch) seeds a rolling window; his non-AP-127, non-UPRT flying
+    // continues as background at its last-28-day rate.
+    const upFiName = (() => { const c = {}; up30.concat(up126).forEach(f => { if (f.instructor) c[f.instructor] = (c[f.instructor] || 0) + 1; }); return Object.entries(c).sort((a, b) => b[1] - a[1]).map(e => e[0])[0] || 'KITTICHAI C.'; })();
+    const upFiCode = Object.keys(FI_FULL).find(k => FI_FULL[k] === upFiName) || null;
+    const from28 = addDays(asOf, -UPRT_FI_WINDOW);
+    const fiRows = all.filter(f => f.status === 'Completed' && f.instructor === upFiName && f.date >= from28 && (f.durMin || 0) > 0);
+    const fiSeed = {}; fiRows.forEach(f => { fiSeed[f.date] = (fiSeed[f.date] || 0) + f.durMin / 60; });
+    const fiBg = fiRows.filter(f => !isAP127(f.batch) && !isAuprt(f.lesson)).reduce((a, f) => a + f.durMin / 60, 0) / UPRT_FI_WINDOW;
+    const fiSplit = { uprt: 0, ap127: 0, other: 0 }; fiRows.forEach(f => { fiSplit[isAuprt(f.lesson) ? 'uprt' : isAP127(f.batch) ? 'ap127' : 'other'] += f.durMin / 60; });
+    const uprtFi = { name: upFiName, code: upFiCode, seed: fiSeed, bgPerDay: +fiBg.toFixed(2), last28: +fiRows.reduce((a, f) => a + f.durMin / 60, 0).toFixed(1),
+      split: Object.fromEntries(Object.entries(fiSplit).map(([k, v]) => [k, +v.toFixed(1)])) };
 
     // Examiners: AP-126 checks per active day; gap from own lesson 96 to first check.
     const ck = a126.filter(f => checkOf(f.lesson)); const ckDays = new Set(ck.map(f => f.date));
     const examiners = new Set(ck.map(f => f.instructor).filter(Boolean));
-    pools.EXAM = { capH: ckDays.size ? +(ck.length / ckDays.size).toFixed(1) : 5, last7: 0, source: ckDays.size ? `AP-126: ${ck.length} check sorties on ${ckDays.size} days, ${examiners.size} examiners` : 'default', unit: 'checks/day', examiners: [...examiners] };
+    const exDay = {}; ck.forEach(f => { const k = f.date + '|' + f.instructor; exDay[k] = (exDay[k] || 0) + 1; });
+    const perChecker = Object.keys(exDay).length ? ck.length / Object.keys(exDay).length : 1.8;
+    pools.EXAM = { capH: ckDays.size ? +(ck.length / ckDays.size).toFixed(1) : 5, last7: 0, source: ckDays.size ? `AP-126: ${ck.length} check sorties on ${ckDays.size} days, ${examiners.size} examiners` : 'default', unit: 'checks/day', examiners: [...examiners], perChecker: +perChecker.toFixed(2) };
     const by126 = {}; a126.forEach(f => { (by126[normName(f.student)] = by126[normName(f.student)] || []).push(f); });
     const gaps = [], sirme = [];
     Object.values(by126).forEach(a => {
@@ -275,6 +297,7 @@
       checkGap: { min: gaps[0] != null ? gaps[0] : 14, median: gaps.length ? gaps[Math.floor(gaps.length / 2)] : 21, n: gaps.length, batch: batchGap, batchLast96: last96 || null, batchFirstCheck: firstCk || null },
       sirmeRefly: +sirmeRefly.toFixed(2),
       counts: { comp7: in7.length, comp30: in30.length, can30 },
+      uprtFi,
     };
   }
 
@@ -286,19 +309,28 @@
       dowShape: m.budget.dowShape.slice(),
       poolCap: Object.fromEntries(POOLS.map(p => [p, m.pools[p].capH])),
       poolScale: Object.fromEntries(POOLS.map(p => [p, 1])),
-      c172OpDays: m.pools.C172.opDays.some(Boolean) ? m.pools.C172.opDays.slice() : [false, true, true, true, true, true, false],
+      c172OpDays: [true, true, true, true, true, true, true],   // owner: UPRT "can fit in at anytime"
+      c172PerDay: m.pools.C172.maxPerDay,       // sorties one C172 can fly in a day (its best measured UPRT day)
+      c172Aircraft: 1,
+      uprtFIs: 1,                               // FIs who fly UPRT; the first is the measured one (Kittichai)
+      uprtFiHours: 90,                          // owner: max block hours per FI per rolling 28 days
+      upSameDay: false,                         // may an SP fly UPRT AND a lesson the same day? (measured: 9/166)
       spMaxPerDay: 1,                           // curriculum/check sorties per SP per day (SIM 91+92 may pair)
       spMaxPerWeek: m.spMaxPerWeek,
       fiMaxPerDay: m.fiMaxPerDay,
-      auprtFrom: m.auprtFrom,                   // curriculum lessons done before UPRT may start
+      auprtFrom: 0,                             // owner: UPRT any time, no lesson threshold
       auprtPolicy: 'spare',                     // 'spare' = fit into C172 slots as practised | 'after96'
-      checkMode: 'batch',                       // 'batch' = as AP-126: one block, opens `checkGap` days after the last SP's lesson 96
-      checkGap: m.checkGap.batch,               // | 'individual' = each SP's own lesson 96 + `checkGapSP`
-      checkGapSP: m.checkGap.min,
+      checkMode: 'individual',                  // owner: checks run per SP | 'batch' = AP-126's one block (what-if)
+      checkGap: m.checkGap.batch,               // batch mode: days after the last SP's lesson 96
+      checkGapSP: 14,                           // owner: first check 2 weeks after the SP's own lesson 96
+      checkSpacing: 1,                          // owner: 1 day between checks (1 = next day)
       checkBatchPct: 100,
+      checkers: 4,                              // owner: only 4 checkers
+      checksPerChecker: m.pools.EXAM.perChecker,// AP-126: check sorties per examiner-day
+      checkWeekends: false,                     // AP-126: 99 of 101 check sorties on weekdays
       sirmeRefly: m.sirmeRefly,
       priority: 'pace',                         // 'pace' (as-is) | 'behind' (catch the tail up) | 'leaders'
-      extraHolidays: [],
+      daysOff: DAYS_OFF.slice(),
       runs: 60, seed: 127,
     };
   }
@@ -314,7 +346,14 @@
     const rnd = mulberry32((opt.seed || P.seed || 127) >>> 0);
     const stoch = !!opt.stochastic;
     const start = opt.start || state.asOf, stopAt = opt.until || addDays(start, 400);
-    const hol = new Set([...(m.holidays || []), ...(P.extraHolidays || [])]);
+    const hol = new Set([...(P.daysOff || []), ...(opt.measuredHolidays ? (m.holidays || []) : [])]);
+    // UPRT FI duty ledgers: [0] = the measured FI (seeded with his real last-28-day hours), extras start empty
+    const fiLed = Array.from({ length: Math.max(1, P.uprtFIs || 1) }, (_, i) => Object.assign({}, i === 0 && m.uprtFi ? m.uprtFi.seed : {}));
+    const roll = (L, d) => { const lo = addDays(d, -(UPRT_FI_WINDOW - 1)); let t = 0; for (const k in L) if (k >= lo && k <= d) t += L[k]; return t; };
+    const kCode = m.uprtFi && m.uprtFi.code;
+    let fiPeak = 0;
+    const fiNow = fiLed.map(() => 0);                            // rolling 28-day hours as of the current day, per FI
+    const addFi = (i, d, h) => { fiLed[i][d] = (fiLed[i][d] || 0) + h; fiNow[i] += h; };
     const dur = n => (m.durations[n] || null);
     const booked = opt.booked || {};                              // key -> date -> [{kind,num}]
     const sps = state.sps.map(s => {
@@ -339,10 +378,12 @@
       const f = stoch ? factors[(blockAt++) % factors.length] : 1;
       const budget = isHol ? 0 : P.budgetPerDay * P.budgetScale * (P.dowShape[wd] || 0) * f;
       const cap = {}; POOLS.forEach(p => { cap[p] = isHol ? 0 : P.poolCap[p] * P.poolScale[p] * (p === 'EXAM' || p === 'C172' ? 1 : Math.min(1.25, f)); });
-      if (!P.c172OpDays[wd]) cap.C172 = 0;
-      if (wd === 0 || wd === 6) cap.EXAM = 0;                    // AP-126's checks were all weekdays bar 2 sorties
+      cap.C172 = isHol || !P.c172OpDays[wd] ? 0 : P.c172PerDay * P.c172Aircraft;
+      cap.EXAM = isHol || (!P.checkWeekends && (wd === 0 || wd === 6)) ? 0 : P.checkers * P.checksPerChecker * P.poolScale.EXAM;
+      fiLed.forEach((L, i) => { fiNow[i] = roll(L, d); });           // once per day; adds below update it incrementally
+      if (!isHol && m.uprtFi) { const room = Math.max(0, P.uprtFiHours - fiNow[0]); addFi(0, d, Math.min(m.uprtFi.bgPerDay, room)); }   // his other-batch flying continues (within his limit)
       const used = Object.fromEntries(POOLS.map(p => [p, 0])); let usedB = 0, forcedB = 0;
-      const fiLoad = {}, spToday = {};
+      const fiLoad = {}, spToday = {}, mainToday = {};
       const day = { date: d, hol: isHol, budget, cap, used, usedB: 0, n: 0 };
 
       if (P.checkMode === 'batch' && !checkOpen) {
@@ -365,7 +406,9 @@
         if (pool === 'C172') used.C172 += 1; else used[pool] += h;
         if (extra === 'check') used.EXAM += 1;
         if (pool !== 'C172') usedB += h; if (x.s.fi && pool !== 'C172' && extra !== 'check') fiLoad[x.s.fi] = (fiLoad[x.s.fi] || 0) + 1;
-        spToday[x.s.id] = (spToday[x.s.id] || 0) + 1; x.hist.push(d);
+        spToday[x.s.id] = (spToday[x.s.id] || 0) + 1; if (pool !== 'C172') mainToday[x.s.id] = (mainToday[x.s.id] || 0) + 1; x.hist.push(d);
+        // he also flies his own SPs' lessons — unless that would break his 28-day limit, then a substitute FI does
+        if (kCode && x.s.fi === kCode && pool !== 'C172' && extra !== 'check' && fiNow[0] + h <= P.uprtFiHours) addFi(0, d, h);
         x.log.push({ date: d, kind: item.kind, code: item.code, num: item.num || null, pool, mins });
         day.n++;
       };
@@ -402,18 +445,23 @@
 
       // 1) AUPRT on the C172 — its own aircraft + FI, so it is filled first (as last week:
       //    16 UPRT sorties flew while the rest of the budget was full), one per SP per day
-      const upCand = sps.filter(x => x.auprt < AUPRT_N && (P.auprtPolicy === 'after96' ? !!x.date96 : (x.done >= P.auprtFrom || x.auprt > 0)) && (spToday[x.s.id] || 0) < 2)
-        .sort((a, b) => (b.auprt > 0) - (a.auprt > 0) || b.auprt - a.auprt || b.done - a.done);
+      //    Each sortie needs a UPRT FI whose rolling 28-day block hours stay ≤ uprtFiHours.
+      const upCand = sps.filter(x => x.auprt < AUPRT_N && (P.auprtPolicy === 'after96' ? !!x.date96 : (x.done >= P.auprtFrom || x.auprt > 0)) && (spToday[x.s.id] || 0) < 1)
+        .sort((a, b) => (b.auprt > 0) - (a.auprt > 0) || b.auprt - a.auprt || a.q.length - a.qi - (b.q.length - b.qi));
       upCand.forEach(x => {
         if (stoch && rnd() < 0.06) return;
         if (!fits('C172', AUPRT_MINS, x)) return;
+        const h = AUPRT_MINS / 60;
+        const fi = fiNow.map((r, i) => ({ i, r })).filter(o2 => o2.r + h <= P.uprtFiHours + 1e-9).sort((a, b) => a.r - b.r)[0];
+        if (!fi) return;
+        addFi(fi.i, d, h);
         take(x, { kind: 'auprt', code: 'AUPRT 0' + (x.auprt + 1) }, 'C172', AUPRT_MINS); x.auprt++;
       });
 
       // 2) curriculum lessons & checks
       for (let pass = 0; pass < 2; pass++) {                      // 2nd pass lets ME-sim 91+92 pair on one day
         order.forEach(x => {
-          const n = spToday[x.s.id] || 0;
+          const n = (P.upSameDay ? mainToday[x.s.id] : spToday[x.s.id]) || 0;
           if (x.qi < x.q.length) {
             const it = x.q[x.qi];
             const limit = it.pool === 'SIM42' || it.pool === 'SIM40' ? 2 : P.spMaxPerDay;
@@ -428,7 +476,7 @@
           // checks
           if (!x.date96) return;
           if (P.checkMode === 'batch' ? (!checkOpen || d < checkOpen) : diff(d, x.date96) < P.checkGapSP) return;
-          if (x.lastCheck && diff(d, x.lastCheck) < 1) return;
+          if (x.lastCheck && diff(d, x.lastCheck) < Math.max(1, P.checkSpacing)) return;
           if (used.EXAM + 1 > cap.EXAM + 0.5) return;
           const c = x.checks[x.ci];
           const h = c.mins / 60;
@@ -441,6 +489,7 @@
 
       day.usedB = usedB;
       day.forcedB = forcedB;
+      day.fiRoll = fiNow[0]; fiPeak = Math.max(fiPeak, ...fiNow);
       out.days.push(day);
     }
 
@@ -456,6 +505,7 @@
     });
     out.end = out.days.length ? out.days[out.days.length - 1].date : start;
     out.finished = allDone();
+    out.fiPeak = +fiPeak.toFixed(1);
     return out;
   }
 
@@ -537,9 +587,12 @@
   // ─────────────────────────────────────────────────────────────────────────
   function backtest(ctx, from, to, P0) {
     const m = measure(ctx, from);
-    const P = Object.assign(defaults(m), P0 || {});
+    // Replay the past as it was practised: real holidays, UPRT from the lesson AP-127 actually started at,
+    // the C172's measured weekday pace — the owner's forward-looking rules don't apply to history.
+    const P = Object.assign(defaults(m), { daysOff: [], auprtFrom: m.auprtFrom, c172PerDay: m.pools.C172.capH,
+      c172OpDays: m.pools.C172.opDays.some(Boolean) ? m.pools.C172.opDays.slice() : [false, true, true, true, true, true, false] }, P0 || {});
     const state = buildState(ctx, addDays(from, -1));
-    const sim = simulate(state, m, P, { stochastic: false, start: from, until: to, booked: {} });
+    const sim = simulate(state, m, P, { stochastic: false, start: from, until: to, booked: {}, measuredHolidays: true });
     const endState = buildState(ctx, to);
     const rows = state.sps.map(s => {
       const e = endState.sps.find(x => x.id === s.id);
@@ -554,6 +607,78 @@
     const avgA = sumA / (rows.length || 1);
     return { from, to, days: diff(to, from) + 1, rows, actual: sumA, predicted: sumP, batchErrPct: sumA ? (sumP - sumA) / sumA * 100 : 0, mae: +mae.toFixed(2), avgActual: +avgA.toFixed(2), budgetPerDay: m.budget.perDay };
   }
+
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SOLVE FOR A TARGET DATE — "what would it take to finish everyone by X?"
+  // Greedy over levers, least disruptive first. For each lever: if pushing it to
+  // its limit moves the end date, bisect for the smallest setting that reaches
+  // the target (or keep the limit and carry on). Deterministic plan runs only.
+  // ─────────────────────────────────────────────────────────────────────────
+  const LEVERS = [
+    { key: 'upSameDay', label: 'SP may fly a UPRT sortie and a lesson on the same day', kind: 'bool' },
+    { key: 'checkWeekends', label: 'Checks also on Saturday/Sunday', kind: 'bool' },
+    { key: 'uprtFIs', label: 'UPRT instructors (90 h/28 d each)', kind: 'int', max: 4 },
+    { key: 'c172Aircraft', label: 'C172s for UPRT', kind: 'int', max: 3 },
+    { key: 'checkers', label: 'Checkers available', kind: 'int', max: 8 },
+    { key: 'me', label: 'DA42 + DA42 SIM capacity (× AP-126 rate)', kind: 'num', max: 2.5, step: 0.05 },
+    { key: 'fleet', label: 'AP-127 share of DA40 hours (× today)', kind: 'num', max: 2.5, step: 0.05 },
+    { key: 'spMaxPerWeek', label: 'Max sorties per SP per 7 days', kind: 'int', max: 12 },
+    { key: 'spMaxPerDay', label: 'Max lessons per SP per day', kind: 'int', max: 2 },
+    { key: 'checkGapSP', label: 'Days from own lesson 96 to first check (your rule: 14)', kind: 'int', min: 3, dir: -1 },
+  ];
+  function leverGet(P, k) { return k === 'fleet' ? P.budgetScale : k === 'me' ? P.poolScale.DA42 : P[k]; }
+  function leverSet(P, k, v) {
+    const q = JSON.parse(JSON.stringify(P));
+    if (k === 'fleet') { q.budgetScale = v; q.poolScale.DA40CS = v; q.poolScale.DA40TDI = v; }
+    else if (k === 'me') { q.poolScale.DA42 = v; q.poolScale.SIM42 = v; }
+    else q[k] = v;
+    return q;
+  }
+  function solve(ctx, P0, m, asOf, target) {
+    const endOf = q => { const r = plan(ctx, Object.assign({}, q, { runs: 0 }), { asOf, measured: m }); return r.batch.planComplete || '9999-12-31'; };
+    const base = JSON.parse(JSON.stringify(P0)); base.runs = 0;
+    const start = endOf(base);
+    if (start <= target) return { target, start, end: start, achieved: true, steps: [], params: base, floor: start };
+    const limOf = L => L.kind === 'bool' ? true : L.dir === -1 ? L.min : L.max;
+    // 1) everything at its limit = the earliest this batch can possibly finish
+    let P = base;
+    LEVERS.forEach(L => { const v = leverGet(base, L.key); const lim = limOf(L); if (L.kind === 'bool' ? !v : L.dir === -1 ? v > lim : v < lim) P = leverSet(P, L.key, lim); });
+    const floor = endOf(P);
+    // 2) hand each lever back toward today's value — most disruptive first — as far as the target allows.
+    //    If even the floor misses the target, aim for the floor instead (the fewest changes that still get there).
+    const goal = floor <= target ? target : floor;
+    for (const L of LEVERS.slice().reverse()) {
+      const b = leverGet(base, L.key), cur = leverGet(P, L.key);
+      if (cur === b) continue;
+      const back = leverSet(P, L.key, b);
+      if (endOf(back) <= goal) { P = back; continue; }
+      if (L.kind === 'bool') continue;
+      let keep = cur, lo = b, hi = cur;                              // lo = fails, hi = meets
+      const stepV = L.kind === 'int' ? 1 : (L.step || 0.05);
+      for (let k = 0; k < 14 && Math.abs(hi - lo) > stepV + 1e-9; k++) {
+        let mid = (lo + hi) / 2; mid = L.kind === 'int' ? Math.round(mid) : Math.round(mid / stepV) * stepV;
+        if (mid === lo || mid === hi) break;
+        if (endOf(leverSet(P, L.key, mid)) <= goal) { hi = mid; keep = mid; } else lo = mid;
+      }
+      P = leverSet(P, L.key, +(+keep).toFixed(2));
+    }
+    // clean-up: a change handed back early can become unnecessary once later levers were set — drop those
+    for (let again = true, k = 0; again && k < 4; k++) {
+      again = false;
+      for (const L of LEVERS) {
+        const bv = leverGet(base, L.key); if (leverGet(P, L.key) === bv) continue;
+        const back = leverSet(P, L.key, bv);
+        if (endOf(back) <= goal) { P = back; again = true; }
+      }
+    }
+    const end = endOf(P);
+    // what each change buys: the end date if that one change alone were undone
+    const steps = LEVERS.filter(L => leverGet(P, L.key) !== leverGet(base, L.key)).map(L => ({ key: L.key, label: L.label, from: leverGet(base, L.key), to: leverGet(P, L.key),
+      without: endOf(leverSet(P, L.key, leverGet(base, L.key))) }));
+    return { target, start, end, floor, achieved: end <= target, steps, params: P };
+  }
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // Self-check invariants — shown on the page.
@@ -574,10 +699,14 @@
     ok('daily budget respected (±½ sortie rounding)', over.length === 0, over.length + ' days over');
     const ckAfter = sps.every(s => { const p = res.perSP[s.id].plan; const c = p.log.filter(x => x.kind === 'check'); return !c.length || (p.date96 && c[0].date > p.date96); });
     ok('checks only after lesson 96', ckAfter);
+    const fiStart = res.measured.uprtFi ? res.measured.uprtFi.last28 : 0;
+    ok(`UPRT FI ≤ ${res.params.uprtFiHours} h in any 28 days`, res.base.fiPeak <= Math.max(res.params.uprtFiHours, fiStart) + 0.6, `peak ${res.base.fiPeak} h (${res.measured.uprtFi ? res.measured.uprtFi.name : ''} has ${fiStart} h in the last 28 days)`);
+    const spaced = sps.every(s => { const c = res.perSP[s.id].plan.log.filter(x => x.kind === 'check'); const p = res.perSP[s.id].plan; return c.every((x, i) => (i === 0 ? (res.params.checkMode !== 'individual' || !p.date96 || diff(x.date, p.date96) >= res.params.checkGapSP) : diff(x.date, c[i - 1].date) >= Math.max(1, res.params.checkSpacing))); });
+    ok(`checks ≥${res.params.checkGapSP} d after own L96, ≥${res.params.checkSpacing} d apart`, res.params.checkMode !== 'individual' || spaced);
     if (bt) ok(`backtest ${bt.from}→${bt.to}: batch within ±15%`, Math.abs(bt.batchErrPct) <= 15, `${bt.predicted} predicted vs ${bt.actual} actual (${bt.batchErrPct >= 0 ? '+' : ''}${bt.batchErrPct.toFixed(1)}%), MAE ${bt.mae}/SP`);
     return { pass: out.every(r => r.pass), checks: out };
   }
 
-  return { measure, defaults, buildState, simulate, plan, backtest, selfCheck, bookingsFrom,
+  return { measure, defaults, buildState, simulate, plan, backtest, selfCheck, bookingsFrom, solve, LEVERS, leverGet, leverSet, DAYS_OFF,
     CHECKS, AUPRT_N, POOLS, POOL_LABEL, EXTRA_HOLIDAYS, util: { addDays, diff, dow, todayBKK, lessonNum, keyFromFull, poolOfFlight } };
 }));

@@ -43,11 +43,11 @@ with `Math.random()` — a forecast that moves on every render cannot be put in 
 
 
 ## Current state
-- All `index.html` script tags at `?v=p209`; `ops/index.html` at `?v=r42` (2026-11-14 — new Planning → Master Plan tab). Next bump: **p210**.
-- **Master Plan** (`js/ap127-masterplan-model.js` + `js/view-masterplan.js`): per-SP day-by-day plan to course end (96 lessons + 5 AUPRT + 3 checks), every default measured live from the feed. Seeded like V6 — never `Math.random`. Verify: `node scripts/check_masterplan.mjs` → `selfCheck PASS` (includes a 7-day backtest within ±15%).
+- All `index.html` script tags at `?v=p210`; `ops/index.html` at `?v=r42`; `masterplan/index.html` at `?v=p210` (2026-11-14 — Master Plan moved to its own URL). Next bump: **p211**.
+- **Master Plan** — standalone page `masterplan/index.html` → https://ap127-ngt2.pages.dev/masterplan/ (owner: NOT a CMDV2 tab; no nav entry — keep it that way). `js/ap127-masterplan-model.js` + `js/view-masterplan.js`: per-SP day-by-day plan to course end (96 lessons + 5 AUPRT + 3 checks) + target-date solver. Defaults = measured live data + the owner's rules (checks per SP 14 d after own L96, 1 d apart, 4 checkers; UPRT any time, UPRT FI ≤90 h/28 d; days off 1–3 Jan only). Bump its `?v=` together with `index.html`. Seeded like V6 — never `Math.random`. Verify: `node scripts/check_masterplan.mjs` → `selfCheck PASS` (includes a 7-day backtest within ±15%).
 
 ## ⚠️ Update rule — do this after EVERY code change
-1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p210` (all currently at p209; `ops/index.html` is on its own `?v=rNN`, now r42)
+1. Bump `?v=pNN` token on ALL `<script>` tags in `index.html` — next must be `p211` (all currently at p210, incl. `masterplan/index.html`; `ops/index.html` is on its own `?v=rNN`, now r42)
 2. Add entry to `REVAMP.md` change log: `| 2026-MM-DD | Description (pNN) |`
 3. Update the **Current state** line above (new token, one-line summary) — edit it in place; the full write-up belongs in `REVAMP.md`, not this file
 4. Update `/Users/nugui/AP127_Docs/README.md` §2.4 (add to §10 log) — then push AP127_Docs
